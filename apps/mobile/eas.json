@@ -1,0 +1,32 @@
+{
+  "cli": {
+    "version": ">= 22.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "review": {
+      "extends": "production",
+      "env": {
+        "EXPO_PUBLIC_REVIEW_EMAIL": "",
+        "EXPO_PUBLIC_REVIEW_PASSWORD": ""
+      }
+    },
+    "production": {
+      "android": {
+        "autoIncrement": "versionCode"
+      },
+      "ios": {
+        "autoIncrement": "buildNumber"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
