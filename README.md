@@ -99,6 +99,11 @@ panel. Do **not** run `npm install` inside `apps/`.
    20261014000002_favourites.sql
    20261014000003_address_one_default.sql
    20261014000004_coupons.sql
+   20261020000001_account_deletion.sql
+   20261020000002_shop_identity.sql
+   20261021000001_order_tracker.sql
+   20261021000002_shop_totals.sql
+   20261021000003_product_guard.sql
    ```
 
 3. Open `supabase/seed.sql`, paste it, **Run**. This adds 1 store, 8 categories,
@@ -110,9 +115,11 @@ panel. Do **not** run `npm install` inside `apps/`.
    sign in once in the app first. It dresses the first customer profile (falling
    back to the first profile of any role) so every screen is alive:
 
-   - **9 orders** — one for every status (2 waiting to be accepted, one each of
-     confirmed / packing / out for delivery, 2 delivered, 1 cancelled), with the
-     in-flight ones already assigned to a rider if one exists;
+   - **25 orders** — the recent ones cover every status (2 waiting to be accepted,
+     one each of confirmed / packing / out for delivery, 2 delivered, 1 cancelled)
+     and the rest are delivered history spread over the last few weeks, so the
+     owner's totals and the customer's order list both have something to show.
+     The in-flight ones are already assigned to a rider if one exists;
    - **one order carrying a coupon discount** (KUNIGAL50), so the discount line
      is visible somewhere — the number comes from the database, not the file;
    - **5 favourites**, so the Home **Saved** rail is not empty;
@@ -274,6 +281,11 @@ npm run dev           # both at once
 npm run typecheck     # tsc --noEmit in both apps
 npm run lint          # eslint in both apps, then the i18n key check
 npm run check:i18n    # en/kn key parity + every key used in code exists
+npm run check:session # the signed-in session survives an app restart
+npm run check:auth-doors # a release build has no dev login, the review build has one
+npm run check:view    # the address/time helpers all three faces share
+npm run check:persist # only public shop data is written to the device
+npm run check:speech  # the Kannada speech rules and spoken-price formatter
 npm run test:db       # all database tests against a throwaway PostgreSQL 16
 ```
 
@@ -292,3 +304,8 @@ See [`AGENTS.md`](./AGENTS.md) for the full rules. The short version:
   Security; a customer can only read their own addresses and orders.
 - **Multiple shops are already supported.** Every product, order and setting row
   carries a `store_id`, so adding a second shop is data, not a rewrite.
+- **Getting it onto a phone and into a store is its own plan.** See
+  [`PRODUCTION.md`](./PRODUCTION.md) — the phases, the Play/App Store calendar,
+  and the statutory work (privacy policy, FSSAI, Legal Metrology, GST, DPDP) that
+  has to happen before a public release. `apps/mobile/eas.json` holds the build
+  profiles.

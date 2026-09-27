@@ -10,3 +10,4 @@ build
 apps/mobile/.env
 apps/admin/.env
 supabase/.temp
+.council/runs
