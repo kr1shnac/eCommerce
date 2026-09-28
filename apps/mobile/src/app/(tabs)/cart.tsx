@@ -10,6 +10,7 @@ import { OfflineBanner } from '@/components/offline-banner';
 import { QuantityStepper } from '@/components/quantity-stepper';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
+import { SpeakButton } from '@/components/speak-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,7 +19,8 @@ import { useCart, type CartLineView } from '@/hooks/use-cart';
 import { useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedName } from '@/lib/localized';
-import { formatPaise } from '@/lib/money';
+import { formatPaiseForSpeech, formatPaise } from '@/lib/money';
+import { spokenProductLine } from '@/lib/speech';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useCartStore } from '@/store/cart-store';
 
@@ -141,6 +143,27 @@ export default function CartScreen() {
   const belowMinimum = cart.subtotalPaise < minOrder;
   const showAdjustments = cart.adjustments.length > 0 && dismissed !== signature;
 
+  /**
+   * The basket, as one spoken Kannada sentence: each item and how many, then the
+   * total. Built here rather than inline in the JSX because it is real logic, and
+   * because a list comprehension inside a JSX attribute is unreadable. The item
+   * names are `name_kn` from the database, so the spoken words and the printed
+   * words cannot drift (Rule 2).
+   */
+  const basketSpeech = [
+    ...cart.lines.map(
+      (line) => `${line.product ? line.product.name_kn : ''} ${line.quantity}`,
+    ),
+    spokenProductLine(
+      '',
+      '',
+      formatPaiseForSpeech(cart.subtotalPaise, t('speech.rupees'), t('speech.paise')),
+      t('speech.basketTotal'),
+    ),
+  ]
+    .filter((part) => part.trim().length > 0)
+    .join('. ');
+
   return (
     <View style={styles.screen}>
       <OfflineBanner />
@@ -244,7 +267,13 @@ export default function CartScreen() {
             <ThemedText type="small" themeColor="textSecondary">
               {t('cart.subtotal')}
             </ThemedText>
-            <ThemedText type="price">{formatPaise(cart.subtotalPaise)}</ThemedText>
+            <View style={styles.totalRight}>
+              <ThemedText type="price">{formatPaise(cart.subtotalPaise)}</ThemedText>
+              {/* Reads the whole basket aloud: every line, then the total. This is
+                  the "what am I about to pay" question, and for a customer who
+                  cannot read the screen it is the only way to answer it. */}
+              <SpeakButton compact text={basketSpeech} label={t('cart.subtotal')} />
+            </View>
           </View>
 
           {belowMinimum ? (
@@ -358,6 +387,8 @@ const styles = StyleSheet.create({
     alignItems: 'baseline',
     justifyContent: 'space-between',
   },
+  // The total and its Listen button travel together on the right.
+  totalRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   minBadge: { alignSelf: 'flex-start' },
   checkoutButton: { marginTop: Spacing.two },
 });

@@ -15,7 +15,7 @@ import { useOrders, type OrderWithItems } from '@/hooks/use-orders';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
-import { orderStatusStyle } from '@/lib/order-status';
+import { isTerminal, orderStatusStyle } from '@/lib/order-status';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import { useCartStore } from '@/store/cart-store';
@@ -65,10 +65,10 @@ export default function OrdersScreen() {
   const all = useMemo(() => orders.data ?? [], [orders.data]);
   const visible = useMemo(() => {
     if (filter === 'active') {
-      return all.filter((order) => order.status !== 'delivered' && order.status !== 'cancelled');
+      return all.filter((order) => !isTerminal(order.status));
     }
     if (filter === 'done') {
-      return all.filter((order) => order.status === 'delivered' || order.status === 'cancelled');
+      return all.filter((order) => isTerminal(order.status));
     }
     return all;
   }, [all, filter]);

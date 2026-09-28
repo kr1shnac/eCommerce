@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
-import type { OrderStatus } from '@/types/database';
+import type { FailureReason, OrderStatus } from '@/types/database';
 import type { OrderWithItems } from '@/hooks/use-orders';
 
 /**
@@ -154,7 +154,14 @@ export const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   out_for_delivery: 'delivered',
   delivered: null,
   cancelled: null,
+  // The honest end states are reached through `useFailOrder`, not this ladder.
+  failed: null,
+  returned: null,
 };
+
+/** The two statuses a rider closes an order with when it did not work out. */
+export const FAILABLE_FROM: OrderStatus[] = ['out_for_delivery'];
+export const RETURNABLE_FROM: OrderStatus[] = ['failed', 'out_for_delivery'];
 
 /** Move an order one step forward. Refused by the database if it is not yours. */
 export function useAdvanceOrder() {
@@ -188,6 +195,47 @@ export function useAssignRider() {
       const patch = input.riderId
         ? { assigned_to: input.riderId, assigned_at: new Date().toISOString() }
         : { assigned_to: null, assigned_at: null };
+
+      const { error } = await supabase.from('orders').update(patch).eq('id', input.orderId);
+      if (error) throw error;
+    },
+    onSuccess: () => invalidateOrders(queryClient),
+  });
+}
+
+/**
+ * Close an order honestly: the delivery could not be made, or the bag came back.
+ *
+ * This is not a cancel. `cancelled` means nobody ever left the shop; `failed`
+ * means a rider stood at a door and it did not work. The database requires a
+ * reason (migration 20261021000001), and the guard refuses a failure from any
+ * state that does not mean the bag is with the rider — so a rider cannot use
+ * this to skip the delivery.
+ */
+export function useFailOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      orderId: string;
+      reason: FailureReason;
+      note?: string | null;
+      /**
+       * `failed` = the attempt failed now; `returned` = the bag is back at the
+       * shop. Both are terminal, so the rider picks the true one rather than
+       * stepping through two taps.
+       */
+      status?: 'failed' | 'returned';
+    }) => {
+      const patch: {
+        status: 'failed' | 'returned';
+        failure_reason: FailureReason;
+        failure_note: string | null;
+      } = {
+        status: input.status ?? 'failed',
+        failure_reason: input.reason,
+        failure_note: input.note?.trim() ? input.note.trim() : null,
+      };
 
       const { error } = await supabase.from('orders').update(patch).eq('id', input.orderId);
       if (error) throw error;

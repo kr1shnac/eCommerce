@@ -1,6 +1,6 @@
 import '@/i18n';
 
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
@@ -11,6 +11,12 @@ import { ActivityIndicator, AppState, StyleSheet, View } from 'react-native';
 import { useProfile } from '@/hooks/use-profile';
 import { RealtimeOrdersProvider } from '@/hooks/use-realtime-orders';
 import { useResolvedScheme, useTheme } from '@/hooks/use-theme';
+import {
+  setCrashReportingUser,
+  startCrashReporting,
+  wrapWithCrashReporting,
+} from '@/lib/crash-reporting';
+import { persistOptions, queryClient } from '@/lib/query-persistence';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import { useLanguageStore } from '@/store/language-store';
@@ -18,17 +24,11 @@ import { useThemeStore } from '@/store/theme-store';
 
 SplashScreen.preventAutoHideAsync();
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-      staleTime: 60_000,
-    },
-  },
-});
+// Started at module scope, before the first component renders, so an error thrown
+// while the tree is being built is still captured. A no-op when no DSN is set.
+startCrashReporting();
 
-export default function RootLayout() {
+function RootLayout() {
   const scheme = useResolvedScheme();
   const theme = useTheme();
   const hydrate = useLanguageStore((state) => state.hydrate);
@@ -91,11 +91,16 @@ export default function RootLayout() {
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
       onSession(data.session ?? null);
+      setCrashReportingUser(data.session?.user.id ?? null);
       authHydrate();
     });
 
     const { data: subscription } = supabase.auth.onAuthStateChange((_event, session) => {
       onSession(session ?? null);
+      // Crash reports are tied to an opaque user id, never a name or a phone
+      // number. Cleared on sign-out so the next person's crashes are not filed
+      // under the previous person's account.
+      setCrashReportingUser(session?.user.id ?? null);
     });
 
     // Keep the token fresh even if the app returns from the background.
@@ -120,14 +125,17 @@ export default function RootLayout() {
   if (!isReady || !authReady || !themeReady || !fontsReady) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
+    // `PersistQueryClientProvider` restores the saved catalogue before the first
+    // paint, so a customer opening the app in a dead spot sees the shelves rather
+    // than a spinner. Only public shop data is written — see query-persistence.ts.
+    <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
       <ThemeProvider value={navTheme}>
         <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
         <RealtimeOrdersProvider>
           <RootNavigator />
         </RealtimeOrdersProvider>
       </ThemeProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }
 
@@ -179,6 +187,13 @@ function RootNavigator() {
     </Stack>
   );
 }
+
+/**
+ * The wrapped export. `Sentry.wrap` is what turns an unhandled render error into
+ * a report instead of a white screen. When no DSN is configured this is the
+ * identity function — `RootLayout` exactly as written.
+ */
+export default wrapWithCrashReporting(RootLayout);
 
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
