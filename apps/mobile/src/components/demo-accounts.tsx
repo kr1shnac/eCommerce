@@ -8,24 +8,39 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Radii, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
-import { demoAccounts, demoSignInAvailable, signInAsDemo, type DemoAccount } from '@/lib/demo-accounts';
+import {
+  demoAccounts,
+  demoSignInAvailable,
+  reviewAccount,
+  reviewSignInAvailable,
+  signInAsDemo,
+  type DemoAccount,
+} from '@/lib/demo-accounts';
 
 /**
- * Development-only sign-in.
+ * The scaffolded sign-in, and the reviewer's door.
  *
- * The app signs in with a phone number and a one-time code, which needs an SMS
- * provider. Until one is configured there are no accounts, so the order history,
- * the rider's pool and the owner's board are behind a door nobody can open.
- * This block offers the three seeded accounts instead, so the app can actually
- * be looked at. It renders nothing unless `__DEV__` is true AND the accounts are
- * in the git-ignored `.env` — see src/lib/demo-accounts.ts.
+ * Two different things share this component because they share the same code
+ * path (email + password, then the auth listener routes away):
+ *
+ *   * the three dev accounts, which exist so the app can be looked at before
+ *     SMS is configured. `__DEV__` only — they cannot appear in a release;
+ *   * the single reviewer account, which exists so the app can be *approved*.
+ *     That one has to work in a release build, so it is gated on
+ *     `EXPO_PUBLIC_REVIEW_*` being set rather than on `__DEV__`.
+ *
+ * Nothing renders when neither applies, so this can sit on the login screen of a
+ * plain production build without leaving a hole. See src/lib/demo-accounts.ts.
  */
 
-const ICONS: Record<string, keyof typeof Ionicons.glyphMap> = {
+const ICONS: Record<DemoRoleKey, keyof typeof Ionicons.glyphMap> = {
   customer: 'basket-outline',
   delivery: 'bicycle-outline',
   admin: 'storefront-outline',
+  review: 'eye-outline',
 };
+
+type DemoRoleKey = DemoAccount['role'];
 
 export function DemoAccounts() {
   const { t } = useTranslation();
@@ -33,7 +48,17 @@ export function DemoAccounts() {
   const [busyRole, setBusyRole] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
 
-  if (!demoSignInAvailable) return null;
+  // The dev block and the review door are separate cards with separate wording,
+  // so a reviewer is never told they are looking at "development only".
+  const accounts = demoSignInAvailable
+    ? demoAccounts
+    : reviewSignInAvailable && reviewAccount
+      ? [reviewAccount]
+      : [];
+
+  if (accounts.length === 0) return null;
+
+  const isReviewOnly = !demoSignInAvailable;
 
   const signIn = async (account: DemoAccount) => {
     if (busyRole) return;
@@ -55,21 +80,23 @@ export function DemoAccounts() {
     <Card style={styles.card}>
       <View style={styles.head}>
         <ThemedText type="smallBold" themeColor="textSecondary">
-          {t('auth.demo.title')}
+          {t(isReviewOnly ? 'auth.review.title' : 'auth.demo.title')}
         </ThemedText>
-        <View style={[styles.tag, { backgroundColor: theme.warningSoft, borderColor: theme.warningInk }]}>
-          <ThemedText type="small" style={[styles.tagText, { color: theme.warningInk }]}>
-            {t('auth.demo.tag')}
-          </ThemedText>
-        </View>
+        {!isReviewOnly ? (
+          <View style={[styles.tag, { backgroundColor: theme.warningSoft, borderColor: theme.warningInk }]}>
+            <ThemedText type="small" style={[styles.tagText, { color: theme.warningInk }]}>
+              {t('auth.demo.tag')}
+            </ThemedText>
+          </View>
+        ) : null}
       </View>
 
       <ThemedText type="small" themeColor="textSecondary">
-        {t('auth.demo.hint')}
+        {t(isReviewOnly ? 'auth.review.hint' : 'auth.demo.hint')}
       </ThemedText>
 
       <View style={styles.list}>
-        {demoAccounts.map((account) => (
+        {accounts.map((account) => (
           <Button
             key={account.role}
             label={t(account.labelKey)}
@@ -85,7 +112,7 @@ export function DemoAccounts() {
 
       {failed ? (
         <ThemedText type="small" style={{ color: theme.dangerInk }}>
-          {t('auth.demo.failed')}
+          {t(isReviewOnly ? 'auth.review.failed' : 'auth.demo.failed')}
         </ThemedText>
       ) : null}
     </Card>

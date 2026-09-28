@@ -1,28 +1,49 @@
 import { supabase } from '@/lib/supabase';
 
 /**
- * Development-only sign-in — scaffolding for looking at the app, not a feature.
+ * Development-only sign-in — scaffolding for looking at the app, and the door
+ * the store reviewers come through.
  *
  * The app signs in with a phone number and a one-time code, which needs an SMS
- * provider. Until one is configured there are no accounts at all, so the
- * customer's order history, the rider's pool and the owner's board are all
- * behind a door nobody can open. That makes the app impossible to look at.
+ * provider. Until one is configured (and funded, and DLT-registered) there are no
+ * accounts at all, so the customer's order history, the rider's pool and the
+ * owner's board would all be behind a door nobody can open — including the person
+ * reviewing the app for the App Store (register C8: Apple's guideline 2.1(a)
+ * expects a working demo login, and Google asks for credentials too).
  *
- * So in development the login screen offers the three accounts that
+ * So the login screen can offer the three accounts that
  * `supabase/demo-accounts.sql` creates. They sign in by email, because email is
  * the one auth provider the project has switched on.
  *
- * Where the credentials live, and why:
- *   * the addresses come from `EXPO_PUBLIC_DEMO_*` in the git-ignored `.env`,
- *     so no account is ever written into the source or the repository;
- *   * the block is behind `__DEV__`, so a production build cannot show it even
- *     if the variables are still set;
- *   * an address that is not in `.env` simply does not appear as a button.
+ * THERE ARE TWO SWITCHES, AND THEY ARE NOT THE SAME ONE.
  *
- * To remove it: delete the `EXPO_PUBLIC_DEMO_*` lines from `apps/mobile/.env`.
+ *   `demoSignInAvailable`  — the everyday one. `__DEV__` only, so it is compiled
+ *                            out of every release build. This is the one used
+ *                            while building the app.
+ *
+ *   `reviewSignInAvailable` — the store-submission one. NOT tied to `__DEV__`,
+ *                            because a release build is the whole point: it is
+ *                            the binary the reviewer installs. It turns on only
+ *                            when `EXPO_PUBLIC_REVIEW_EMAIL` and
+ *                            `EXPO_PUBLIC_REVIEW_PASSWORD` are both set, which
+ *                            they are only for a review build made with that
+ *                            environment. Turned off again by unsetting them, so
+ *                            a normal `production` build has no such door.
+ *
+ * Where the credentials live, and why:
+ *   * nothing is ever written into the source or the repository — every address
+ *     and the password come from the git-ignored `.env`;
+ *   * an address that is not set simply does not appear as a button;
+ *   * the reviewer account is ONE account with the customer role. It must never
+ *     be an admin: a store reviewer poking at the owner's board is a support
+ *     ticket waiting to happen, and `profiles.role` is enforced in the database,
+ *     so the choice here cannot be escalated.
+ *
+ * To remove it: delete the `EXPO_PUBLIC_DEMO_*` / `EXPO_PUBLIC_REVIEW_*` lines
+ * from `apps/mobile/.env`, and use an EAS environment without them.
  */
 
-export type DemoRole = 'customer' | 'delivery' | 'admin';
+export type DemoRole = 'customer' | 'delivery' | 'admin' | 'review';
 
 export type DemoAccount = {
   role: DemoRole;
@@ -52,18 +73,50 @@ const configured: { role: DemoRole; labelKey: string; email: string | undefined 
   },
 ];
 
-export const demoAccounts: DemoAccount[] = configured
-  .filter((account): account is DemoAccount => Boolean(account.email))
-  .map((account) => ({ ...account, email: account.email as string }));
+/**
+ * The three dev accounts.
+ *
+ * Empty in a release build, on purpose: the credentials should not merely be
+ * unreachable there, they should not be in the bundle at all. `__DEV__` is
+ * inlined as `false` by Metro for a release, so this evaluates to `[]` and the
+ * addresses below are dropped as dead code.
+ */
+export const demoAccounts: DemoAccount[] = __DEV__
+  ? configured
+      .filter((account): account is DemoAccount => Boolean(account.email))
+      .map((account) => ({ ...account, email: account.email as string }))
+  : [];
 
 /** True only in development, and only once accounts were actually configured. */
 export const demoSignInAvailable =
   __DEV__ && demoPassword.length > 0 && demoAccounts.length > 0;
 
+/**
+ * The single door left open for a store reviewer, in a release build.
+ *
+ * Deliberately one account and one password, both supplied by the environment at
+ * build time. `null` means no door — which is the state of every ordinary
+ * production build, and the state the app should ship in once it is live.
+ */
+export const reviewAccount: DemoAccount | null =
+  process.env.EXPO_PUBLIC_REVIEW_EMAIL && process.env.EXPO_PUBLIC_REVIEW_PASSWORD
+    ? {
+        role: 'review',
+        labelKey: 'auth.review.signIn',
+        email: process.env.EXPO_PUBLIC_REVIEW_EMAIL,
+      }
+    : null;
+
+export const reviewSignInAvailable = reviewAccount !== null;
+
 export async function signInAsDemo(account: DemoAccount): Promise<void> {
+  const password = account.role === 'review'
+    ? (process.env.EXPO_PUBLIC_REVIEW_PASSWORD ?? '')
+    : demoPassword;
+
   const { error } = await supabase.auth.signInWithPassword({
     email: account.email,
-    password: demoPassword,
+    password,
   });
   if (error) throw error;
   // The auth listener in the root layout picks the new session up; there is

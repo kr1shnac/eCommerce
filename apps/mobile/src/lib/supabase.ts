@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
 import type { Database } from '@/types/database';
@@ -48,11 +49,26 @@ export const supabase = createClient<Database>(
   isSupabaseConfigured ? anonKey : 'missing-anon-key',
   {
     auth: {
+      /**
+       * WITHOUT THIS LINE, NOBODY STAYS SIGNED IN.
+       *
+       * `@supabase/auth-js` only uses `globalThis.localStorage` when it exists
+       * and is writable; otherwise it keeps the session in a plain in-memory
+       * object (`memoryLocalStorageAdapter`). React Native has no
+       * `localStorage`, so the session was thrown away the moment the app was
+       * killed: the customer had to sign in again on every cold start. The
+       * language and the cart survived a restart; the login did not.
+       *
+       * AsyncStorage is the same device store the cart (`src/store/cart-store.ts`)
+       * and the theme choice (`src/store/theme-store.ts`) already persist to, so
+       * this adds no new dependency and no new place where data lives.
+       */
+      storage: AsyncStorage,
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,
-      // How long to keep retrying a refresh before giving up, so a customer on a
-      // patchy connection sees the offline banner instead of a hang.
+      // PKCE is what the OTP / magic-link round trip expects, and there is no
+      // browser URL to detect a session in on a phone.
       flowType: 'pkce',
     },
   },

@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { CallShop } from '@/components/call-shop';
 import { DemoAccounts } from '@/components/demo-accounts';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -36,7 +37,13 @@ import { currentLanguage } from '@/store/language-store';
  * who cannot read still knows they are in the right place.
  */
 
-type AuthErrorKey = 'invalidCode' | 'expiredCode' | 'tooManyAttempts' | 'notEnabled' | 'generic';
+type AuthErrorKey =
+  | 'invalidCode'
+  | 'expiredCode'
+  | 'tooManyAttempts'
+  | 'notEnabled'
+  | 'offline'
+  | 'generic';
 
 function authErrorKey(message: string): AuthErrorKey {
   const text = message.toLowerCase();
@@ -44,6 +51,11 @@ function authErrorKey(message: string): AuthErrorKey {
   if (text.includes('invalid') && text.includes('token')) return 'invalidCode';
   if (text.includes('rate') || text.includes('too many') || text.includes('seconds')) return 'tooManyAttempts';
   if (text.includes('signups not allowed') || text.includes('phone provider')) return 'notEnabled';
+  // A misconfigured or un-entitled SMS provider surfaces as a 5xx or a
+  // "provider" / "sms" error rather than the friendly one above. Same sentence
+  // to the customer, because the fix is the same either way: call the shop.
+  if (text.includes('provider') || text.includes('sms') || text.includes('sending')) return 'notEnabled';
+  if (text.includes('network') || text.includes('fetch') || text.includes('timeout')) return 'offline';
   return 'generic';
 }
 
@@ -263,12 +275,33 @@ export default function LoginScreen() {
 
         <DemoAccounts />
 
-        <View style={styles.help}>
-          <Ionicons name="information-circle-outline" size={16} color={theme.textSecondary} />
-          <ThemedText type="small" themeColor="textSecondary" style={styles.helpText}>
-            {t('auth.testNumbers')}
-          </ThemedText>
-        </View>
+        {/*
+          The door has to be openable by a real customer. If the code never
+          arrives — no network, OTP not enabled yet, a number typed wrong — the
+          sentence says what to do, and the shop's own phone number is one tap
+          away. `CallShop` renders nothing when `store_settings.support_phone`
+          is empty, so this block degrades to the sentence alone.
+        */}
+        {step === 'code' || errorKey ? (
+          <View style={styles.help}>
+            <Ionicons name="help-circle-outline" size={16} color={theme.textSecondary} />
+            <View style={styles.helpBody}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('auth.trouble')}
+              </ThemedText>
+              <CallShop />
+            </View>
+          </View>
+        ) : null}
+
+        {__DEV__ ? (
+          <View style={styles.help}>
+            <Ionicons name="information-circle-outline" size={16} color={theme.textSecondary} />
+            <ThemedText type="small" themeColor="textSecondary" style={styles.helpText}>
+              {t('auth.testNumbers')}
+            </ThemedText>
+          </View>
+        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -324,10 +357,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   help: {
-    marginTop: 'auto',
+    marginTop: Spacing.three,
     flexDirection: 'row',
     gap: Spacing.two,
     alignItems: 'flex-start',
   },
+  helpBody: { flex: 1, gap: Spacing.two },
   helpText: { flex: 1 },
 });
