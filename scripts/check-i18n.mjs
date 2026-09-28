@@ -56,7 +56,11 @@ const strip = (text) =>
     .replace(/[\s\d₹,.%:;/+()\-–—·…|]/g, '');
 
 // Values that are deliberately identical in both languages.
-const SAME_IS_FINE = new Set(['address.areaName']);
+//   - address.areaName: filled from the address, not translated.
+//   - privacy.gstinLabel: "GSTIN" is a statutory acronym with no Kannada form;
+//     a shop, an accountant and a GST portal all say GSTIN. Transliterating it
+//     would make it harder, not easier, to match against a real document.
+const SAME_IS_FINE = new Set(['address.areaName', 'privacy.gstinLabel']);
 
 for (const key of enKeys) {
   if (!knKeys.has(key) || SAME_IS_FINE.has(key)) continue;
