@@ -1,11 +1,10 @@
-import type { Order } from '@/types/database';
-
 /**
  * Orders snapshot the delivery address as jsonb at the moment they are placed,
- * so editing the address later never rewrites where a past order went. `Order`
- * types that column as `Record<string, unknown>`, which is honest but useless to
+ * so editing the address later never rewrites where a past order went. The `Order`
+ * type calls that column `Record<string, unknown>`, which is honest but useless to
  * render. This is the one place that turns it back into something a screen can
- * show, so the rider and the owner read the same address the same way.
+ * show, so the rider, the owner and the customer read the same address the same
+ * way. Three screens used to join it by hand; they drifted.
  */
 export type SnapshotAddress = {
   full_name?: string;
@@ -17,7 +16,20 @@ export type SnapshotAddress = {
   pincode?: string;
 };
 
-export function readSnapshotAddress(order: Pick<Order, 'delivery_address'>): SnapshotAddress {
+/**
+ * Read the snapshot address out of an order row.
+ *
+ * The parameter is deliberately loose — `unknown` in the field's position rather
+ * than the `jsonb` type — because callers hand it different shapes: the rider
+ * screen passes an `Order`, the customer screen passes an `OrderWithItems`, and a
+ * screen with no data yet passes a stand-in. All of them have the column, and the
+ * value itself is `jsonb`, so the only safe thing to do is check at runtime, which
+ * is what the body does. Typing the parameter as `Pick<Order, ...>` was the first
+ * version and it rejected the customer screen for no real reason.
+ */
+export function readSnapshotAddress(order: {
+  delivery_address?: unknown;
+}): SnapshotAddress {
   const value = order.delivery_address;
   if (!value || typeof value !== 'object') return {};
   return value as SnapshotAddress;
@@ -33,6 +45,52 @@ export function formatSnapshotAddress(address: SnapshotAddress, nearWord = 'Near
   ]
     .filter(Boolean)
     .join(', ');
+}
+
+/**
+ * The rider's view of an address, which is a different question from the
+ * customer's.
+ *
+ * A customer reads their own address and knows where they live; the sentence is
+ * a reminder. A **rider is trying to find a house in a town that has no reliable
+ * street numbering**, standing on a bike — for them the landmark is not a detail
+ * in a comma list, it is the actual instruction, and the house number is the part
+ * that may not exist. So the landmark is pulled out to the front and the rest is
+ * the supporting detail.
+ *
+ * `landmark` is null whenever the customer did not give one, which is common
+ * (the field is optional). The caller is expected to fall back to the plain
+ * sentence in that case rather than rendering an empty heading — see
+ * `hasLandmark`.
+ */
+export function splitSnapshotAddress(address: SnapshotAddress): {
+  /** The thing to look for — "the big banyan tree". Null when none was given. */
+  landmark: string | null;
+  /** House, street, town, pincode — everything that is not the landmark. */
+  rest: string;
+} {
+  const landmark = address.landmark?.trim() || null;
+  const rest = [
+    address.line1,
+    address.line2,
+    [address.city, address.pincode].filter(Boolean).join(' '),
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  return { landmark, rest };
+}
+
+/** True when there is a landmark worth leading with. */
+export function hasLandmark(address: SnapshotAddress): boolean {
+  return Boolean(address.landmark?.trim());
+}
+
+/** The phone number in a shape `tel:` accepts — digits only, 10+ of them. */
+export function dialablePhone(phone: string | null | undefined): string | null {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  return digits.length >= 10 ? digits : null;
 }
 
 /**

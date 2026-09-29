@@ -7,6 +7,17 @@ import type { OrderStatus } from '@/types/database';
 type IconName = keyof typeof Ionicons.glyphMap;
 
 /**
+ * The statuses an order never leaves. Used by the customer's filter and the
+ * owner's board so a finished order — however it finished — drops out of the
+ * "still to do" list, without every screen re-deciding what "finished" means.
+ */
+export const TERMINAL_STATUSES: OrderStatus[] = ['delivered', 'cancelled', 'failed', 'returned'];
+
+export function isTerminal(status: OrderStatus): boolean {
+  return TERMINAL_STATUSES.includes(status);
+}
+
+/**
  * One status, one colour, one icon — used by the customer's tracker, the rider's
  * list and the owner's board, so `packing` looks the same everywhere.
  *
@@ -75,6 +86,25 @@ export function orderStatusStyle(theme: Theme, status: OrderStatus): StatusStyle
         color: theme.danger,
         soft: theme.dangerSoft,
         ink: theme.dangerInk,
+      };
+    // A failed delivery is neither delivered nor cancelled — it is its own
+    // honest state, so it gets its own icon and its own wash rather than
+    // borrowing the danger red of a cancellation nobody wanted.
+    case 'failed':
+      return {
+        tone: 'warning',
+        icon: 'alert-circle-outline',
+        color: theme.warning,
+        soft: theme.warningSoft,
+        ink: theme.warningInk,
+      };
+    case 'returned':
+      return {
+        tone: 'neutral',
+        icon: 'return-down-back-outline',
+        color: theme.textSecondary,
+        soft: theme.backgroundElement,
+        ink: theme.text,
       };
   }
 }

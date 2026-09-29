@@ -7,12 +7,14 @@ import {
   RefreshControl,
   ScrollView,
   StyleSheet,
+  TextInput,
   Vibration,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { RiderAddressBlock } from '@/components/rider-address-block';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
 import { Badge } from '@/components/ui/badge';
@@ -24,25 +26,23 @@ import { Radii, Spacing } from '@/constants/theme';
 import { useProfile } from '@/hooks/use-profile';
 import { useOrderEventListener } from '@/hooks/use-realtime-orders';
 import {
+  FAILABLE_FROM,
+  RETURNABLE_FROM,
   useAdvanceOrder,
   useClaimOrder,
   useDeliveredOrders,
+  useFailOrder,
   useMyDeliveries,
   useWaitingOrders,
 } from '@/hooks/use-staff-orders';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
-import {
-  formatClock,
-  formatSnapshotAddress,
-  isSameDay,
-  readSnapshotAddress,
-} from '@/lib/order-view';
+import { formatClock, isSameDay, readSnapshotAddress } from '@/lib/order-view';
 import { orderStatusStyle } from '@/lib/order-status';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
-import type { OrderStatus } from '@/types/database';
+import type { FailureReason, OrderStatus } from '@/types/database';
 import type { OrderWithItems } from '@/hooks/use-orders';
 
 /**
@@ -67,7 +67,18 @@ const ACTION_KEY: Record<OrderStatus, string | null> = {
   out_for_delivery: 'action.deliver',
   delivered: null,
   cancelled: null,
+  // The honest end states are reached through the "could not deliver" panel,
+  // never through the one-tap ladder.
+  failed: null,
+  returned: null,
 };
+
+/**
+ * The reasons a rider picks from, in the order they are most likely to happen.
+ * The VALUE is what the database stores (and what the customer's screen
+ * translates); the LABEL is what the rider reads.
+ */
+const FAIL_REASONS: FailureReason[] = ['not_home', 'wrong_address', 'unreachable', 'refused', 'other'];
 
 export default function RiderScreen() {
   const { t } = useTranslation();
@@ -83,10 +94,16 @@ export default function RiderScreen() {
 
   const claim = useClaimOrder();
   const advance = useAdvanceOrder();
+  const failOrder = useFailOrder();
 
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [newOrderAlert, setNewOrderAlert] = useState<string | null>(null);
+  // Which order the "could not deliver" panel is open for, if any. One at a
+  // time: a rider closes one door before opening the next.
+  const [failingId, setFailingId] = useState<string | null>(null);
+  const [failReason, setFailReason] = useState<FailureReason | null>(null);
+  const [failNote, setFailNote] = useState('');
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // A phone in a rider's pocket does not show a screen. When an order that
@@ -133,6 +150,41 @@ export default function RiderScreen() {
     } catch (error) {
       console.warn('[rider] could not advance order', error);
       setErrorKey('rider.advanceError');
+    }
+  };
+
+  const openFailPanel = (orderId: string) => {
+    setErrorKey(null);
+    setFailingId(orderId);
+    setFailReason(null);
+    setFailNote('');
+  };
+
+  const closeFailPanel = () => {
+    setFailingId(null);
+    setFailReason(null);
+    setFailNote('');
+  };
+
+  /**
+   * Close the order honestly. A reason is required (the database refuses without
+   * one), and the default is `failed` — the attempt did not work just now. The
+   * rider may instead say the bag is already back at the shop.
+   */
+  const onFail = async (orderId: string, asReturned: boolean) => {
+    if (!failReason) return;
+    setErrorKey(null);
+    try {
+      await failOrder.mutateAsync({
+        orderId,
+        reason: failReason,
+        note: failNote,
+        status: asReturned ? 'returned' : 'failed',
+      });
+      closeFailPanel();
+    } catch (error) {
+      console.warn('[rider] could not record the failed delivery', error);
+      setErrorKey('rider.failError');
     }
   };
 
@@ -291,12 +343,7 @@ export default function RiderScreen() {
                       {address.phone ? `  ${address.phone}` : ''}
                     </ThemedText>
                   </View>
-                  <View style={styles.personRow}>
-                    <Ionicons name="location-outline" size={16} color={theme.textSecondary} />
-                    <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
-                      {formatSnapshotAddress(address, t('order.near'))}
-                    </ThemedText>
-                  </View>
+                  <RiderAddressBlock address={address} />
 
                   <View style={styles.cardBottom}>
                     <Badge
@@ -372,12 +419,7 @@ export default function RiderScreen() {
                       {address.phone ? `  ${address.phone}` : ''}
                     </ThemedText>
                   </View>
-                  <View style={styles.personRow}>
-                    <Ionicons name="location-outline" size={16} color={theme.textSecondary} />
-                    <ThemedText type="small" themeColor="textSecondary" style={styles.flex}>
-                      {formatSnapshotAddress(address, t('order.near'))}
-                    </ThemedText>
-                  </View>
+                  <RiderAddressBlock address={address} />
 
                   <View style={styles.actionsRow}>
                     <Button
@@ -398,6 +440,98 @@ export default function RiderScreen() {
                       />
                     ) : null}
                   </View>
+
+                  {/*
+                    The honest way out. A rider who reaches a locked house must
+                    not have to choose between lying ("delivered") and leaving
+                    the order hanging forever. The reason is required by the
+                    database, so this panel cannot submit without one.
+                  */}
+                  {FAILABLE_FROM.includes(order.status) ||
+                  RETURNABLE_FROM.includes(order.status) ? (
+                    failingId === order.id ? (
+                      <View style={styles.failPanel}>
+                        <ThemedText type="smallBold">{t('rider.failTitle')}</ThemedText>
+                        <ThemedText type="caption" themeColor="textSecondary">
+                          {t('rider.failReason')}
+                        </ThemedText>
+                        <View style={styles.reasonWrap}>
+                          {FAIL_REASONS.map((reason) => {
+                            const selected = failReason === reason;
+                            return (
+                              <Pressable
+                                key={reason}
+                                accessibilityRole="radio"
+                                accessibilityState={{ selected }}
+                                onPress={() => setFailReason(reason)}
+                                style={[
+                                  styles.reasonChip,
+                                  {
+                                    backgroundColor: selected ? theme.accentSoft : theme.backgroundElement,
+                                    borderColor: selected ? theme.accent : theme.border,
+                                  },
+                                ]}>
+                                <ThemedText
+                                  type="small"
+                                  style={{ color: selected ? theme.accent : theme.text }}>
+                                  {t(`rider.failReasons.${reason}`)}
+                                </ThemedText>
+                              </Pressable>
+                            );
+                          })}
+                        </View>
+
+                        <TextInput
+                          value={failNote}
+                          onChangeText={setFailNote}
+                          placeholder={t('rider.failNotePlaceholder')}
+                          placeholderTextColor={theme.textSecondary}
+                          multiline
+                          style={[
+                            styles.noteInput,
+                            { color: theme.text, borderColor: theme.border },
+                          ]}
+                          accessibilityLabel={t('rider.failNote')}
+                        />
+
+                        <Button
+                          label={
+                            failOrder.isPending ? t('common.pleaseWait') : t('rider.failSubmit')
+                          }
+                          icon="checkmark"
+                          fullWidth
+                          busy={failOrder.isPending}
+                          disabled={!failReason || failOrder.isPending}
+                          onPress={() => void onFail(order.id, false)}
+                        />
+                        {RETURNABLE_FROM.includes(order.status) ? (
+                          <Button
+                            label={t('rider.markReturned')}
+                            icon="return-down-back-outline"
+                            variant="outline"
+                            fullWidth
+                            disabled={!failReason || failOrder.isPending}
+                            onPress={() => void onFail(order.id, true)}
+                          />
+                        ) : null}
+                        <Button
+                          label={t('rider.failKeepTrying')}
+                          variant="ghost"
+                          fullWidth
+                          disabled={failOrder.isPending}
+                          onPress={closeFailPanel}
+                        />
+                      </View>
+                    ) : (
+                      <Button
+                        label={t('rider.fail')}
+                        icon="alert-circle-outline"
+                        variant="ghost"
+                        fullWidth
+                        onPress={() => openFailPanel(order.id)}
+                      />
+                    )
+                  ) : null}
 
                   <ThemedText type="smallBold" style={{ color: theme.warningInk }}>
                     {t('rider.cashToCollect')} {formatPaise(order.total_paise)}
@@ -531,6 +665,30 @@ const styles = StyleSheet.create({
   },
   cardButton: { marginTop: Spacing.two },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.two },
+  failPanel: {
+    gap: Spacing.two,
+    marginTop: Spacing.two,
+    padding: Spacing.three,
+    borderRadius: Radii.lg,
+  },
+  reasonWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  // 44px minimum tap target (AGENTS.md §9.9), so a chip is easy to hit with one
+  // thumb on a bike.
+  reasonChip: {
+    minHeight: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radii.pill,
+    borderWidth: 1,
+  },
+  noteInput: {
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: Radii.md,
+    paddingHorizontal: Spacing.three,
+    paddingVertical: Spacing.two,
+    textAlignVertical: 'top',
+  },
   doneCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   doneIcon: {
     width: 34,

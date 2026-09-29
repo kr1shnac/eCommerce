@@ -16,7 +16,23 @@ export type OrderStatus =
   | 'packing'
   | 'out_for_delivery'
   | 'delivered'
-  | 'cancelled';
+  | 'cancelled'
+  /** A delivery attempt that did not succeed. Terminal. */
+  | 'failed'
+  /** The bag came back to the shop. Terminal. */
+  | 'returned';
+
+/**
+ * Why a delivery failed. A fixed list so the customer's screen can render a
+ * translated sentence; the rider's own words ride along in `failure_note` for
+ * the owner. See migration 20261021000001.
+ */
+export type FailureReason =
+  | 'not_home'
+  | 'wrong_address'
+  | 'refused'
+  | 'unreachable'
+  | 'other';
 export type PaymentMethod = 'cod' | 'online';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
@@ -29,6 +45,12 @@ export type Store = {
   city: string | null;
   is_active: boolean;
   created_at: string;
+  /** 14-digit FSSAI licence. Null until the shop supplies the real one. */
+  fssai_number: string | null;
+  /** 15-character GSTIN, when the shop is registered. */
+  gstin: string | null;
+  /** Where a customer complaint reaches a person. Falls back to `phone`. */
+  grievance_phone: string | null;
 };
 
 export type Profile = {
@@ -37,8 +59,23 @@ export type Profile = {
   phone: string | null;
   role: UserRole;
   preferred_language: 'en' | 'kn';
+  /** A small profile picture. Used for the rider on the order screen. */
+  avatar_url: string | null;
   created_at: string;
   updated_at: string;
+};
+
+/**
+ * What a customer may see about a delivery partner: name, photo and phone, and
+ * nothing else. Backed by the `rider_directory` view (migration 20261021000001),
+ * because the `profiles` policy would otherwise expose only the customer's own
+ * row and would never let an order screen name the rider.
+ */
+export type RiderDirectoryEntry = {
+  id: string;
+  full_name: string | null;
+  avatar_url: string | null;
+  phone: string | null;
 };
 
 export type Category = {
@@ -74,7 +111,24 @@ export type Product = {
   is_active: boolean;
   created_at: string;
   updated_at: string;
+  /** Who packed it. Null means the shop itself. */
+  packer_name: string | null;
+  /** The declaration as printed on the pack, e.g. "1 kg". Null means `unit`. */
+  net_quantity: string | null;
+  /**
+   * How the shop sells it: `piece` is counted (2 packets, 3 soaps), `measure` is
+   * weighed or poured (rice, dal, milk). Presentation only — it never changes how
+   * money is computed, because the server ignores client-sent prices entirely.
+   */
+  sold_by: ProductSoldBy;
+  /** The size of ONE pack, in `pack_unit`. Tomato sold as 500 g is (500, 'g'). */
+  pack_size: number | null;
+  /** The unit `pack_size` is measured in. Null for a plain piece product. */
+  pack_unit: PackUnit | null;
 };
+
+export type ProductSoldBy = 'piece' | 'measure';
+export type PackUnit = 'g' | 'kg' | 'ml' | 'l' | 'piece';
 
 export type Address = {
   id: string;
@@ -161,6 +215,8 @@ export type StoreSettings = {
   /** IANA timezone used for the open/closed check. Kunigal is Asia/Kolkata. */
   timezone: string;
   updated_at: string;
+  /** The line printed at the bottom of a cash memo. Null means the app's own. */
+  receipt_footer: string | null;
 };
 
 export type Order = {
@@ -184,6 +240,10 @@ export type Order = {
   assigned_to: string | null;
   /** Set together with assigned_to. If one is null the other is too. */
   assigned_at: string | null;
+  /** Why a delivery failed. Required once status is `failed` or `returned`. */
+  failure_reason: FailureReason | null;
+  /** The rider's own words, for the owner. Not shown to the customer. */
+  failure_note: string | null;
   placed_at: string;
   /** When the shop promised this would arrive, from the zone's ETA. */
   estimated_delivery_at: string | null;
@@ -299,6 +359,59 @@ export type CancelOrderResult =
   | { ok: false; error: 'not_logged_in' | 'order_not_found' | 'cannot_cancel'; status?: OrderStatus };
 
 /**
+ * The counts of what `delete_my_account()` actually did. Returned so the app can
+ * tell the customer the truth ("we removed your addresses") rather than a vague
+ * "done". The database raises instead of returning an error object, so the
+ * failure cases here never reach a successful response — they surface as an
+ * ApiError from the RPC.
+ */
+export type DeleteAccountResult = {
+  addresses_erased: number;
+  orders_anonymised: number;
+  accounts_erased: number;
+};
+
+/**
+ * One day of the shop's takings, from `shop_day_totals()` (migration
+ * 20261021000002). Every amount is integer paise, computed in the database.
+ *
+ * Read the names carefully, because the differences are the point:
+ *   * `gross_paise`    — what the day has EARNED: sales only, in flight
+ *                        included. A cancelled, failed or returned order is not
+ *                        a sale.
+ *   * `delivered_paise`— what actually reached a customer's home.
+ *   * `cash_in_hand_paise` / `cash_collected_paise` — COD money in riders'
+ *                        pockets. A failed COD order appears in neither, because
+ *                        that cash was never collected.
+ *   * `refund_due_paise`— money the shop HOLDS AND OWES: paid online but never
+ *                        delivered. A liability, deliberately not in gross.
+ */
+export type ShopDayTotals = {
+  /** The day, as a `YYYY-MM-DD` date string in the shop's timezone. */
+  the_day: string;
+  orders_placed: number;
+  orders_delivered: number;
+  orders_cancelled: number;
+  orders_failed: number;
+  gross_paise: number;
+  delivered_paise: number;
+  delivery_fee_paise: number;
+  discount_paise: number;
+  cash_in_hand_paise: number;
+  cash_collected_paise: number;
+  refund_due_paise: number;
+};
+
+/** One rider's share of a day, from `shop_day_by_rider()`. */
+export type RiderDayTotal = {
+  rider_id: string | null;
+  rider_name: string | null;
+  orders_delivered: number;
+  cash_to_collect_paise: number;
+  cash_collected_paise: number;
+};
+
+/**
  * supabase-js expects every table to carry a `Relationships` array; leaving it
  * out makes `.update()` resolve its argument to `never`, which is why writes
  * used to need `as any`. The `orders <-> order_items` pair is declared because
@@ -355,7 +468,15 @@ type TableRowMap = {
 export type Database = {
   public: {
     Tables: TableRowMap;
-    Views: Record<string, never>;
+    Views: {
+      /** Name, photo and phone of every rider. Read-only; rider columns only. */
+      rider_directory: {
+        Row: RiderDirectoryEntry;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
+    };
     Functions: {
       place_order: {
         Args: {
@@ -393,6 +514,91 @@ export type Database = {
       set_default_address: {
         Args: { p_address_id: string };
         Returns: boolean;
+      };
+      /**
+       * Erase the calling account (DPDP Act 2023 right to erasure, and a store
+       * requirement). Deletes the profile, addresses and favourites, anonymises
+       * the order history to the tombstone profile so the shop's books survive,
+       * and removes the auth user. Takes no arguments, so it can only ever act
+       * on the caller. See migration 20261020000001.
+       */
+      delete_my_account: {
+        Args: Record<string, never>;
+        Returns: DeleteAccountResult;
+      };
+      /**
+       * The shop's takings for one day, defaulting to today in Asia/Kolkata.
+       * Staff only — a customer or a signed-out caller is refused outright, so
+       * the publishable key cannot be used to read the shop's money.
+       *
+       * The database computes these figures, not the app: the owner's board
+       * fetches at most 100 orders, so summing those would report a confident,
+       * wrong total on any busy day. See migration 20261021000002.
+       */
+      shop_day_totals: {
+        Args: { p_day?: string | null };
+        Returns: ShopDayTotals;
+      };
+      /** One row per rider for a day: deliveries and the cash they hold. */
+      shop_day_by_rider: {
+        Args: { p_day?: string | null };
+        Returns: RiderDayTotal[];
+      };
+      /**
+       * The counter edit: change a product's price, MRP, stock or shelf state
+       * from the phone. Staff only.
+       *
+       * Exists because `supabase.from('products').update(...)` by anyone who is
+       * not the shop matches zero rows and raises NO error (RLS filters the row
+       * out), so a save button built on it could report success while nothing
+       * was saved. This raises instead, and returns the row as it now stands so
+       * the screen shows the stored value rather than the intended one.
+       *
+       * Every parameter except `p_product_id` is optional; a null means "leave
+       * this field alone". See migration 20261021000003.
+       */
+      update_product_from_shop: {
+        Args: {
+          p_product_id: string;
+          p_price_paise?: number;
+          p_mrp_paise?: number | null;
+          p_stock_qty?: number;
+          p_is_active?: boolean;
+          p_emoji?: string | null;
+          p_sold_by?: ProductSoldBy;
+          p_pack_size?: number | null;
+          p_pack_unit?: PackUnit | null;
+        };
+        Returns: Product;
+      };
+      /**
+       * Add a product from the owner's phone. Deliberately takes no `store_id`:
+       * the function picks the active shop itself, so a client cannot name one.
+       */
+      create_product_from_shop: {
+        Args: {
+          p_name_en: string;
+          p_name_kn: string;
+          p_price_paise: number;
+          p_category_id: string | null;
+          p_sold_by?: ProductSoldBy;
+          p_pack_size?: number | null;
+          p_pack_unit?: PackUnit | null;
+          p_mrp_paise?: number | null;
+          p_stock_qty?: number;
+          p_emoji?: string | null;
+        };
+        Returns: Product;
+      };
+      /**
+       * Name your own account (register H10). Takes no user id: it acts only on
+       * `auth.uid()`, so there is nothing to tamper with and no way to rename
+       * somebody else. Refuses a blank name and raises rather than silently
+       * doing nothing, so a save button cannot lie.
+       */
+      set_my_name: {
+        Args: { p_full_name: string };
+        Returns: Profile;
       };
     };
     Enums: {
