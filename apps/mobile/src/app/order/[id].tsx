@@ -1,8 +1,9 @@
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CallShop } from '@/components/call-shop';
@@ -15,9 +16,12 @@ import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Radii, Spacing } from '@/constants/theme';
 import { CancelOrderRejected, useCancelOrder, useOrder } from '@/hooks/use-orders';
+import { useRider } from '@/hooks/use-profile';
+import { useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
+import { formatSnapshotAddress, readSnapshotAddress } from '@/lib/order-view';
 import { orderStatusStyle } from '@/lib/order-status';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useCartStore } from '@/store/cart-store';
@@ -49,18 +53,10 @@ export default function OrderDetailScreen() {
 
   const data = order.data;
   const canCancel = data?.status === 'placed';
-  const address = data?.delivery_address as
-    | {
-        full_name?: string;
-        phone?: string;
-        line1?: string;
-        line2?: string;
-        landmark?: string;
-        city?: string;
-        pincode?: string;
-      }
-    | null
-    | undefined;
+  // Shared with the rider and owner screens (`src/lib/order-view.ts`) — the same
+  // jsonb column read the same way in all three places, so a rider and a customer
+  // can never be shown two different versions of one address.
+  const address = readSnapshotAddress(data ?? { delivery_address: null });
 
   const onCancel = async () => {
     if (!orderId || cancelOrder.isPending) return;
@@ -161,6 +157,34 @@ export default function OrderDetailScreen() {
             <Row label={t('order.paymentStatus')} value={t(`order.payStatus.${data.payment_status}`)} />
           </Card>
 
+          {/*
+            A delivery that did not happen is neither delivered nor cancelled.
+            It gets the honest reason the rider chose, in words, plus a way to
+            ask for another attempt. This is the state the register (M3) said had
+            nowhere honest to go — and it must never look like a failure the
+            customer caused.
+          */}
+          {data.status === 'failed' || data.status === 'returned' ? (
+            <Card tone="warning" style={styles.section}>
+              <View style={styles.failureHead}>
+                <Ionicons name="alert-circle-outline" size={20} color={theme.warningInk} />
+                <ThemedText type="smallBold" style={[styles.flex, { color: theme.warningInk }]}>
+                  {t('orders.failureTitle')}
+                </ThemedText>
+              </View>
+              {data.failure_reason ? (
+                <ThemedText type="small">{t(`orders.failure.${data.failure_reason}`)}</ThemedText>
+              ) : null}
+              <ThemedText type="small" themeColor="textSecondary">
+                {data.status === 'returned'
+                  ? t('orders.returnedHint')
+                  : t('orders.failureHint')}
+              </ThemedText>
+            </Card>
+          ) : null}
+
+          <RiderCard riderId={data.assigned_to} status={data.status} />
+
           <ThemedText type="heading" style={styles.sectionTitle}>
             {t('order.itemsTitle')}
           </ThemedText>
@@ -201,14 +225,7 @@ export default function OrderDetailScreen() {
               </ThemedText>
             ) : null}
             <ThemedText type="small">
-              {[
-                address?.line1,
-                address?.line2,
-                address?.landmark ? `${t('order.near')} ${address.landmark}` : null,
-                [address?.city, address?.pincode].filter(Boolean).join(' '),
-              ]
-                .filter(Boolean)
-                .join(', ')}
+              {formatSnapshotAddress(address, t('order.near'))}
             </ThemedText>
           </Card>
 
@@ -259,9 +276,69 @@ export default function OrderDetailScreen() {
             fullWidth
             onPress={() => router.push('/')}
           />
+
+          {/*
+            The shop's own identity, on the order — which IS the e-commerce
+            transaction document the FSSAI and Legal Metrology rules talk about.
+            The name, the street and the licence are the parts a customer or an
+            inspector actually checks. Each line appears only when the shop has
+            recorded it: an invented licence number is a false statutory claim
+            and worse than a missing one (register H6/H7, migration
+            20261020000002).
+          */}
+          <ShopIdentityFooter />
         </ScrollView>
       )}
     </View>
+  );
+}
+
+function ShopIdentityFooter() {
+  const { t } = useTranslation();
+  const store = useStore();
+  const settings = useStoreSettings();
+  const theme = useTheme();
+
+  const shop = store.data;
+  if (!shop) return null;
+
+  const phone = shop.grievance_phone ?? shop.phone;
+
+  return (
+    <Card style={styles.footer}>
+      <ThemedText type="small" themeColor="textSecondary">
+        {shop.name}
+        {shop.address_line ? `, ${shop.address_line}` : ''}
+        {shop.city ? `, ${shop.city}` : ''}
+      </ThemedText>
+      {shop.fssai_number ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('privacy.fssaiLabel')}: {shop.fssai_number}
+        </ThemedText>
+      ) : null}
+      {shop.gstin ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('privacy.gstinLabel')}: {shop.gstin}
+        </ThemedText>
+      ) : null}
+      {phone ? (
+        <View style={styles.footerRow}>
+          <Ionicons name="call-outline" size={16} color={theme.accent} />
+          <ThemedText type="small" themeColor="textSecondary">
+            {t('privacy.grievanceLabel')}: {phone}
+          </ThemedText>
+        </View>
+      ) : null}
+      {settings.data?.receipt_footer ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {settings.data.receipt_footer}
+        </ThemedText>
+      ) : (
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('privacy.receiptFooterDefault')}
+        </ThemedText>
+      )}
+    </Card>
   );
 }
 
@@ -277,16 +354,87 @@ const TRACK_STEPS: {
   { statuses: ['delivered'], labelKey: 'order.step.delivered', icon: 'home-outline' },
 ];
 
+/**
+ * The rider carrying this order: a face, a name, and one tap to call them.
+ *
+ * This is the highest-trust detail in the app (PRODUCTION.md §10) and it stays
+ * hidden until the shop has actually put somebody on the order. `assigned_to`
+ * is a plain uuid on the order row, so it costs nothing to read; the name and
+ * photo come from `rider_directory`, which exposes exactly four columns and no
+ * other profile data (migration 20261021000001).
+ */
+function RiderCard({ riderId, status }: { riderId: string | null; status: OrderStatus }) {
+  const { t } = useTranslation();
+  const theme = useTheme();
+  const rider = useRider(riderId);
+  const [imageFailed, setImageFailed] = useState(false);
+
+  // Nobody yet, or the bag is already finished. A delivered order does not need
+  // a rider card, and neither does a failed one.
+  if (!riderId) return null;
+  if (status === 'delivered' || status === 'cancelled') return null;
+
+  const person = rider.data;
+  const showPhoto = Boolean(person?.avatar_url) && !imageFailed;
+
+  return (
+    <Card style={styles.riderCard}>
+      <ThemedText type="smallBold" themeColor="textSecondary">
+        {t('order.riderTitle')}
+      </ThemedText>
+      <View style={styles.riderRow}>
+        <View style={[styles.riderPhoto, { backgroundColor: theme.accentSoft }]}>
+          {showPhoto ? (
+            <Image
+              source={{ uri: person?.avatar_url ?? '' }}
+              style={styles.riderPhotoImage}
+              contentFit="cover"
+              onError={() => setImageFailed(true)}
+            />
+          ) : (
+            <Ionicons name="person" size={22} color={theme.accent} />
+          )}
+        </View>
+        <View style={styles.flex}>
+          <ThemedText type="bodyStrong" numberOfLines={1}>
+            {person?.full_name ?? t('order.riderName')}
+          </ThemedText>
+          <ThemedText type="caption" themeColor="textSecondary">
+            {status === 'out_for_delivery' ? t('order.riderComing') : t('order.riderNote')}
+          </ThemedText>
+        </View>
+      </View>
+      {person?.phone ? (
+        <Button
+          label={t('order.callRider')}
+          icon="call-outline"
+          variant="outline"
+          fullWidth
+          onPress={() => {
+            // Only opens the dialler pre-filled; nothing is dialled silently.
+            Linking.openURL(`tel:${person.phone}`).catch((error) => {
+              console.warn('[order] could not open dialler', error);
+            });
+          }}
+        />
+      ) : null}
+    </Card>
+  );
+}
+
 function StatusRow({ status }: { status: OrderStatus }) {
   const { t } = useTranslation();
   const theme = useTheme();
   const style = orderStatusStyle(theme, status);
 
-  if (status === 'cancelled') {
+  // The two honest end states where no happy step was reached. Drawn as a plain
+  // statement rather than a half-filled tracker, so they cannot read as
+  // "partially delivered".
+  if (status === 'cancelled' || status === 'failed' || status === 'returned') {
     return (
       <View style={styles.steps}>
-        <ThemedText type="smallBold" style={{ color: theme.dangerInk }}>
-          {t('orders.status.cancelled')}
+        <ThemedText type="smallBold" style={{ color: style.ink }}>
+          {t(`orders.status.${status}`)}
         </ThemedText>
       </View>
     );
@@ -366,6 +514,8 @@ function formatDate(value: string | null): string {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   flex: { flex: 1 },
+  footer: { gap: Spacing.one, marginTop: Spacing.three },
+  footerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -381,6 +531,23 @@ const styles = StyleSheet.create({
   },
   section: { gap: Spacing.one },
   sectionTitle: { marginTop: Spacing.three },
+  failureHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  riderCard: { gap: Spacing.two, marginTop: Spacing.three },
+  riderRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  riderPhoto: {
+    width: 48,
+    height: 48,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    // Clip the photo inside the circle rather than overflowing it.
+    overflow: 'hidden',
+  },
+  riderPhotoImage: { width: 48, height: 48 },
   itemRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
