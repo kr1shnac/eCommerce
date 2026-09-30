@@ -50,11 +50,29 @@ export default function AdminLayout() {
         }}
       />
       <Tabs.Screen
+        name="today"
+        options={{
+          title: t('admin.today'),
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'cash' : 'cash-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="coupons"
         options={{
           title: t('admin.coupons'),
           tabBarIcon: ({ color, size, focused }) => (
             <Ionicons name={focused ? 'pricetags' : 'pricetags-outline'} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="shelf"
+        options={{
+          title: t('admin.shelf'),
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? 'pricetag' : 'pricetag-outline'} size={size} color={color} />
           ),
         }}
       />
