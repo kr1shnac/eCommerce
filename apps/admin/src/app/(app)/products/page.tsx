@@ -12,6 +12,9 @@ type ProductRow = {
   mrp_paise: number | null;
   unit: string;
   stock_qty: number;
+  sold_by: string | null;
+  pack_size: number | null;
+  pack_unit: string | null;
   category_id: string | null;
   is_active: boolean;
   image_url: string | null;
@@ -30,6 +33,9 @@ type ProductPayload = {
   price_paise: number;
   mrp_paise: number | null;
   unit: string;
+  sold_by: string | null;
+  pack_size: number | null;
+  pack_unit: string | null;
   stock_qty: number;
   category_id: string | null;
   is_active: boolean;
@@ -80,6 +86,9 @@ export default function ProductsPage() {
   const [unit, setUnit] = useState("");
   const [stock, setStock] = useState("0");
   const [categoryId, setCategoryId] = useState<string | null>(null);
+  const [soldBy, setSoldBy] = useState<'piece' | 'measure'>('piece');
+  const [packSize, setPackSize] = useState<number | null>(null);
+  const [packUnit, setPackUnit] = useState<'g' | 'kg' | 'ml' | 'l'>('g');
   const [isActive, setIsActive] = useState(true);
   const [image, setImage] = useState<File | null>(null);
 
@@ -134,6 +143,9 @@ export default function ProductsPage() {
     setCategoryId(null);
     setIsActive(true);
     setImage(null);
+    setSoldBy("piece");
+    setPackSize(null);
+    setPackUnit("g");
   };
 
   const compress = async (file: File): Promise<File> => {
@@ -188,6 +200,11 @@ export default function ProductsPage() {
       price_paise: rupeesToPaise(priceR),
       mrp_paise: mrpR ? rupeesToPaise(mrpR) : null,
       unit: unit.trim(),
+      // A piece product carries no pack (AGENTS.md M4): '4 x 100 g' stays a
+      // plain piece, and a measure product always has both fields or neither.
+      sold_by: soldBy,
+      pack_size: soldBy === "measure" ? packSize : null,
+      pack_unit: soldBy === "measure" ? packUnit : null,
       stock_qty: Math.max(0, Number.parseInt(stock, 10) || 0),
       category_id: categoryId,
       is_active: isActive,
@@ -219,6 +236,13 @@ export default function ProductsPage() {
     setStock(String(p.stock_qty));
     setCategoryId(p.category_id);
     setIsActive(p.is_active);
+    // Pack fields are product identity (AGENTS.md M4): load them, or an edit
+    // would silently wipe the pack on save.
+    setSoldBy(p.sold_by === "measure" ? "measure" : "piece");
+    setPackSize(p.pack_size ?? null);
+    setPackUnit(
+      p.pack_unit === "kg" || p.pack_unit === "ml" || p.pack_unit === "l" ? p.pack_unit : "g",
+    );
   };
 
   return (
@@ -236,6 +260,42 @@ export default function ProductsPage() {
             <option value="">Select</option>{cats.map((c) => <option key={c.id} value={c.id}>{c.name_en}</option>)}
           </select>
         </div>
+
+        <div className="grid gap-2"><Label>How sold</Label>
+          <select
+            value={soldBy}
+            onChange={(e) => setSoldBy(e.target.value as 'piece' | 'measure')}
+            className="border h-9 px-2 rounded"
+          >
+            <option value="piece">Piece (counted)</option>
+            <option value="measure">Measure (weighed)</option>
+          </select>
+        </div>
+        {soldBy === 'measure' ? (
+          <div className="grid gap-2">
+            <Label>Pack size</Label>
+            <Input
+              type="number"
+              value={packSize ?? ""}
+              onChange={(e) => setPackSize(e.target.value ? Number(e.target.value) : null)}
+              className="border h-9 px-2 rounded"
+            />
+          </div>
+        ) : null}
+        {soldBy === 'measure' ? (
+          <div className="grid gap-2"><Label>Pack unit</Label>
+            <select
+              value={packUnit ?? 'g'}
+              onChange={(e) => setPackUnit(e.target.value as 'g' | 'kg' | 'ml' | 'l')}
+              className="border h-9 px-2 rounded"
+            >
+              <option value="g">g</option>
+              <option value="kg">kg</option>
+              <option value="ml">ml</option>
+              <option value="l">l</option>
+            </select>
+          </div>
+        ) : null}
         <div className="grid gap-2"><Label>Image</Label><Input type="file" accept="image/*" onChange={(e) => setImage(e.target.files?.[0] || null)} /></div>
         <label className="flex items-center gap-2"><input type="checkbox" checked={isActive} onChange={(e) => setIsActive(e.target.checked)} /><span>Active</span></label>
         <div className="flex gap-2"><Button onClick={save}>{editingId ? "Update" : "Create"}</Button>{editingId && <Button variant="outline" onClick={resetForm}>Cancel</Button>}</div>

@@ -9,9 +9,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AddToCart } from '@/components/add-to-cart';
 import { FavouriteButton } from '@/components/favourite-button';
 import { OfflineBanner } from '@/components/offline-banner';
+import { PackOptions } from '@/components/pack-options';
 import { ProductCard } from '@/components/product-card';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
+import { SpeakButton } from '@/components/speak-button';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -21,7 +23,9 @@ import { Radii, Spacing } from '@/constants/theme';
 import { useCategories, useProduct, useProducts } from '@/hooks/use-catalog';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedName } from '@/lib/localized';
-import { discountPercent, formatPaise } from '@/lib/money';
+import { packLabel } from '@/lib/pack';
+import { spokenProductLine } from '@/lib/speech';
+import { formatPaiseForSpeech, discountPercent, formatPaise } from '@/lib/money';
 
 /**
  * One product, at full size.
@@ -113,6 +117,11 @@ export default function ProductScreen() {
   const isLowStock = !isOutOfStock && item.stock_qty <= 5;
   const showImage = Boolean(item.image_url) && !imageFailed;
 
+  // The size the shop declares. `packLabel` prefers the structured pack ("1 kg")
+  // and falls back to the free-text `unit`, so an undescribed shelf shows exactly
+  // what it showed before the pack fields existed.
+  const sizeLabel = packLabel(item);
+
   const category = (categories.data ?? []).find((candidate) => candidate.id === item.category_id);
   const categoryIcon = category?.icon ?? '🛒';
   const emoji = item.emoji ?? categoryIcon;
@@ -162,7 +171,7 @@ export default function ProductScreen() {
 
         <View style={styles.titleBlock}>
           <ThemedText type="title">{name}</ThemedText>
-          <ThemedText themeColor="textSecondary">{item.unit}</ThemedText>
+          <ThemedText themeColor="textSecondary">{sizeLabel}</ThemedText>
         </View>
 
         <Card style={styles.buyCard}>
@@ -176,6 +185,17 @@ export default function ProductScreen() {
                 <Badge label={t('product.save', { off })} tone="secondary" />
               </>
             ) : null}
+            {/* Reading the price aloud, in Kannada. Renders only when the phone has
+                a real Kannada voice — see speak-button.tsx for why. */}
+            <SpeakButton
+              text={spokenProductLine(
+                item.name_kn,
+                sizeLabel,
+                formatPaiseForSpeech(item.price_paise, t('speech.rupees'), t('speech.paise')),
+                t('speech.priceLine'),
+              )}
+              label={`${item.name_kn} ${sizeLabel}`}
+            />
           </View>
 
           <View style={styles.stockRow}>
@@ -202,6 +222,10 @@ export default function ProductScreen() {
             )}
           </View>
         </Card>
+
+        {/* Other pack sizes of the same thing. Renders nothing when the shop
+            sells this in one size only — the common case. */}
+        <PackOptions product={item} />
 
         <View style={styles.assuranceRow}>
           <Assurance icon="cash-outline" label={t('product.assuranceCash')} />
