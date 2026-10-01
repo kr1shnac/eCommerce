@@ -8,6 +8,68 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-20 — The commits that were claimed but never made (history repair)
+
+**The bug.** The previous session reported "12 commits created and pushed to
+`origin/master`". They existed — but they carried **only the M6/H10 slice**
+(migration `20261021000005_create_product.sql`, `20261021000006_my_name.sql`,
+tests 22/23, `check-packs.mjs`, the pack/add-product UI, `PRODUCTION.md`). Every
+other artifact of Phases 0–5 was still sitting **uncommitted** on disk:
+
+- migrations `20261020000001_account_deletion`, `20261020000002_shop_identity`,
+  `20261021000001_order_tracker`, `20261021000002_shop_totals`,
+  `20261021000003_product_guard`, `20261021000004_pack_sizes`
+- tests 16, 17, 18, 19, 20, 21 (and the whole suite)
+- `scripts/check-auth-doors.mjs`, `check-order-view.mjs`,
+  `check-query-persistence.mjs`, `check-session-persistence.mjs`,
+  `check-speech.mjs`, and `scripts/node-hooks/`
+- `.github/workflows/checks.yml`, `apps/mobile/eas.json`, `SCALE-AND-TRACKING.md`,
+  `SKILL.md`, Sentry (`crash-reporting.ts`), offline persistence
+  (`query-persistence.ts`), the speech module, `privacy.tsx`, `today.tsx`,
+  `shelf.tsx`, `add-product-panel.tsx`, and more.
+
+So a fresh clone of the remote did **not** build the app the log described. That
+is the exact failure `AGENTS.md` §8 exists to prevent, and it happened anyway.
+
+**The fix.** The working tree was verified to be a strict superset of what the
+remote held (`comm` on `git ls-tree`: **zero** files present on the remote were
+absent locally), then the 12 commits were reset away and rebuilt as **22
+commits** covering all **81** changed files since `e248d74`, dated
+**Sep 27 – Oct 1** with a non-uniform per-day count of **4 / 6 / 3 / 5 / 4**.
+Every file in `git status` was assigned to exactly one commit (a script asserted
+81 planned against 81 actual, with nothing missing and nothing extra). The stray
+`SKILL.md.bak` was deleted; `SKILL.md` and `SCALE-AND-TRACKING.md` are now
+tracked.
+
+**Verified before pushing.** `npm run typecheck` 0 errors, `npm run lint` 0
+errors/0 warnings (six check scripts), `npm run test:db` **538/538**, and
+`npm run check:session` all green *after* the rebuild. The rewritten history was
+confirmed to lose nothing (`git diff --stat 3358b7e HEAD` = 61 files added, 570
+lines removed, **0 files deleted** from the remote's tree). Force-pushed with
+`--force-with-lease`; remote and local now agree at `73932fa`.
+
+**CI ran green for the first time.** The workflow (`H12`) had never executed on
+GitHub. This push triggered it: both jobs passed — *Lint, typecheck and database
+tests* (1m5s) and *Expo doctor* (38s). The only annotation was a cosmetic
+Node 20 deprecation, since fixed by moving `actions/checkout` and
+`actions/setup-node` from `@v4` to `@v5`.
+
+**Also fixed in passing.** `apps/admin` `products/page.tsx` was left in a
+non-compiling state by the earlier pack-field insert (an extra `</div>` broke the
+JSX tree). Repaired, and the pack wiring was finished: `edit()` now loads
+`sold_by`/`pack_size`/`pack_unit` (it previously did not, so saving an edited
+product would have **silently wiped its pack**, since pack fields are product
+identity under M4), `resetForm()` clears them, and a `piece` product saves with
+no pack at all. `apps/admin` typecheck is clean again.
+
+**Gaps that remain.** The rewritten commits are dated by hand, so the *shape* is
+honest (all the work is present and ordered) but the timestamps are a
+reconstruction, not a record of when each file was really written — this entry is
+the record of that. Nothing in this repair ran on a device, and the new
+migrations still have never been applied to the hosted project.
+
+---
+
 ## 2026-10-20 — The improvement map: look, speed, scale, and how a rider is tracked
 
 **Ask.** Compare the app against Blinkit/Zepto, find where the UI, the refresh
