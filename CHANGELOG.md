@@ -6,6 +6,1503 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+---
+
+## 2026-10-20 — The improvement map: look, speed, scale, and how a rider is tracked
+
+**Ask.** Compare the app against Blinkit/Zepto, find where the UI, the refresh
+behaviour, the speed, the concurrency and the scalability can improve, design
+rider location tracking in detail, and update the council skill accordingly.
+
+**Created — `SCALE-AND-TRACKING.md`** (new, ~9 sections). It is the plan for
+after the app works, and it is deliberately explicit about *not* copying
+Blinkit/Zepto at Kunigal's scale:
+
+- §1 sizes everything against a real scale table (1 shop, 34 products, pilot
+  1–5 orders/day, realistic ceiling ~100/day, ~5 riders).
+- §2 records what Blinkit and Zepto actually are, with sources and dates, plus
+  the three lessons that matter. Key external facts fetched this session:
+  ~125,000 orders/day for Grofers-by-2021 and 153 cities for Blinkit
+  `[EXTERNAL]` (Wikipedia, 2026-10-20); Supabase Realtime plan limits — Free
+  200 connections/100 msg/s, Pro 500/500, Pro-no-cap 10,000/2,500 `[EXTERNAL]`
+  (Supabase docs, 2026-10-20).
+- §3 the look: **five** concrete UI changes (hero promise, state-aware status
+  heading, per-unit pack pricing, checkout verification, skeletons), each tied
+  to a line in an existing file. Two of my first-draft claims were checked
+  against the code and **corrected** — checkout already has a big total
+  (`checkout.tsx` 372–375) and already leads with the landmark (line 542), and
+  `StatusRow` already refuses a half-filled tracker for bad terminal states
+  (`order/[id].tsx` 433–441). The file now says "verify first" instead of
+  inventing a fix.
+- §4 the speed: separates server refresh / client refresh / perceived refresh;
+  names the real problem as **cold-start round-trip count** (up to nine GETs on
+  Home) and gives six ordered fixes (PERF-1…6), including one `shop_bootstrap()`
+  RPC.
+- §5 the scale: works the Realtime arithmetic against the real limits. Verdict
+  `[INFERENCE]`: the design does not break until ~two orders of magnitude above
+  the one-shop ceiling, and the **first** thing to break is connections on a
+  **Free** plan. Six cheap fixes (SCALE-1…6), headlined by a **filtered**
+  Realtime subscription (`user_id=eq.<me>`) since Realtime evaluates filters
+  server-side.
+- §6 the tracking design — the substantial new work. One upsert row per rider
+  (not a trail), written through `record_my_position()` that takes **no rider
+  id** (acts on `auth.uid()` only), allowed **only while an order is
+  `out_for_delivery` and assigned to the caller**; the customer reads a narrow
+  derived `{lat,lng,age,eta}` view, never the raw row; **ETA computed server
+  side**; a write throttle (moving 20–30 s, stationary 2–3 min, never when
+  idle/backgrounded) held as **pure logic** in a planned
+  `src/lib/tracking-rules.ts` + `check:tracking`; a **text-first** screen that
+  works on 2G, with the map optional, vendor-unpicked and behind a tap; a
+  straight-line route labelled as a direction, never a fake road path; and six
+  non-negotiable privacy rules (consent in Kannada, positions expire at ~10 min
+  rather than showing stale, visible only to the order's customer and the owner,
+  cascade-deleted with the account).
+- §7 honest gaps (nothing here is device-proven), §8 build order T0–T7, §9 the
+  five owner/client decisions this creates (Supabase plan, data budget, rider
+  phones, tracking hours, map provider).
+
+**Changed — `SKILL.md`** (the council skill), as asked:
+
+- New `focus` and `benchmark` inputs in §4.
+- New **Step 0.5 benchmark the comparables** in §5: fetch comparable mechanisms
+  as `[FACT]` with sources, pull the *platform's own limits* as the binding
+  constraint, and state the scale gap explicitly so advisors do not recommend a
+  large player's architecture for a small project. Writes `benchmarks.md`;
+  banned from containing conclusions.
+- New **§6.6 focus lenses** (UX, performance/latency, scale/concurrency, cost,
+  trust/privacy/safety, tracking and live state, operations,
+  accessibility/language, commercial) with a rule of **at most two per advisor**
+  beyond its own style, and **§6.7 auto-selection** mapping question wording to
+  lenses.
+- Wired into Step 2, the output file list, `report.html` (a benchmark table),
+  the quality checklist, and §10's failure handling (a failed fetch must never
+  let an invented comparable reach the report).
+
+**Verified.** `npm run typecheck` passes with zero errors. The file-level claims
+in `SCALE-AND-TRACKING.md` §3 were each grepped against the real source
+(`index.tsx` 202/215/219; `product/[id].tsx` 12/228; `order/[id].tsx` 433–441;
+`checkout.tsx` 372–375/542/355; `en.json` 367 `trackTitle` present, `kn.json`
+too) and the two wrong ones were rewritten rather than shipped.
+
+**Not verified.** Nothing in §4, §5 or §6 has run on a device — no Android SDK,
+no emulator on this machine. The nine-GET cold start, the background-location
+battery behaviour, and whether a free routing API is usable are all
+`[UNVERIFIED]` and listed as gaps in §7. No new migration or function was
+written this session; §6 is a design, not code. The `benchmark`/`focus` skill
+changes have not themselves been exercised by a real council run.
+
+**Decision retained.** The map SDK stays **unpicked** on purpose (vendor-free
+design), and tracking is **text-first**. Both are recorded in §6.5 and §6.6 with
+their reasons so they are not relitigated.
+
+---
+
+---
+
+## 2026-10-20 — Phase 6: the owner adds a product, in Kannada (M6)
+
+*(nineteenth session; adds `supabase/migrations/20261021000005_create_product.sql`,
+`supabase/tests/22_create_product_test.sql`,
+`apps/mobile/src/components/add-product-panel.tsx`; changes
+`apps/mobile/src/hooks/use-product-shelf.ts`, `src/app/admin/shelf.tsx`,
+`src/types/database.ts`, both locales.)*
+
+Register **M6 is done**. The register's line was "i18n is read-only; no Kannada data
+entry for the owner" — and the truth had to be grepped, not assumed.
+
+**What was actually true.** The **web panel could already create a product**
+(`apps/admin/src/app/(app)/products/page.tsx` has a Kannada name field). The **app
+could not create one at all** — there was no product-creation screen and no
+`create_product` RPC. Since the whole premise of the Shelf tab is that the owner runs
+the shop standing up, "edit on your phone but walk to a desk to add" is not a working
+shop.
+
+**The failure the new function exists to stop.** `products.name_kn` is `not null`,
+but an **empty string** satisfies that. One in three adults in Kunigal cannot
+comfortably read the English name (KUNIGAL.md §1), so a blank Kannada label is a
+blank shelf label — and the owner would see no error. `create_product_from_shop()`
+therefore refuses a blank Kannada name, a blank/absent English name, a missing price
+and a negative stock.
+
+**The check that matters most** is the one for a Kannada name with **no Kannada
+character** — the English name copied across, the exact shortcut a hurried owner
+takes. `looks_like_kannada()` tests the U+0C80–U+0CFF block and is commented as the
+heuristic it is: it checks the script, never the meaning. `KUNIGAL.md` stays the
+authority on wording, and a real shop writes `Aashirvaad ಗೋಧಿ ಹಿಟ್ಟು`, so a Kannada
+name containing a Latin brand word is accepted — the rule must not become an
+obstacle.
+
+**Design decisions, with reasons:**
+
+- **An RPC, not a plain `.insert()`** — the same reasoning as the shelf edit: the
+  policy authorises on role, and a client mistake can turn a refusal into zero rows
+  and no error, which is a save button that lies (§9.4). The RPC raises `42501`.
+- **No `store_id` argument.** The function finds the active store itself, so a
+  signed-in owner cannot create a product in a shop they do not own. One shop today;
+  the rule is written for the second one.
+- **`unit` is derived, not typed**, from `(pack_size, pack_unit)`, so the text the
+  customer reads can never disagree with the pack the app compares sizes on.
+- **No transliteration helper.** A guesser turning English letters into Kannada
+  letters would invent words no Kunigal customer recognises. The owner types the name
+  he already says out loud; the screen says *which* field is wrong instead.
+
+**A real bug, caught by the test.** The first draft built the pack text with
+`rtrim(to_char(...), '0')`, which turns a **100 g** pack into **"1 g"** — a silent
+hundred-fold lie about what the customer gets. Whole numbers are now left intact, and
+test 22 asserts `100 g` and `250 g` survive. A second draft detail worth keeping: the
+text is **faithful to the declared unit** (a pack entered as 1 kg reads "1 kg", a
+500 g pack stays "500 g"); it does not silently re-express grams as kilos, because
+the shop's own words are the ones a customer reads.
+
+**Verified, and how.** `supabase/tests/22_create_product_test.sql` — **28
+assertions** against real PostgreSQL: a customer, a rider and a signed-out caller are
+each refused `42501`; the owner can add a counted and a weighed product; the Kannada
+refusals raise `23514` **with messages that name the reason** (inspected via a
+`do $$` block, because the screen translates them); a duplicate English name is
+refused `23505`; the function has no `store_id` in its signature; and a **customer can
+read** the product the owner just added. Suite now **516 assertions, 0 failures**
+(459 → 488 → 516).
+
+**Gate, run in full:** typecheck 0 errors; `lint` 0 errors/0 warnings chaining six
+checks; `check:session` 16/16; `test:db` 516/516; `npx expo export --platform android`
+from `apps/mobile` → 6 MB Hermes bundle (artifacts deleted).
+
+**Open gaps:** the add-product panel has **never been seen on a phone** (no Android
+SDK on this machine, §5 of PRODUCTION.md), and the web panel's create/edit form still
+does not know about the pack columns — a product made there is always a `piece` with
+no pack, so it cannot get "also in 1 kg" chips until either the panel is updated or
+the owner sets the pack from the app's Shelf tab. Recorded in PRODUCTION.md §14.
+
+---
+
+## 2026-10-20 — Phase 6: loose goods as packs, not fractions (M4)
+
+*(eighteenth session; adds `supabase/migrations/20261021000004_pack_sizes.sql`,
+`supabase/tests/21_pack_sizes_test.sql`, `apps/mobile/src/lib/pack.ts`,
+`apps/mobile/src/hooks/use-pack-options.ts`,
+`apps/mobile/src/components/pack-options.tsx`,
+`apps/mobile/src/components/pack-field.tsx`, `scripts/check-packs.mjs`; changes
+`supabase/seed.sql`, `apps/mobile/src/types/database.ts`,
+`src/hooks/use-product-shelf.ts`, `src/app/product/[id].tsx`,
+`src/app/admin/shelf.tsx`, both locales, root `package.json`.)*
+
+Register **M4 is done** — and it is a **rejection** more than a build, which is the
+part a future session must not relitigate.
+
+**The register's line was wrong about the fix.** It said "`quantity` is integer —
+loose weights cannot be sold", implying the fix is to make `quantity` a `numeric`
+so a customer can buy 0.5 kg. That is the fix that **breaks the shop's books**.
+`order_items.line_total_paise` is `generated always as (price_paise * quantity)` and
+is an `integer`; a fractional quantity makes the line total fractional, which forces
+a round — and then `place_order()` sums those into `subtotal_paise` with integer
+arithmetic, a **second** round in a different place. `orders_totals_add_up`
+(`total = subtotal + delivery − discount`) then fails **intermittently**, only on
+baskets that land on a half-paisa. Integer paise exists to stop exactly this.
+
+**What was built instead.** `quantity` stays an integer and counts **packs**. The
+pack is structured data:
+
+- `products.sold_by` — `piece` | `measure`;
+- `products.pack_size numeric(10,3)` and `products.pack_unit` — `g|kg|ml|l|piece`;
+- `products_pack_fields_agree` (a measure product must declare a pack, and it must
+  be positive);
+- `product_pack_options` — a `security_invoker` view normalising every pack onto
+  g/ml, which is what makes 500 g and 1 kg comparable at all;
+- index `products_pack_lookup_idx`.
+
+**The guard learned the pack.** `guard_product_update()` freezes `sold_by`,
+`pack_size`, `pack_unit` alongside `id`/`store_id`: selling 1 kg of rice and 5 kg of
+rice at one price are two different products, so a mis-tap on the price field must
+not change the pack. `update_product_from_shop()` gained three pack arguments —
+**appended with defaults**, because test 20 calls it both positionally and by name,
+and `create or replace` cannot change an argument list.
+
+**Two real bugs were found, and both are worth remembering:**
+
+1. **The freeze blocked the seed.** The seed normalises pack fields and runs as
+   `postgres`, so it is not a "client" and the freeze stopped it — *and then* the
+   transaction-local flag evaporated, because `psql -f` runs each statement in its
+   own implicit transaction. Fixed with `identity_edit_in_progress()` plus an
+   explicit `begin; … commit;` around the seed's normalisation. Same pattern as the
+   stock-move flag: a flag the app cannot reach, because the non-admin client branch
+   raises first.
+2. **The pack regex was case-sensitive.** The seed writes both `'1 L'` and `'1 l'`;
+   matching only the lower-case form silently left **every oil** a piece product.
+   Fixed by lower-casing the subject, and commented at the call site.
+
+**Verified, and how.** `supabase/tests/21_pack_sizes_test.sql` — **29 assertions**
+against real PostgreSQL. Its **first** assertion is `quantity` is still an
+`integer`; that line exists to fail the day somebody "simplifies" it back to a
+decimal. It also proves what the project actually claims: a client **cannot send a
+line total at all** (the generated column refuses it, `428C9` — stronger than being
+overwritten), a total off by one paisa is refused, a `measure` product with no pack
+is refused, the guard refuses a pack change through **both** the plain path and the
+RPC, and the view is `security_invoker`. The suite is now **488 assertions, 0
+failures** (349 → … → 459 → 488).
+
+`scripts/check-packs.mjs` — **48 assertions** over `src/lib/pack.ts`, wired as
+`npm run check:packs` and into `lint`. `pack.ts` is pure, so the arithmetic a
+customer actually reads ("three 500 g packets" → **1.5 kg**, not "1500 g") is
+checked off-device. It also asserts the module handles **no money** in code.
+
+**Gate, run in full:** typecheck 0 errors; `lint` 0 errors/0 warnings chaining
+**six** checks (i18n parity, view 48, persist 27, speech 46, **packs 48**,
+auth-doors 15); `check:session` 16/16; `test:db` 488/488; `npx expo export
+--platform android` from `apps/mobile` → 6 MB Hermes bundle (artifacts deleted).
+
+**Note for the next session:** the export must be run from `apps/mobile`, not the
+repo root. From the root, Metro resolves `expo/AppEntry.js` and fails looking for an
+`App.tsx` this project does not have (it is Expo Router). That cost one cycle.
+
+**Decisions, with reasons:**
+
+- **No fractional quantity, ever.** See above. The schema test enforces it.
+- **The pack is identity, frozen even for the admin**, changed only through a
+  deliberate flag (seed/migration) or an explicit two-step edit in the app.
+- **"Also in 1 kg" matches on store + category + identical Kannada name**, both
+  `measure`. A false negative shows a normal page; a false positive sells the wrong
+  thing. The chip pushes the other product's **own** page, so its own price and
+  guard apply — one product is never priced as another.
+- **`'4 x 100 g'` stays a plain piece.** Its unit already names the whole thing, and
+  calling it a 100 g pack would understate what arrives.
+- **The stored pack keeps the declared unit** ('1 kg' is stored 1.000 kg, not 1000 g);
+  only the view normalises. Storing the converted value would lose how the shop
+  writes its own shelf.
+
+**Open gaps:** a shop still cannot sell above its own printed MRP (the MRP rises with
+the price). The pack chips and the shelf pack editor have **never been seen on a
+phone** — this machine has no Android SDK, no `adb`, no emulator (§5 of
+`PRODUCTION.md`). The migration has run only against throwaway PostgreSQL, never the
+hosted project.
+
+---
+
+## 2026-10-20 — Phase 6: the shop reads itself aloud (H4)
+
+*(seventeenth session; adds `apps/mobile/src/lib/speech.ts`,
+`apps/mobile/src/lib/speech-rules.ts`,
+`apps/mobile/src/components/speak-button.tsx`, `scripts/check-speech.mjs`;
+changes `apps/mobile/src/lib/money.ts`, `src/app/product/[id].tsx`,
+`src/app/(tabs)/cart.tsx`, both locales, `KUNIGAL.md`,
+root `package.json`.)*
+
+Register **H4 (voice/TTS) is done** — the item the council's own minority note
+called the strongest Kunigal-specific feature available.
+
+**Why this one matters more than its size suggests.** About **31% of the town has
+low literacy** (KUNIGAL.md §3). Reading a price on a phone is a barrier that has
+nothing to do with money or interest. And the app already **has** every word in
+Kannada — `name_kn` in the database, `kn.json` for the interface — so reading it
+aloud needs no new content, only a voice. `expo-speech` is the whole dependency.
+
+**The honest limitation drove the design, and it is the part to read.** `expo-speech`
+is a wrapper over the *phone's own* TTS engine. On Android that is usually Google's
+TTS, whose Kannada voice data is a separate download that many phones in a small
+town will not have. **When the voice is missing, the engine does not fail — it reads
+Kannada text with an English voice.** That is confident nonsense the customer has no
+way to recognise as wrong, which is worse than silence. So:
+
+1. `hasKannadaVoice()` asks the device what it actually has, and **only a positive
+   answer is cached**. On Android the voice list is empty until the engine finishes
+   initialising, so caching a negative would permanently disable the feature on a
+   phone that supports it.
+2. The **Listen button is not rendered at all** until a real Kannada voice is
+   confirmed. A button that produces gibberish teaches people the app is broken.
+   Nothing is lost: the price is on screen and the shop's number is one tap away.
+3. When speech is attempted and there is no voice, the customer is told **in
+   Kannada** (`speech.noVoice`) rather than read the text in the wrong language.
+
+**Speech is a different problem from print, so money got a second formatter.**
+`formatPaise` returns `"₹145.00"` — typography. A TTS engine given that says "rupee
+symbol one four five point zero zero", or drops the currency and says a bare number.
+`formatPaiseForSpeech` returns `"೧೪೫ ರೂಪಾಯಿ"`: **Kannada digits**, the rupee word
+written out, and no decimals when there are no paise (because "೧೪೫ ರೂಪಾಯಿ ೦೦ ಪೈಸೆ"
+is noise). It still takes **integer paise** and does no rupee arithmetic (Rule 1).
+The currency words come from `kn.json`, not from a hard-coded string (Rule 2).
+
+**`speech-rules.ts` exists because `speech.ts` cannot be tested.** `speech.ts`
+imports `expo-speech`, which pulls in native code and refuses to load under Node —
+the same wall `check-session-persistence` hit with AsyncStorage. So the decision that
+can break silently was moved out: matching voice language tags. The first version was
+effectively an exact `=== 'kn-IN'` comparison, and engines report `kn_IN`, `kn-in`
+and bare `kn` — so it would have reported "no Kannada voice" on a phone that has one
+and switched the feature off for exactly the people it was built for, with no error
+anywhere. `isKannadaVoiceTag` normalises first and matches the `kn` primary subtag.
+
+**`check:speech` (46 assertions).** It covers the digits conversion, the spoken
+price (no `₹`, no `.`, no Western digits), that paise are said only when present,
+that rounding a fractional paise cannot print a decimal, that null/undefined/NaN
+money never says "NaN" aloud, that no `{brace}` survives in the spoken sentence (the
+Rule 2 failure mode, read aloud verbatim), and the voice-tag matcher against every
+spelling real engines report **plus** `en-IN`, `hi-IN`, `te-IN`, `"kannada"` and
+`"knx"`, which must not match. The matcher is imported from the real module — a
+copied rule in a test is a test that passes while the app is broken.
+
+**Verified, and how.**
+
+- `npm run typecheck` → 0 errors both apps.
+- `npm run lint` → 0 errors, 0 warnings. Now chains i18n parity (554 keys),
+  `check:view` (48), `check:persist` (27), **`check:speech` (46)** and
+  `check:auth-doors` (15).
+- `npm run test:db` → **459 assertions, 0 failures** (unchanged; no migration).
+- `npx expo export --platform android` → builds, 6 MB Hermes bundle. Artifact
+  deleted.
+
+**Mistakes made in this session, recorded.**
+
+1. I wrote `expo-speech` logic directly in `speech.ts` and then could not import it
+   in the test — Node refused the native module. Splitting the pure rules out was
+   the fix, and it is the better design anyway.
+2. My first HTML/JSX attempt put an array `.map().join()` **inside a JSX attribute**,
+   which is not valid syntax. Hoisted to a `basketSpeech` variable before the return.
+3. I added a `speak-button.tsx` using `theme.onAccent` before checking it existed;
+   it does, and is used the same way in five other screens.
+
+**Open gaps.**
+
+- **Nothing has rendered on a phone, and this feature is the most affected by that.**
+  Nobody has heard it speak. Whether a given phone in Kunigal has Kannada voice data
+  is unknown and unverifiable from here — and that is the single fact the whole
+  feature turns on.
+- The Listen button staying lit until tapped again (rather than clearing on an
+  `onDone` callback) is a deliberate choice: the callback's reliability differs
+  across platforms and erring toward "still readable" is safer than stopping audio
+  early. Unverified on a device.
+- Nothing is committed or pushed yet.
+
+---
+
+## 2026-10-20 — Phase 6: the shelves survive closing the app (M1)
+
+*(sixteenth session; adds `apps/mobile/src/lib/query-persistence.ts`,
+`scripts/check-query-persistence.mjs`; changes `apps/mobile/src/app/_layout.tsx`,
+`apps/mobile/package.json`, root `package.json`.)*
+
+Register **M1 (persisted offline catalogue) is done.** Two adapter packages were
+added at the same version as `@tanstack/react-query` (all three `5.104.5`):
+`@tanstack/react-query-persist-client` and `@tanstack/query-async-storage-persister`.
+
+**The problem, stated honestly.** `OfflineBanner` existed and AGENTS §9.3 was a
+rule, but they only helped a customer already *inside* the app. React Query's cache
+is in memory, so it dies with the process: opening the app in a dead spot showed a
+spinner and then an error, though the shelves had been fetched ten minutes earlier.
+In a town where "what does this cost?" is asked in a courtyard with one bar, that is
+the difference between the app being useful and being a thing you only open at home.
+
+**The fix.** The cache is written to `AsyncStorage` and hydrated before the first
+paint, so the shelves are on screen immediately and the network only has to refresh
+them.
+
+**The security decision, which is the whole of the interesting part.**
+`AsyncStorage` is a plain file on the phone: readable on a rooted device, kept with
+the app, and **not** cleared by signing out. So `shouldPersistQuery()` is an
+**allowlist** on the query key's root. Persisted: `categories`, `products`,
+`product` — public shop data, identical for every customer, already visible to
+anyone holding the publishable key. Not persisted: `orders`, `order` (whose snapshot
+carries the delivery address), `addresses`, `address`, `profile`, `rider`,
+`rider-directory`, `shelf`, `shop-totals`, `coupons`, `cart-products`.
+
+A **denylist was rejected deliberately**: it fails *open*. The day somebody adds a
+`useSomethingSensitive()` hook, a denylist silently persists it and nobody notices.
+An allowlist fails *closed* — a new key is not cached, and the worst case is a slower
+first screen.
+
+Two constraints that are easy to get wrong, both written into the module:
+
+- `gcTime` must be **≥** `maxAge` (set to 7 days) or React Query garbage-collects a
+  query from memory before the persister can restore it. This is the usual reason
+  this feature silently does nothing.
+- The storage key is namespaced `kunigal-query-cache`, so it cannot collide with the
+  auth session that `src/lib/supabase.ts` also keeps in `AsyncStorage`.
+
+The cache is **display only**. What a customer is charged still comes from
+`products` at write time inside Postgres (§9.1); a week-old cached price can be
+*seen* but never *charged*.
+
+**`check:persist` — 27 assertions, and it found a real bug.** The first
+`shouldPersistQuery` read `query.queryKey[0]`, which throws on a query object with
+no `queryKey`. That runs during hydration, before the first paint — an app that does
+not open at all. The test caught it; the function now checks the shape first. The
+test enumerates each forbidden key **by name with the reason** so the exclusions are
+argued rather than implied, and it pins the fail-closed behaviour that a future
+`useLoyaltyPoints()` inherits without anyone reading the module.
+
+**Verified, and how.**
+
+- `npm run typecheck` → 0 errors both apps.
+- `npm run lint` → 0 errors, 0 warnings. Now chains i18n parity (546 keys),
+  `check:view` (48), **`check:persist` (27)** and `check:auth-doors` (15) — so all
+  four run in CI.
+- `npm run test:db` → **459 assertions, 0 failures** (unchanged; no migration).
+- `npx expo export --platform android` → builds, 6 MB Hermes bundle. Artifact
+  deleted.
+
+**Also in this session: four register rows were corrected.** M5, M13 and L3 were
+marked "not done" while already built — some for several sessions — and M2's totals
+half was misrecorded. They were written from memory rather than read from the code,
+which is precisely the failure `PRODUCTION.md` exists to prevent. Each was
+re-verified against the migrations and screens before being marked done, the
+corrections are recorded in §15a rather than quietly edited, and §12 now states the
+rule: **a row's status comes from grepping the code, never from recollection.**
+
+**Open gaps.**
+
+- Still **nothing has rendered on a phone**. The offline behaviour in particular is
+  this feature's entire point and is unverified end-to-end: no Android SDK, `adb` or
+  emulator here, so nobody has opened the app in airplane mode and seen the shelves.
+- `cart-products` is deliberately not persisted; the **cart itself** is, by a
+  separate Zustand persist (`src/store/cart-store.ts`). The two are independent and
+  neither is exercised offline on a device.
+- Nothing is committed or pushed yet.
+
+---
+
+## 2026-10-20 — Phase 4: the landmark, and the drift behind it
+
+*(fifteenth session; adds `apps/mobile/src/components/rider-address-block.tsx`,
+`scripts/check-order-view.mjs`; changes `apps/mobile/src/lib/order-view.ts`,
+`apps/mobile/src/app/rider/index.tsx`, `apps/mobile/src/app/order/[id].tsx`,
+both locale files, `package.json`.)*
+
+Register **M5 (landmark for a town with no house numbers) is done** — and the
+correction matters more than the change.
+
+**M5 was already built.** `landmark` has been a column since
+`20261002000004_addresses.sql`; the checkout form has collected it; `place_order()`
+has snapshotted it onto the order. The register entry — "free-text address only,
+no landmark field" — was written from memory rather than from the schema and was
+**wrong for three sessions**. It has been corrected in three places in
+`PRODUCTION.md`.
+
+**The check found the real gap.** `grep -rn landmark` across migrations, screens and
+types, before editing anything, showed that `formatSnapshotAddress` existed and was
+used by the owner's board — but the **customer's order screen joined the address by
+hand** (five inline lines of `[line1, line2, landmark, city+pincode].filter(Boolean)
+.join(', ')`), and the **rider's cards** rendered the same comma list. Three screens
+saying one thing in two-and-a-bit different ways. That is the kind of drift that
+never throws: it just quietly shows a rider a different address than the customer
+sees.
+
+**The change:**
+
+- The customer screen now calls the shared helper instead of duplicating the join.
+- `splitSnapshotAddress()` pulls the landmark out. The rider's need is genuinely
+  different from the customer's: a customer knows where they live, so the sentence
+  is a reminder; a rider is *finding* a house on a bike in a town with no reliable
+  numbering, where "the big banyan tree" is how you say a place and the house
+  number is the part that may not exist. So the landmark is the lede — bold, first,
+  under a flag icon — and the rest is supporting detail.
+- `RiderAddressBlock` renders it, used by **both** rider cards so they cannot drift.
+  With no landmark (the field is optional and often blank) it falls back to the plain
+  sentence rather than an empty heading, and with no address at all it says so —
+  a rider needs to know to call the shop.
+- `readSnapshotAddress`'s parameter was **loosened**, deliberately, from
+  `Pick<Order, 'delivery_address'>` to `{ delivery_address?: unknown }`. The
+  stricter type rejected the customer screen's `OrderWithItems` while buying no
+  safety: the column is `jsonb`, so the value must be checked at runtime regardless.
+
+**One new check, for a module that had none.**
+`apps/mobile/src/lib/order-view.ts` is imported by the rider's screen, the owner's
+board and the customer's order screen, and had **zero** coverage. It is pure logic —
+no React, no network — so it can be tested honestly from Node with no device, which
+is exactly why it now is. `scripts/check-order-view.mjs`, wired as `npm run
+check:view` **and into `npm run lint`** so CI runs it: **48 assertions** over
+malformed jsonb (string, number, array, null, absent column), the empty-parts join
+that would otherwise render `"Main Road, , , 572130"`, landmark-first splitting with
+no part lost between the halves, the `hasLandmark` fallback, `dialablePhone`
+refusing a number too short to dial, and `isSameDay` comparing **local** calendar
+days — the thing "today's takings" rests on, and the one a UTC comparison gets wrong
+at 23:59.
+
+**Verified, and how.**
+
+- `npm run typecheck` → 0 errors both apps.
+- `npm run lint` → 0 errors, 0 warnings. Now chains i18n parity (546 keys both
+  languages), `check:view` (48) and `check:auth-doors` (15).
+- `npm run check:session` → all 16 checks pass.
+- `npm run test:db` → **459 assertions, 0 failures** (unchanged; no migration).
+- `npx expo export --platform android` → builds, 5.9 MB Hermes bundle. Artifact
+  deleted.
+
+**Mistakes made in this session, recorded.**
+
+1. I first wrote a TypeScript `as never` cast into the `.mjs` check file, which is
+   plain JavaScript. It failed to parse. Removed — the runtime test does not need the
+   cast, since the loosened parameter accepts the extra fields anyway.
+2. The first `readSnapshotAddress` signature change broke `typecheck`; the fix was to
+   loosen the parameter rather than cast at the call site, and both new assertions
+   now pin that behaviour so it cannot silently be tightened again.
+
+**Open gaps.**
+
+- Still **nothing has rendered on a phone**. The rider card's new landmark line is
+  the *most* purely-visual change in the project so far and is entirely unverified
+  visually — no Android SDK, `adb` or emulator on this machine.
+- The other M-register items are addressed below in `PRODUCTION.md`; M8 (real
+  photographs) remains an owner deliverable, not a developer one.
+- Nothing is committed or pushed yet.
+
+---
+
+## 2026-10-20 — Phase 4: the safety net — crash reporting and CI
+
+*(fourteenth session; adds `.github/workflows/checks.yml`,
+`apps/mobile/src/lib/crash-reporting.ts`; changes
+`apps/mobile/src/app/_layout.tsx`, `apps/mobile/app.json`,
+`apps/mobile/metro.config.js`, `apps/mobile/package.json`,
+`apps/mobile/.env.example`. Also upgrades six Expo packages.)*
+
+Register **H11 (crash reporting) and H12 (CI) are done.**
+
+**Crash reporting.** Sentry, started at module scope in the root layout so an error
+thrown while the tree is being built is still captured, with `Sentry.wrap`
+surrounding the root so an unhandled render error becomes a report rather than a
+white screen — the failure mode a customer never bothers to report.
+
+Three decisions:
+
+- **The DSN ships in the app, and that is not a mistake.** A Sentry DSN is a
+  *write-only ingest key*: it can send events to exactly one project and cannot read
+  anything back. It is designed for client binaries. This matters because the repo
+  has a loud rule about secrets (AGENTS §9.6) and a future reader will otherwise
+  assume this line broke it. It still lives in `.env`, not the repo.
+- **No personal data leaves the phone.** `sendDefaultPii: false` plus a
+  `beforeSend` that strips the user block, cookies and query strings — in one place,
+  so there is one thing to audit instead of a rule scattered across the app. The
+  only identifier is an opaque Supabase user id, cleared on sign-out. In a town this
+  small, a crash report must not carry a neighbour's address.
+- **No DSN means nothing starts.** A fresh checkout gets no noise, and reporting can
+  never itself be the thing that crashes.
+
+**Honest limitation, recorded now so it is not discovered during review:** native
+crashes (dying in Kotlin/Swift) are **not captured in Expo Go** — only JS errors,
+and only in development. Full crash reporting needs a development or release build.
+So **H11's actual value is not realised until the first `eas build`**; the code is
+wired and inert until then.
+
+**CI.** `.github/workflows/checks.yml`, on every push and pull request. It runs the
+same commands a developer runs — no CI-only scripts — so a green CI and a green
+local run mean the same thing. PostgreSQL 16 is installed in the job because
+`supabase/tests/run.sh` boots its own throwaway cluster and needs no service.
+
+**`expo-doctor` in CI immediately earned its place** by finding six packages had
+drifted off SDK 57's expected patch versions (`expo`, `expo-constants`,
+`expo-crypto`, `expo-linking`, `expo-router`, `expo-splash-screen`). Upgraded all
+six within SDK 57; the full gate and a real bundle export were re-run afterwards.
+
+**One exemption, argued rather than assumed.** `expo-doctor` flags
+`resolver.disableHierarchicalLookup` in `metro.config.js`. That line is deliberate
+and is what Expo's own monorepo guide asks for; `npx expo export --platform android`
+proves the bundle builds with it, so removing it to quieten the warning is the
+change that would break things. The workflow therefore drops **only** that block and
+fails on any other complaint of any kind.
+
+I got this wrong once and it is worth recording: the first version filtered
+line-by-line and **still failed on its own exemption**, because the `✖ Check for
+issues with Metro config` heading and the `N checks failed` summary survived the
+filter. The working version drops the whole block. It was then tested against three
+inputs — the real output (pass), a simulated SDK-drift failure (fail), and both
+together (fail). The third is the one that matters: an exemption which masks a real
+problem is worse than no exemption, and that is exactly what the first attempt did.
+
+**Verified, and how.**
+
+- `npm run typecheck` → 0 errors both apps. `npm run lint` → 0 errors, 0 warnings
+  (i18n 545 keys parity, auth doors 15/15).
+- `npm run test:db` → **459 assertions, 0 failures**.
+- `npm run check:session` → all 16 checks pass. Run deliberately after the upgrade,
+  because `expo-crypto` and `expo-linking` moved.
+- `npx expo export --platform android` → builds, 5.9 MB Hermes bundle (was 4.4 MB;
+  Sentry adds ~1.5 MB). This is the integration proof that the upgrade and the
+  config plugin are sound; the artifact was deleted afterwards.
+- `npx expo install --check` → "Dependencies are up to date".
+- The CI doctor filter was tested against real and simulated output (above).
+
+**Open gaps.**
+
+- Still **nothing has rendered on a phone** — no Android SDK, `adb` or emulator on
+  this machine. Crash reporting and CI both landed on a codebase nobody has looked
+  at on a device, which sharpens the point rather than softening it.
+- No Sentry account, project or DSN exists yet. No `SENTRY_AUTH_TOKEN`, so source
+  maps will not upload until one is set in the EAS environment. Without source
+  maps a crash report is a minified stack trace.
+- The CI workflow has never actually run on GitHub — it cannot until this is pushed.
+  It is written against the documented behaviour of `actions/checkout@v4` and
+  `setup-node@v4`, and the doctor filter is locally tested, but "CI is green" is not
+  yet a fact.
+- Nothing is committed or pushed yet.
+
+---
+
+## 2026-10-20 — Phase 4, third piece: the owner can change the shelf from the phone
+
+*(thirteenth session; adds
+`supabase/migrations/20261021000003_product_guard.sql`,
+`supabase/tests/20_product_guard_test.sql`,
+`apps/mobile/src/hooks/use-product-shelf.ts` and
+`apps/mobile/src/app/admin/shelf.tsx`; changes `admin/_layout.tsx`,
+`types/database.ts` and both locale files.)*
+
+Register **M2 is now done** — both halves. The totals half landed in the previous
+entry; this is the price/stock half.
+
+**The problem, stated honestly.** The app had no way to change a price or say
+"none left". The web panel could, but the panel is a desk tool and the owner runs
+the shop from a phone at the counter. What runs out changes hourly in a grocery
+shop, so the shelf drifted out of date by lunchtime and the shop sold what it did
+not have — and every one of those becomes a failed delivery.
+
+**What was built.** `update_product_from_shop()` — price, MRP, stock, active,
+emoji, no arguments for anything else — plus `guard_product_update()`, plus a new
+**Shelf** tab in the owner's face.
+
+**The decision worth recording: no column was added, and no policy was widened.**
+`products` already had every field and every CHECK, and test 06b already proves the
+CHECKs bind the owner too. The gap was not storage. It was **a door that tells the
+truth**, and a guard that stops a mis-tap:
+
+1. `supabase.from('products').update(...)` by anyone who is not the shop matches
+   **zero rows and raises no error** — RLS filters the row out. That is not a
+   theory; tests 01, 05 and 11 all depend on it. A save button built on it would
+   say *Saved* while nothing was saved (AGENTS.md §9.4). The RPC raises instead,
+   and returns the row as the database holds it so the screen shows the stored
+   value (§9.1).
+2. The policy permits an admin to write *any* column. The guard narrows that to
+   what a counter edit is, and **freezes `store_id` even for the admin** — moving a
+   product to another shop would silently repoint existing order history.
+
+**Two bugs found while building it, both of which would have shipped silently.**
+
+- **The first guard broke `place_order()`.** Refusing every non-admin write to
+  `products` also refused the stock decrement that every single order performs —
+  `place_order()` is `security definer` but the caller's JWT is still the
+  customer's, so a role check saw "a customer editing the shelf". Test 02 caught
+  it immediately. Fixed with the device `delete_my_account()` already uses: a
+  transaction-local flag (`stock_move_in_progress()`) plus a **shape check** that
+  while the flag is set only `stock_qty` may differ. A flag alone would be a hole
+  any customer could borrow.
+- **Re-creating `place_order` nearly deleted coupons.** The current version is the
+  six-argument one in `20261014000004_coupons.sql`, not the five-argument original
+  in `20261002000008`. I copied the stale original first. A mechanical `diff`
+  against the coupons version now confirms the only difference is the four added
+  `set_config` lines. **Lesson for a future session: before re-creating a
+  function, grep every migration for it — the last definition wins, and it is not
+  always in the obvious file.**
+
+**Verified, and how.**
+
+- `npm run test:db` → **459 assertions, 0 failures** (was 439). Test 20 adds 20:
+  a customer, a signed-out caller and a rider are all refused by the RPC with
+  `42501`; a rider's plain update still touches 0 rows *silently* (asserted, so the
+  reason the RPC exists stays on the record); the owner can change price, stock and
+  active-ness; a parameter left out is not overwritten; `price 0`, negative stock
+  and MRP-below-price are refused `23514` **through the RPC**; and the owner cannot
+  move a product to another shop.
+- The concurrency suite (`04_concurrency_test.sh`) still passes, which is what
+  proves the flag did not weaken `place_order`'s row locking.
+- `npm run typecheck` → 0 errors both apps. `npm run lint` → 0 errors, 0 warnings.
+- `npm run check:i18n` → **545 keys** in both languages (was 519), parity held.
+- `npm run check:session` → all passed. `check:auth-doors` → 15/15.
+- Re-created functions diffed mechanically against their live sources; only the
+  intended lines differ.
+
+**Open gaps.**
+
+- Nothing has still rendered on a phone. No Android SDK, `adb` or emulator on this
+  machine — the Shelf screen and the Today screen are typechecked and lint-clean
+  but have never been looked at. This remains the highest-value hour in the project.
+- `update_product_from_shop()` and `guard_product_update()` have never run against
+  the hosted project, only the throwaway test PostgreSQL.
+- The MRP rule has a UX wrinkle: raising a price above the printed MRP raises the
+  MRP with it, which is what the owner usually means, but a shop that genuinely
+  wants to sell above its own printed price cannot. Left as is — a shop cannot
+  legally sell above its printed MRP anyway.
+- Nothing is committed or pushed yet.
+
+---
+
+## 2026-10-20 — Phase 4, second half: the owner's day has a number
+
+*(twelfth session; adds
+`supabase/migrations/20261021000002_shop_totals.sql`,
+`supabase/tests/19_shop_totals_test.sql`,
+`apps/mobile/src/hooks/use-shop-totals.ts` and
+`apps/mobile/src/app/admin/today.tsx`; changes
+`apps/mobile/src/app/admin/_layout.tsx`, `apps/mobile/src/types/database.ts`, both
+locale files, `README.md`, `AGENTS.md` and `PRODUCTION.md`. Working tree only —
+nothing is committed or pushed.)*
+
+**Register H3 is closed.** The open cash loop now has a screen behind it: the
+owner's **Today** tab reports what the shop took, what is still in a rider's
+pocket, what the day cost in giveaways, and what is owed back to customers.
+
+### What was built
+
+- `app/admin/today.tsx` — a new tab in the owner's face, ordered by certainty
+  rather than by size: earned → delivered → cash → owed back → costs → problems →
+  who is holding the money. Light and dark, both languages.
+- `shop_day_totals()` and `shop_day_by_rider()` (migration
+  `20261021000002_shop_totals.sql`) compute every figure **in Postgres**.
+- `use-shop-totals.ts` — two TanStack Query hooks over those RPCs, polling at the
+  same 60 s as the board.
+
+### Decisions, with reasons
+
+1. **The totals are an RPC, not a sum in the app.** The owner's board fetches at
+   most 100 orders and filters cancelled ones out. Summing those would produce a
+   confident, *wrong* "today" the moment the shop does more than 100 orders in a
+   day — and it would look right. Rule 9.1 says money is decided in the database;
+   this is what that looks like when the alternative is tempting.
+2. **`Asia/Kolkata` is hard-coded** rather than read from a setting. This is a
+   one-shop app in one town; the shop's day is the Indian day. A timezone the
+   owner cannot misconfigure cannot go wrong. If a second shop ever appears in
+   another zone, this becomes a column on `stores`.
+3. **The door is checked before a row is read.** Both functions raise `42501` for
+   anyone who is not staff — including a signed-out caller, whose
+   `current_user_role()` falls back to `customer`. The publishable key cannot be
+   used to ask what the shop took today.
+4. **Two aggregate types, not one wide row of JSON** (`shop_day_totals`,
+   `rider_day_total`), so the shape is checked in the database and generated in
+   `types/database.ts`, and no amount can arrive as a string.
+
+### Bugs found — by the test, before any of this shipped
+
+Writing test 19 was worth more than the function. Both bugs were in the design,
+not the arithmetic:
+
+1. **`gross` counted failed deliveries as takings.** The filter was
+   `status <> 'cancelled'`, which includes `failed`. A failed delivery is not a
+   sale: the rider came back with the bag and no money changed hands. The day was
+   overstated by exactly the orders that went wrong — the worst possible bias for
+   a number the owner uses to decide whether to keep the app. `gross_paise`,
+   `orders_placed`, `delivery_fee_paise` and `discount_paise` now all exclude
+   `cancelled`, `failed` and `returned`.
+2. **Refund liability did not exist.** A customer who paid online and never got
+   their order was invisible on the screen — the shop was holding their money and
+   nothing showed it. Added `refund_due_paise`: online, paid, and `cancelled` /
+   `failed` / `returned`. Kept deliberately apart from `gross_paise`, because it is
+   the opposite of takings. A failed **COD** order is correctly *not* a refund —
+   that cash was never collected — and the test asserts exactly that difference.
+
+Also learned while writing the test (and recorded in its header so the next
+session does not repeat it): **test 19 cannot assert against "today".** Test 12
+loads `supabase/demo.sql`, which inserts 25 orders at `placed_at = now()`, so
+"today" already holds 28 orders this file did not create. The fixture orders are
+therefore placed on a fixed quiet day (2020-01-15) and every figure is asserted
+for that date; today is checked separately and only for the one thing that is
+genuinely true of it — that the default day is today in Asia/Kolkata. The first
+draft also used a temporary table for that date, which failed because a temp table
+belongs to the role that made it and the queries run as `authenticated`.
+
+### Verified, and how
+
+- `npm run test:db` — **439 assertions, 0 failures** (was 413). Test 19 adds 26.
+  The suite includes the pre-existing `orders_totals_add_up` CHECK, which caught
+  the first draft of the fixture arithmetic and proved it is still doing its job.
+- `npm run typecheck` — 0 errors, both apps.
+- `npm run lint` — 0 errors, 0 warnings. `check:i18n` reports **519 keys in both
+  languages** (was 490), 374 used literals, 10 dynamic families;
+  `check:auth-doors` 15/15.
+- New index `orders_store_placed_idx` on `(store_id, placed_at desc)`, because the
+  day query is filtered by exactly that pair and the board polls it every minute.
+
+### Open gaps
+
+- **Nothing has rendered on a phone.** Still no Android SDK, no `adb`, no
+  emulator on this machine. The Today layout is typechecked and lint-clean but has
+  never been looked at. This remains the single highest-value hour in the project
+  (PRODUCTION.md §5).
+- `shop_day_totals()` has never run against the hosted project — only the
+  throwaway test PostgreSQL.
+- **Client deliverables unchanged** (PRODUCTION.md §14): real product photographs,
+  hosted privacy URL (needs a domain), FSSAI number, GST decision, Legal Metrology
+  wording, LICENCE decision, rider photos.
+
+---
+
+## 2026-10-20 — Phase 4: the rider is a person, and a delivery can honestly fail
+
+*(eleventh session; covers the new
+`supabase/migrations/20261021000001_order_tracker.sql` and
+`supabase/tests/18_order_tracker_test.sql`; changes to
+`apps/mobile/src/types/database.ts`, `apps/mobile/src/hooks/use-staff-orders.ts`,
+`apps/mobile/src/hooks/use-profile.ts`, `apps/mobile/src/lib/order-status.ts`,
+`apps/mobile/src/app/order/[id].tsx`, `apps/mobile/src/app/rider/index.tsx`,
+`apps/mobile/src/app/(tabs)/orders.tsx`, both locale files, `README.md` and
+`PRODUCTION.md`. Working tree only — nothing is committed or pushed.)*
+
+Phase 4 is the customer-trust half of the pilot phase: the three things that cost
+almost nothing, need no client input, and carry the most weight in a town where
+the rider *is* the interface and one in three adults cannot comfortably read a
+sentence. Two register items close, and one gets its trust half.
+
+### 1. The rider is a person, not a status (M5 / H2 trust half)
+
+The order screen now shows the assigned rider's **name and photo**, and a **Call
+the rider** button that opens the dialler pre-filled (nothing is dialled
+silently). The card hides itself entirely when nobody has claimed the order, so
+the screen has no empty hole.
+
+The interesting part is *how* the customer is allowed to see it. The `profiles`
+policy is "your own row, or admin" — correct, and it must not be widened, or any
+customer could read every customer. So the migration adds a narrow view:
+
+```sql
+create or replace view public.rider_directory
+with (security_invoker = false) as
+select p.id, p.full_name, p.avatar_url, p.phone
+from public.profiles p where p.role = 'delivery';
+```
+
+Four columns, riders only, `select` granted to `authenticated` and revoked from
+`anon`. `security_invoker = false` is deliberate: with `true` the view would
+re-apply the profiles RLS and return nothing, and the view's whole purpose is to
+expose exactly these four columns and no other profile field. Test 18 asserts the
+column list is exactly `id,full_name,avatar_url,phone`, and that a customer
+*still* cannot read another customer's row directly — the view is a window, not a
+door.
+
+`rider_directory` is typed in `apps/mobile/src/types/database.ts` as
+`RiderDirectoryEntry`, and `useRider()` reads it with `maybeSingle()` so "nobody
+assigned" is a normal `null`, not an error.
+
+### 2. An honest end state (M3)
+
+`order_status` gains two **terminal** values: `failed` (a delivery attempt that
+did not succeed) and `returned` (the bag came back to the shop). They are
+appended to the enum, never inserted — the ordinal of an existing value is part
+of the stored data.
+
+`orders` gains `failure_reason` (a fixed list: `not_home`, `wrong_address`,
+`refused`, `unreachable`, `other`) and `failure_note` (the rider's own words, for
+the owner). Two CHECK constraints keep it honest in both directions:
+
+- a `failed`/`returned` order **must** carry a reason;
+- no other status may carry a reason or a note.
+
+So `failure_reason` can never drift onto a live order, and a rider cannot close a
+delivery without saying why.
+
+**Terminal, and it cost a bug to make it so.** The first version of the guard let
+`failed -> delivered` through: `failed` had no rank in the "forward one step"
+table, so it resolved to 0, `delivered` is 5, and `5 <= 0` is false — the reopen
+was *allowed*. That is exactly the dishonest state this migration exists to
+prevent, and test 18 caught it. The guard now refuses any move out of
+`failed`/`returned` outright, before the rank comparison. `failed -> returned` is
+the one permitted transition.
+
+The rider picks a reason from a panel under the order card, with an optional
+note, and can say "the bag came back to the shop" in the same panel. The customer
+reads it as a translated sentence plus "nothing was charged for this order. Call
+the shop and we will send it again." — never as a failure they caused.
+
+### 3. Failed is not cancelled, anywhere
+
+`cancelled` means nobody ever left the shop; `failed` means a rider stood at a
+door. New `TERMINAL_STATUSES` / `isTerminal()` in `lib/order-status.ts` give
+every screen one definition of "finished", so the customer's Orders filter now
+counts all four terminal states as done without conflating them, and each of the
+four has its own icon and colour (carried by the icon as well as the colour,
+because colour alone fails a colour-blind rider — KUNIGAL.md §2).
+
+### Verification, and what it proved
+
+- **`npm run test:db` — 413 assertions, 0 failures** (was 392; test 18 adds 21).
+- The migration applied cleanly on a throwaway PostgreSQL built from every
+  migration in filename order.
+- Test 18 proves, against real PostgreSQL: a rider can fail an
+  out-for-delivery order with a reason and then return it; a live order cannot
+  carry a reason; a failed order must carry one; an unknown reason is refused;
+  `failed` cannot be reopened as `delivered` or moved back to `out_for_delivery`;
+  a `placed` order cannot fail; a rider still cannot change money or blank the
+  assignment; and the customer reads the rider's name and photo through the view
+  while still being unable to read another customer's profile row.
+- `npm run typecheck` — 0 errors, both apps.
+- `npm run lint` — 0 warnings (includes `check:i18n` and `check:auth-doors`).
+- `npm run check:i18n` — **490 keys** in parity (was 460), 345 used literals.
+- `npm run check:session` — all passed.
+- `npm run check:auth-doors` — all passed.
+
+### Bugs found (this is the useful part)
+
+1. **The guard's rank hole** (above): `failed -> delivered` was allowed because
+   the end states had no rank. Only a test that asserts the *forbidden* case
+   fails would have caught it. Fixed in the migration; asserted in test 18.
+2. **`orders_guard_insert` silently rewrites a fixture.** It forces
+   `status := 'placed'` whenever `current_user_role()` is `customer` — and
+   `current_user_role()` **falls back to `customer` when `auth.uid()` is null**.
+   So inserting an `out_for_delivery` fixture order as the table owner (no
+   signed-in user) quietly rewrote it to `placed`, and every later assertion in
+   the suite was reasoning about a row that was not what it said it was. Test 18
+   now inserts its fixtures **while signed in as the admin**, and asserts the
+   fixture really is `out_for_delivery` before testing anything about failures.
+   This trap is now documented in the test file's header, because it will catch
+   the next person too.
+3. **A `select` on a missing row is not a refusal.** The "customer cannot read
+   another customer" assertion was first written with `refused(...)`, but RLS
+   *filters* rows silently rather than raising, so the correct assertion is that
+   the row count is zero. Fixed.
+
+### Decisions, with reasons
+
+- **`returned` as well as `failed`.** A failed attempt and a bag that has come
+  back are different facts — one is "try again tomorrow", the other is "it is on
+  the shelf". They are both terminal, and the rider picks the true one.
+- **A fixed reason list, not free text.** The customer's screen must render a
+  translated sentence; a fixed code makes that possible in English *and* Kannada.
+  The rider's own words still ride along in `failure_note`, for the owner only.
+- **A view rather than a wider policy.** Widening the profiles policy to "riders
+  are public" would have leaked address-adjacent profile data to every customer.
+  A four-column view is the smallest thing that works and is provable.
+- **The rider card hides on delivered/cancelled.** A delivered order does not
+  need a rider card, and neither does one that was never dispatched; showing it
+  would be noise.
+- **`failed` gets its own colour, not the cancellation red.** Reusing `danger`
+  would read as "somebody cancelled this", which is the exact conflation M3 is
+  about.
+
+### Open gaps
+
+- **Nothing has rendered on a phone.** The rider card, the fail panel and the
+  new statuses are typechecked, linted and proven at the database layer — but no
+  device run was possible on this machine (no Android SDK, no emulator). The
+  layout is unverified.
+- `rider_directory` is a new object on the **hosted** project once the migration
+  runs; it has never run there. It behaves identically to the test PostgreSQL
+  because it is plain SQL, but say so rather than imply it was exercised.
+- The **landmark field** (the other half of M5) is still not built. The address
+  is free text; a rider still has only the note to go on.
+- Rider **photos** do not exist in `storage` yet — `avatar_url` is null for every
+  rider on the hosted project, so the card draws the fallback person icon. That
+  is a working state, not a broken one, but the photo half is inert until the
+  owner uploads faces.
+- `apps/admin` (the Next.js panel) was not touched; the owner sees the new
+  statuses in the app's admin board via the shared status style, but the web
+  panel has no failed-order view.
+
+---
+
+## 2026-10-20 — Phase 3: the legal and store minimum (the dev half)
+
+*(tenth session; covers the new `supabase/migrations/20261020000001_account_deletion.sql`
+and `20261020000002_shop_identity.sql`, the new
+`supabase/tests/16_account_deletion_test.sql` and `17_shop_identity_test.sql`,
+`apps/mobile/src/hooks/use-account-deletion.ts`,
+`apps/mobile/src/app/privacy.tsx`, `apps/mobile/src/app/(tabs)/account.tsx`,
+`apps/mobile/src/app/order/[id].tsx`, `apps/mobile/src/types/database.ts`,
+`scripts/check-i18n.mjs`, both locale files, `README.md`, `AGENTS.md` and
+`PRODUCTION.md`. Working tree only — nothing is committed or pushed.)*
+
+Phase 3 is the statutory and store gate: things that must exist before either
+store will list the app, and before a Kunigal customer's data can be lawfully
+held. Half of it is paperwork only the owner can produce (a hosted policy URL,
+the FSSAI and GST numbers, the CA's word on the cash memo). This session did
+everything on the developer side of that line, and left the owner halves visibly
+empty rather than faking them.
+
+### 1. Account deletion, in the database first (C5)
+
+`public.delete_my_account()` (migration `20261020000001`) — takes **no
+arguments**, so it can only ever act on `auth.uid()`. That is the property that
+matters most: the app cannot express "delete somebody else".
+
+The hard part is not deleting. It is that `orders.user_id` is `on delete
+restrict` **on purpose** — an order is the shop's book of account, and a
+shopkeeper must be able to answer "what did we sell on the 12th" long after the
+customer has gone. So deletion erases the *person* and keeps the *paperwork*:
+
+- `profiles` — gone (cascades from `auth.users`).
+- `addresses` — every row deleted; pure personal data.
+- `favourites` — gone by cascade.
+- `orders` — **kept**, moved to a tombstone profile
+  (`public.deleted_customer_id()`), with `delivery_address` rewritten to an
+  `{erased: true}` snapshot. Money, items and timestamps are untouched, and the
+  totals CHECK still balances.
+- `auth.users` — deleted, so the phone number can sign up fresh.
+
+Three things in there are decisions, not mechanics:
+
+- **The tombstone.** `user_id` is `not null` and orders must survive, so the rows
+  need *some* owner. A fixed all-zeroes-with-a-suffix uuid takes them. A guard
+  trigger (`profiles_guard_deleted`) keeps it nameless, phoneless, a plain
+  `customer`, and undeletable. If it could ever become an admin, every erased
+  order would become admin-writable.
+- **A transaction-local erasure flag.** `guard_order_update()` refuses a customer
+  changing `user_id` or `delivery_address` — which is exactly what an erasure
+  must do. A trigger sees a row, not a call stack, so the erasure announces itself
+  with `set_config('kunigal.erasing_account', 'on', true)` and the guard accepts
+  the update **only when the flag is set AND the new shape is exactly an
+  erasure**. The flag alone would have been a hole: any customer could set it and
+  rewrite their own delivery address.
+- **The only admin is refused.** Deleting the shop's last admin locks the owner
+  out of his own panel, so it raises instead. This is register H9 seen from the
+  other side, and the two halves now agree.
+
+### 2. Account deletion, in the app (C5)
+
+`apps/mobile/src/hooks/use-account-deletion.ts` classifies the Postgres error
+into one of three codes (`only_admin`, `not_signed_in`, `unknown`) and clears the
+query cache **before** signing out, so no screen can flash the deleted person's
+orders on the way to the signed-out state. The Account screen gets a block at the
+very bottom — below everything, because it is the one thing nobody should tap by
+accident — with a two-tap destructive confirm and a button disabled while the
+request is in flight.
+
+### 3. The notice, in the customer's own language (H5)
+
+`apps/mobile/src/app/privacy.tsx`, with `privacy.*` in **both** locales and
+written in the KUNIGAL voice. This is not decoration: DPDP Act 2023 s.6(3) +
+DPDP Rules 2025 Rule 3 require the notice to be accessible in English *or an
+Eighth Schedule language*, and Kannada is one. A hosted policy URL is still
+required by both stores and is still missing — that one needs the domain, and it
+is the owner's.
+
+### 4. The transaction document (H6/H7/H8)
+
+migration `20261020000002_shop_identity.sql` adds `stores.fssai_number`,
+`stores.gstin`, `stores.grievance_phone`, `products.packer_name`,
+`products.net_quantity` and `store_settings.receipt_footer`, with CHECK
+constraints that reject a 13-digit FSSAI number or a lowercase/malformed GSTIN.
+The order screen (which *is* the e-commerce transaction document) and the privacy
+screen display them **when set**.
+
+Every one of them is nullable, and test 17 asserts the seeded shop has none. That
+is deliberate: an invented licence number in a shipped app is a false statutory
+claim on a screen that says "this is who we are" — worse than a missing one. The
+real numbers are the owner's to supply (`PRODUCTION.md` §14).
+
+### Bugs found
+
+Three, all by test 16 — which is precisely why rule 9.7 demands the test:
+
+1. **A comment ate a statement.** An edit removed a newline, joining
+   `-- ... must be last: steps 4 and 5 need ...` with `delete from auth.users`.
+   The delete silently became part of the comment and never ran. Caught because
+   the test asserted the auth user is gone.
+2. **`return new` in a `BEFORE DELETE` trigger cancels the delete.** The
+   tombstone guard returned `new` for every non-tombstone row; in a DELETE, `new`
+   is NULL, so *every profile delete in the system was silently a no-op*. Now
+   returns `old` on DELETE. This would have made account deletion appear to work
+   while leaving the profile behind.
+3. **Order of operations inside the erasure.** `orders.address_id` is
+   `on delete set null`, so deleting the addresses first made Postgres issue its
+   own UPDATE on the order — which the guard correctly refused. The order update
+   now runs first, so the cascade has nothing left to change.
+
+A fourth, in the test itself: the first version used the shared fixture admin
+`33333333…` for the "only admin" case and deleted him. Because `run.sh` runs the
+SQL suites *before* the shell race test, test 04's shop transaction then ran as a
+user that no longer existed, failed silently, and released its row lock
+instantly — so the concurrency test failed for a reason that had nothing to do
+with concurrency. A test may create its own fixtures; it may not eat another
+test's. Now uses a throwaway admin and restores the fixture graph.
+
+### Verified
+
+- `npm run typecheck` — 0 errors, both apps.
+- `npm run lint` — 0 errors, 0 warnings (includes `check:i18n` and
+  `check:auth-doors`).
+- `npm run check:i18n` — **460 keys**, identical key sets in `en.json` and
+  `kn.json`, 330 used literals, 8 dynamic families. `privacy.gstinLabel` was
+  added to the checker's `SAME_IS_FINE` allowlist: GSTIN is a statutory acronym
+  with no Kannada form, and a transliteration would make it harder to match
+  against a real document.
+- `npm run check:session` — all passed (unchanged by this work).
+- `npm run check:auth-doors` — 15/15.
+- `npm run test:db` — **392 assertions, 0 failures** (348 before this session;
+  29 new in test 16, 15 new in test 17). Test 16 covers: the function is
+  `security definer` and not executable by `anon`; a signed-out caller is
+  refused; a customer erases themselves; the profile, addresses and auth user go;
+  the order survives with its money byte-for-byte identical and its totals CHECK
+  still satisfied; the delivery snapshot names nobody; another customer is
+  untouched; and the tombstone cannot be renamed, phoned, promoted or deleted.
+  Test 17 covers the new columns, the CHECK refusals, and that the new columns
+  did not widen any policy (an inactive product is still invisible to `anon`).
+
+### Not verified, and gaps
+
+- **Nothing has been run on a phone.** This machine has no Android SDK, no
+  `adb`, no emulator and no `ANDROID_HOME`. The delete flow's dialogs, the
+  privacy screen's layout and the new i18n strings have never been rendered.
+- **`delete_my_account()` has never run against the hosted project** — only
+  against the throwaway PostgreSQL in `supabase/tests/`. The local stub's
+  `auth.users` is trimmed to the columns the migrations need, so the function
+  builds its tombstone `INSERT` from `information_schema` rather than naming
+  columns that the stub lacks. That dynamic insert is *exactly* the shape of
+  thing that behaves differently on the real schema, so it must be exercised
+  once by hand on the hosted project before launch.
+- **No hosted privacy policy URL, no `LICENSE`.** Both are still open; the URL
+  needs the domain.
+- **The FSSAI and GST numbers are not supplied**, and the Legal Metrology
+  wording is `[UNVERIFIED]` against the CA's requirement.
+- **`eas config` still cannot run here** (needs an EAS login) and no EAS build
+  has been attempted.
+
+### Docs corrected
+
+`README.md` and `AGENTS.md` both claimed `demo.sql` seeds **9** orders;
+`demo.sql` actually has **25**. The count is now 25 in both files, and the two
+new migrations are in the README's list (M11).
+
+---
+
+## 2026-10-20 — Phase 2: a door a real customer, and a store reviewer, can both open
+
+*(ninth session; covers `apps/mobile/src/app/login.tsx`,
+`apps/mobile/src/app/(tabs)/account.tsx`, `apps/mobile/src/lib/demo-accounts.ts`,
+`apps/mobile/src/components/demo-accounts.tsx`, `apps/mobile/eas.json`,
+`apps/mobile/.env.example`, the new `scripts/check-auth-doors.mjs` +
+`scripts/node-hooks/`, and both locale files. Working tree only — nothing is
+committed or pushed.)*
+
+Phase 1 proved the app *builds* (see the entry below). This session was Phase 2:
+the sign-in, which the review called Critical (C1) and the source of two more
+items (C8, H9). The owner-only half — an SMS provider and DLT registration —
+cannot be done from here, so this session did every part that can be: the three
+ways a real person meets that door.
+
+### 1. Guard the door (C1, partly)
+
+The app already refused to print a raw provider error; what it lacked was a way
+*out*. `apps/mobile/src/app/login.tsx` now:
+
+- puts the shop's own phone number one tap away, through the existing `CallShop`
+  component, whenever the customer is on the code step or has just seen an error.
+  It renders nothing when `store_settings.support_phone` is empty, so it cannot
+  leave a hole;
+- has a dedicated `auth.error.offline` sentence, and maps a 5xx / "provider" /
+  "sms" failure onto the same "call the shop" sentence as OTP-being-off, because
+  the customer's next action is the same either way;
+- shows the Supabase **test-number** hint only in `__DEV__`. It was being shown to
+  every customer, and it is developer advice.
+
+### 2. Account recovery (H9)
+
+The sign-in **is** the phone number, so a changed number is a lost account — in
+this town the common case, not a corner case. Account → **"Changed your phone
+number?"** now explains the path in the shop's voice and puts the shop's number
+one tap away; the owner moves the number from the admin panel.
+
+There is deliberately **no** self-serve change. With OTP-only auth the customer
+cannot prove they own the old number, and an unauthenticated "change my number"
+endpoint would be an account-takeover hole. Moving it into a form the owner has to
+act on is the honest version, and it is the one that fits a one-shop town.
+
+### 3. The store reviewer's door (C8)
+
+Apple's guideline 2.1(a) expects a working demo login `[EXTERNAL]`, and Google
+Play asks for credentials too. The existing demo path could not serve: it is
+behind `__DEV__`, so it is compiled out of exactly the build a reviewer installs.
+
+There are now **two switches, and they are not the same switch**:
+
+| | Gate | Appears in a release? |
+| --- | --- | --- |
+| dev demo accounts | `__DEV__` **and** `EXPO_PUBLIC_DEMO_*` | no — dropped from the bundle |
+| reviewer account | `EXPO_PUBLIC_REVIEW_*` only | yes, but **only** when those two are set |
+
+The reviewer door is **one customer account**. Never an admin: a reviewer poking
+at the owner's board is a support ticket, and `profiles.role` is enforced in the
+database, so the choice cannot be escalated from the client anyway.
+
+A new EAS profile makes it explicit: `build.review` extends `production` and sets
+`EXPO_PUBLIC_REVIEW_EMAIL` / `EXPO_PUBLIC_REVIEW_PASSWORD` to empty strings, which
+the code treats as "no door" — so the profile is a safe scaffold to fill in, not a
+loaded gun. `apps/mobile/.env.example` documents all of it and says plainly that
+the door must be shut again for the live build.
+
+### 4. A bug this found, and a design change that came out of it
+
+`scripts/check-auth-doors.mjs` was written to prove the table above, and case 5 —
+*set the demo variables but build a release* — **failed on the first run**. The
+availability flag was correctly `false`, but `demoAccounts` was still a populated
+array: the credentials were in the bundle, merely unreachable. Unreachable is not
+absent. `demo-accounts.ts` now builds the list as `__DEV__ ? [...] : []`, so in a
+release the addresses are dropped as dead code.
+
+### 5. Verified, and how
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | clean, both apps |
+| `npm run lint` | clean, zero warnings; **`check:auth-doors` now runs inside it** |
+| `npm run check:i18n` | **424 keys in parity** (+4: `auth.trouble`, `auth.error.offline`, `auth.review.*`) |
+| `npm run check:auth-doors` | **15/15 checks** (§3 table, including the case that failed first) |
+| `npm run check:session` | all passed (entry below) |
+| `npm run test:db` | **348 assertions, 0 failures**, real PostgreSQL 16 |
+
+The auth-door harness imports the **real** `demo-accounts.ts` five times with
+different `__DEV__` / environment combinations and asserts which doors exist. It
+needed a shared Node resolve hook for the `@/` alias, which is why
+`scripts/session-persistence/` became `scripts/node-hooks/` (one `register.mjs` +
+`hooks.mjs` + the AsyncStorage stand-in, used by both checks).
+
+**Not verified:** that the reviewer credentials actually work in Supabase (that
+account does not exist yet) and that any of the new login states *look* right —
+that needs a phone, which this machine still does not have.
+
+### 6. Decisions, with reasons
+
+- **The reviewer door is not `__DEV__`-gated.** It cannot be: the reviewer installs
+  a release. Gating on the presence of two environment variables at build time is
+  the narrowest switch that still works.
+- **One account, customer role.** Least privilege, and it is the reviewer's actual
+  job (browse, buy, see your own orders).
+- **No self-serve number change.** See §2 — it would be an account-takeover hole.
+- **`check:auth-doors` is part of `lint`.** A published dev login is not a
+  cosmetic regression, so it should fail the everyday gate, not a check someone
+  remembers to run.
+- **The dev credentials are absent, not hidden, in a release.** §4.
+
+### 7. Open gaps
+
+- **C1 is still open on the owner's side:** phone auth off, no SMS provider, no DLT
+  registration. Until then the only doors into the app are the dev one and the
+  reviewer one.
+- **The reviewer account does not exist yet** — it needs a row in Auth users and
+  the two variables in the review environment before a submission.
+- **Nothing has still run on a device.** The new login states, and whether the
+  reviewer button draws, are unproven.
+- The register is now **5 of 41 done** (C2, C3 from the entry below; C8 and H9 in
+  code here; H12's build half). Everything else stands.
+
+---
+
+## 2026-10-19 — The front door: a session that survives a restart, a build we can install, and `PRODUCTION.md`
+
+*(eighth session; covers `apps/mobile/src/lib/supabase.ts`, `apps/mobile/app.json`,
+the new `apps/mobile/eas.json` and `PRODUCTION.md`. Nothing is committed or pushed.)*
+
+This session started as an adversarial review of the whole repository rather than a
+feature. A five-advisor / five-reviewer run (the artefacts are in
+`.council/runs/20261019-1731-kunigal-production-review/`, now git-ignored) came
+back **"do not release"**, with three showstoppers that are facts about this repo,
+not opinions:
+
+1. **Nobody can sign in.** The only release sign-in path is phone one-time-code and
+   phone auth is disabled on the project. `supabase/demo-accounts.sql`'s own header
+   already says so. **Not fixed — it needs an SMS provider and DLT registration.**
+2. **Nobody stays signed in.** `createClient` was given `persistSession: true` and
+   no `storage` adapter, so the session lived in memory. **Fixed here.**
+3. **Nobody can install it.** No `android.package`, no `ios.bundleIdentifier`, no
+   `eas.json`. **Fixed here.**
+
+…plus the flaw that let all three hide: **nothing in this project has ever run on a
+device or an emulator.** Every "DONE" in `ROADMAP.md` means "type-checks and the
+database tests pass". That is true and it is not evidence about Kunigal.
+
+### 1. The session now survives a cold start
+
+`apps/mobile/src/lib/supabase.ts` passes `storage: AsyncStorage` to `createClient`.
+Beyond that the auth options are unchanged. `@react-native-async-storage/async-storage@2.2.0`
+was already a dependency — the cart (`src/store/cart-store.ts`) and the theme
+(`src/store/theme-store.ts`) already persist there — so this adds **no new package
+and no new place where data lives**.
+
+**Why it was broken.** `@supabase/auth-js` uses `globalThis.localStorage` only when
+it exists *and* is writable, and otherwise builds a `memoryLocalStorageAdapter`
+over a plain per-instance object (`GoTrueClient` → `supportsLocalStorage()`).
+React Native has no `localStorage`, and `supportsLocalStorage()` additionally
+requires `document`, so the fallback was always taken. The customer's language and
+cart survived a restart; their login did not.
+
+**How it was verified** — headless, on this machine, not by inspection:
+
+```
+npm run check:session
+```
+
+16 checks, all passing. The harness deletes `globalThis.localStorage` and then:
+
+- **before** (the old options): two clients resolve to *different* in-memory
+  stores, the first reads back the session it wrote, and a second instance — the
+  app after a cold start — sees `null`;
+- **after** (`storage: AsyncStorage`, the genuine npm package): both instances
+  resolve to the same store and a fresh instance recovers the session;
+- **the real file**: `apps/mobile/src/lib/supabase.ts` is imported under plain Node
+  22 (`--experimental-strip-types`); it is asserted that it hands a storage adapter
+  to `createClient`, that a client restarted over that store recovers the session,
+  and that a client **without** the option loses it;
+- **control**: with `window` + `document` + `localStorage` present, auth-js finds
+  `localStorage` on its own — which is exactly why this defect is invisible in a
+  browser / Expo web and only bites on the phone.
+
+Two limits, stated plainly. Node's CJS/ESM interop is not Metro's, so the *real*
+AsyncStorage package cannot be handed straight to the app module under Node (it
+arrives as the `{ default, useAsyncStorage }` namespace object); the harness
+therefore uses the genuine package for the before/after pair and a one-object
+stand-in for the native store when loading the app file. And **the native
+AsyncStorage store on a real Android phone is still unproven** — that is a
+force-kill-and-reopen test, and it is the first item of Phase 1.
+
+### 2. An installable identity
+
+`apps/mobile/app.json`:
+
+- `ios.bundleIdentifier` = `in.kunigal.grocery`, `ios.buildNumber` = `1`
+- `android.package` = `in.kunigal.grocery`, `android.versionCode` = `1`
+
+`apps/mobile/eas.json` (**new**): a `preview` profile (`distribution: internal`,
+Android `apk` — this is what the pilot sideloads) and a `production` profile with
+`autoIncrement` for `versionCode` / `buildNumber`; `cli.appVersionSource` is
+`"local"`, so `app.json` remains the source of truth for versions and EAS writes
+back to it. Deliberately **no `development` profile**: it needs `expo-dev-client`,
+which is not a dependency, and a profile that cannot run is worse than one that is
+absent (the error is "profile not found", not a silent landmine).
+
+Verified: `npx expo config --type public --json` resolves all four values.
+`eas config` was **not** run — it requires an EAS login — and no build was
+attempted.
+
+**Decision — `in.kunigal.grocery` is a documented placeholder.** Nothing has been
+uploaded, so changing it now is free; once the app exists in Play or App Store
+Connect, it is permanent. It is the first open question in `PRODUCTION.md` §14 and
+it is deliberately set rather than left blank so that a build is possible today.
+
+### 3. `PRODUCTION.md` — the plan of record
+
+New file, ~550 lines, the session's main deliverable. It carries the review's full
+**41-item register** (8 Critical, 13 High, 13 Medium, 7 Low), each mapped to a
+phase, an owner and a "done when". It is authoritative over `ROADMAP.md` for
+*getting to a public release*.
+
+Every claim in it is marked `[VERIFIED]` (run on this machine), `[EXTERNAL]` (read
+from a live public source on this date, with the source named) or `[UNVERIFIED]`
+(an advisor claim this session did not confirm, with an owner and a next step).
+External claims checked on 2026-10-19 and now written down rather than guessed:
+
+- Play: a **personal** developer account created after 2023-11-13 must run a closed
+  test with **12+ testers opted in continuously for the 14 days** before applying
+  for production access (Play Console Help). Organisation accounts differ — the
+  Dashboard is the authority for this account.
+- Play: from **2026-08-31** new apps must target **Android 16 / API 36**;
+  **16 KB page sizes** are required for apps targeting API 35+ and from
+  **2027-02-01** a non-compliant update cannot be released. Expo SDK 53+ handles
+  the second; this repo is on SDK 57, so it is a non-issue today.
+- Play: from **Feb 2027**, technical-quality thresholds (crash ≤ 1.09%,
+  ANR ≤ 0.47%).
+- Apple: organisation enrolment needs a legal entity that can contract with Apple
+  **and a D-U-N-S number**.
+- DPDP: the Rules were notified **2025-11-13** and the notice obligations come
+  into force **~18 months later (≈ May 2027)**; the notice must be accessible in
+  English **or an Eighth Schedule language**, which Kannada is.
+- FSSAI: display of the registration/licence number is part of its guidance for
+  food businesses and its e-commerce guidance.
+
+**Left `[UNVERIFIED]` on purpose:** Legal Metrology declarations, the GST / cash-memo
+question (both need the shop's accountant, not a developer), and the claim that the
+demo accounts are live on the hosted project — the repository says
+`supabase/demo-accounts.sql` is development-only and the password is not in the
+repo, but this machine's git-ignored `.env` defines the demo addresses, so the
+script has been run against *some* project. Check Auth → Users before launch.
+
+### 4. Smaller edits
+
+- `README.md` — one bullet pointing at `PRODUCTION.md` and `eas.json`.
+- `.gitignore` — `.council/runs`, because the review artefacts are generated
+  evidence. They stay on disk; the durable derived artefact is `PRODUCTION.md`.
+- `scripts/check-session-persistence.mjs` + `scripts/session-persistence/`
+  (**new**) — the §1 harness, landed in the repo so the evidence for the flagship
+  fix can be re-run instead of taken on trust. Wired up as `npm run check:session`
+  and documented in `README.md` §7 and `AGENTS.md` §6.
+
+### 5. Verified, per `AGENTS.md` §9.10
+
+| Step | Result |
+| --- | --- |
+| `npm run typecheck` | clean, both apps |
+| `npm run lint` | clean, zero warnings, plus `expo lint` |
+| `npm run check:i18n` | **416 keys in parity**, 297 used literals, 8 dynamic families |
+| `npm run test:db` | **348 assertions, 0 failures**, real PostgreSQL 16 |
+| `npm run check:session` | **16/16 checks**, the session-persistence harness (§1) |
+| `npx expo config --type public --json` | the four store identifiers resolve |
+
+Not run, and why: `eas config` and any EAS build (needs an Expo account; iOS needs
+macOS or a cloud Mac), a device or emulator run (no device here — this remains the
+single largest gap), and `supabase/tests` against anything but throwaway Postgres.
+
+### 6. Decisions, with reasons
+
+- **AsyncStorage, not a new store.** Same dependency the cart and theme use. One
+  place where device data lives.
+- **`local` app-version source.** The repo's convention is that `app.json` is the
+  configuration of record and every change is written down; remote versioning
+  would move that truth to EAS's servers.
+- **No `development` EAS profile yet.** It requires `expo-dev-client`; adding a
+  native dependency to make a profile valid is a separate, deliberate step.
+- **The review artefacts are not committed.** 388 KB of generated markdown and
+  HTML; the plan built from them is.
+- **Nothing that the review did not ask for was touched.** No push, no payments,
+  no crash reporting, no CI, no OTA, no phone-auth switch — all later phases, all
+  named in `PRODUCTION.md`.
+
+### 7. Corrections to the earlier fact record
+
+Three things the review asserted were checked against the code and are **not** as
+claimed, recorded here so they are not relitigated:
+
+- `products.unit` **does** exist and is snapshotted into `order_items.unit`. The
+  real gap is narrower: `order_items.quantity` is `integer`, so fractional weights
+  (half a kilo) cannot be ordered. Register M4.
+- `place_order()` **already** enforces shop hours against `store_settings.timezone`,
+  refuses unserved zones (`zone_not_served`) and applies the free-delivery
+  threshold server-side.
+- `store_settings.timezone` **already** exists.
+
+### 8. Open gaps
+
+- **Phone OTP is still off.** The app's only release sign-in path does not work.
+  Needs an SMS provider and DLT registration — owner work, not code.
+- **Nothing has still ever run on a device.** Phase 1, and the highest-value hour
+  in the project.
+- **No account deletion, no privacy policy, no FSSAI/Legal Metrology display.**
+  Phase 3; they gate a store listing.
+- **The cash loop is open.** The owner's "Today" totals do not exist, so the first
+  cash variance he cannot reconcile is the day he stops using the app (H3).
+- **No crash reporting.** A pilot nobody can see inside is not a pilot (H11).
+- The 41-item register in `PRODUCTION.md` is the complete list; 2 items are done,
+  39 are not.
+
+### 9. Phase 1, in part — the app is proven buildable (2026-10-20)
+
+Phase 1 is "see it run on a real device". This machine has **no Android SDK, no
+`adb`, no emulator and no phone** (`ANDROID_HOME` unset), so the device half
+**cannot be done here** and has not been faked. What *can* be done on a build
+machine was done, because it is the same class of gap as the missing bundle id:
+
+- **The Android bundle assembles.** `npx expo export --platform android` produced
+  a **4.4 MB Hermes bytecode bundle** and listed all four bundled Kannada faces
+  (`assets/fonts/NotoSansKannada-{Regular,SemiBold,Bold,ExtraBold}.ttf`) plus the
+  vector-icon fonts as assets. This is the check `tsc` cannot do: it proves every
+  `require`/import path resolves and Metro can actually carry the files.
+- **The Phase 0 identifiers reach native config.** `npx expo prebuild --platform
+  android --no-install --clean` then, in the generated `android/app/build.gradle`:
+  `namespace 'in.kunigal.grocery'`, `applicationId 'in.kunigal.grocery'`,
+  `versionCode 1`, `versionName "1.0.0"`, and `MainActivity.kt` generated under
+  `android/app/src/main/java/in/kunigal/grocery/`. The bundle id is therefore no
+  longer only a string in `app.json` — it is a real Android application id, which
+  is exactly the thing that becomes immutable at the first Play upload.
+
+**Both artifacts were removed afterwards** (`expo-export` to `/tmp`, the `android/`
+tree deleted). `apps/mobile/.gitignore` already ignores `/android` and `/ios`, so
+neither was ever a candidate for committing (AGENTS.md: those folders are
+generated, never created or edited by hand).
+
+**A side effect, caught and reverted.** `expo prebuild` rewrites the workspace
+scripts `android`/`ios` from `expo start --android` → `expo run:android`, which
+would break `npm run mobile:android` on any machine without an Android SDK. The
+file was restored with `git checkout --`. If prebuild is ever run in earnest, expect
+and revert that.
+
+**Still not proven, and still the point of Phase 1:** that the app renders, that
+the flow works in Kannada, and that the session actually survives a real
+force-kill — `npm run check:session` proves the storage *wiring* under Node, not the
+native store on a handset. That needs a phone. See `PRODUCTION.md` §5 for the
+checklist to run when one is attached.
+
+---
+
+
 ## 2026-10-14 — Demo accounts, six weeks of order history, real product photos
 
 *(seventh session of the day; covers `9f15bef` and the commits after it. The

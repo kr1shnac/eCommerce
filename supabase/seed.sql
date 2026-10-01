@@ -354,6 +354,61 @@ on conflict (id) do update set
   emoji       = excluded.emoji,
   sort_order  = excluded.sort_order;
 
+-- -----------------------------------------------------------------------------
+-- Pack sizes (register M4)
+-- -----------------------------------------------------------------------------
+-- A product's `unit` text is how the shop describes the pack by hand: '500 g',
+-- '1 kg', '500 ml'. That text is the source of truth, and the structured columns
+-- `sold_by` / `pack_size` / `pack_unit` are derived from it here rather than typed
+-- a second time — two places to write one fact is two places to disagree.
+--
+-- The seed is allowed to rewrite product identity, which the app is not, so it
+-- raises the guard's transaction-local flag for the duration of this block.
+--
+-- The flag is transaction-local (`set_config(..., true)`), so the two statements
+-- MUST be inside one explicit transaction: `psql -f` otherwise runs each statement
+-- in its own implicit transaction and the flag would be reset before the UPDATE.
+begin;
+
+select set_config('kunigal.editing_identity', 'on', true);
+
+-- This runs at the END of the seed, after every product insert, and is written as
+-- idempotent (it recomputes from `unit` every time) so re-running the seed on an
+-- existing database re-derives the packs rather than drifting.
+--
+-- WHY NOT DECIMAL QUANTITY. Register M4 first looked like "make `quantity` a
+-- numeric so 500 g can be sold". That would make `order_items.line_total_paise`
+-- (`generated always as (price_paise * quantity)`) fractional, and the paise would
+-- have to be rounded — in two different places, for line totals and for the
+-- order total, which is exactly how a basket ends up a paisa off. See
+-- `supabase/migrations/20261021000004_pack_sizes.sql` for the full argument. The
+-- shop already prices a 500 g packet as a packet; this just records that fact.
+--
+-- '<n> <unit>' -> a measure pack. The subject is lower-cased first, because the
+-- seed writes '1 L' and '1 l' for the same thing and the pattern is case-sensitive
+-- in Postgres; matching only the lower-case form silently left every oil as a
+-- piece. '4 x 100 g' is a multi-pack and is deliberately left as a plain piece:
+-- its `unit` already names the whole thing, and pretending it is a 100 g pack
+-- would understate what the customer gets.
+update public.products
+   set sold_by   = 'measure',
+       pack_size = (regexp_match(lower(btrim(unit)), '^([0-9]+(?:\.[0-9]+)?)\s*(g|kg|ml|l)$'))[1]::numeric,
+       pack_unit = (regexp_match(lower(btrim(unit)), '^([0-9]+(?:\.[0-9]+)?)\s*(g|kg|ml|l)$'))[2]::public.pack_unit
+ where lower(btrim(unit)) ~ '^[0-9]+(\.[0-9]+)?\s*(g|kg|ml|l)$';
+
+-- Everything else is a counted product with no pack, which is the schema default —
+-- but say it explicitly, so re-running the seed cannot leave a stale pack behind
+-- on a row whose `unit` changed shape.
+update public.products
+   set sold_by   = 'piece',
+       pack_size = null,
+       pack_unit = null
+ where lower(btrim(unit)) !~ '^[0-9]+(\.[0-9]+)?\s*(g|kg|ml|l)$';
+
+select set_config('kunigal.editing_identity', 'off', true);
+
+commit;
+
 -- =============================================================================
 -- Making yourself an admin (do this once, from the SQL Editor)
 -- -----------------------------------------------------------------------------

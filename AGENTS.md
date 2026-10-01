@@ -141,7 +141,7 @@ two languages are written side by side, not translated one from the other.
   price) so later edits never rewrite history.
 - After changing a table, update `apps/mobile/src/types/database.ts` by hand.
 - `supabase/seed.sql` fills the shelves; `supabase/demo.sql` fills the **orders**
-  (9 across every status, one carrying a coupon discount, some assigned to a
+  (25 of them: every status, one carrying a coupon discount, some assigned to a
   rider), plus a shortlist (favourites) and a second address, so all three faces
   can be looked at without tapping through the app by hand. `demo.sql` is
   **development only** — never run it on production. It is safe to re-run: it
@@ -191,7 +191,11 @@ express "this column may change, that one may not":
 - `orders_guard_insert` — customer orders are always created as
   `placed` / `pending`.
 - `orders_guard_update` — customers may only cancel; delivery may only move
-  `status`, `payment_status`, `delivered_at`.
+  `status`, `payment_status`, `delivered_at`. The one other update it accepts is
+  the exact shape `delete_my_account()` produces, and only while that function
+  has set its transaction-local erasure flag (migration `20261020000001`).
+- `profiles_guard_deleted` — the deleted-customer tombstone stays anonymous, a
+  plain `customer`, and cannot be deleted.
 - `order_items.line_total_paise` is generated, so a fake total cannot be sent.
 
 ## 6. Commands
@@ -207,6 +211,13 @@ npm run dev                       # both at once
 npm run typecheck                 # tsc --noEmit in both apps
 npm run lint                      # eslint in both apps, then the i18n key check
 npm run check:i18n                # en/kn key parity + every key used in code exists
+npm run check:session             # the signed-in session survives an app restart
+npm run check:auth-doors          # a release build has no dev login; the review build has one
+npm run check:view                # the address/time helpers all three faces share
+npm run check:persist             # only public shop data is written to the device
+npm run check:speech              # the Kannada speech rules and spoken-price formatter
+npm run check:packs               # pack sizes, and the arithmetic that must never round money
+npm run check:my-name               # one phone, several adults
 npm run test:db                   # all database tests against real PostgreSQL
 ```
 
@@ -242,14 +253,88 @@ As of this build, the app is a working end-to-end flow on one shop:
   `supabase/migrations/20261013000002_realtime_orders.sql` and proved by
   `supabase/tests/10_realtime_publication_test.sql`. A slow 60-second poll stays
   only as a backstop for a dropped socket on patchy rural 4G.
+- **The account can be deleted from inside the app.** `delete_my_account()`
+  (migration `20261020000001`) erases the person — profile, addresses,
+  favourites, auth user — and keeps the shop's books by anonymising the order
+  history to a tombstone profile. Both stores require this, and so does the DPDP
+  Act. Proved by `supabase/tests/16_account_deletion_test.sql`.
+- **The legal notice lives in the app, in both languages.** `src/app/privacy.tsx`
+  plus `privacy.*` in `en.json`/`kn.json`; the order screen doubles as the
+  e-commerce transaction document and carries the shop's identity and, when the
+  shop supplies them, its FSSAI and GST numbers (migration
+  `20261020000002_shop_identity.sql`, test 17). No licence number is invented
+  anywhere: an absent number shows nothing rather than a placeholder.
 - **`apps/admin` is optional.** It is now only a desk tool for bulk catalogue
   edits. Orders, deliveries and day-to-day shopkeeping happen in the app.
-- **Not built yet**, in the intended order: customer polish (order tracker,
-  reorder, search, cart badge) → push notifications → Razorpay → live rider
-  tracking/maps. Everything so far runs in Expo Go; push notifications and
+- **The order screen names the rider and can call them.** The assigned rider's
+  name and photo sit on the customer's order screen with a *Call the rider*
+  button, read through the four-column `rider_directory` view (migration
+  `20261021000001`) — a customer sees the rider without the app ever exposing
+  another profile row. A rider can also close an order **honestly**: `failed`
+  (with a required reason and an optional note) and `returned` are real terminal
+  statuses, never a soft cancel, and `failed` can never be reopened as
+  `delivered`. Proved by `supabase/tests/18_order_tracker_test.sql`.
+- **The owner can close the shop with a number, not a guess.** A **Today** tab in
+  the owner's face reports the day's takings. `shop_day_totals()` and
+  `shop_day_by_rider()` (migration `20261021000002`) compute it **in Postgres** —
+  the board only fetches 100 orders, so summing those in the app would report a
+  confident, wrong total on a busy day. The rules live in one place: cancelled,
+  failed and returned orders are not sales; COD delivered-but-unpaid is cash in a
+  rider's pocket; money paid online for an order that never arrived is
+  `refund_due_paise`, a liability kept apart from takings. Staff only, refused
+  before a row is read. Proved by `supabase/tests/19_shop_totals_test.sql`.
+- **The owner can change the shelf from the counter.** A **Shelf** tab edits price,
+  stock and on/off-shelf state from the phone — the web panel is a desk tool and
+  the owner runs the shop standing up. Writes go through
+  `update_product_from_shop()` (migration `20261021000003`), **not** a plain
+  `.update()`: a non-admin's direct update matches *zero rows and raises nothing*,
+  so a save button built on it could report success while saving nothing. The RPC
+  raises instead, and returns the stored row. `guard_product_update()` freezes
+  product identity (notably `store_id`, even for the admin) so a mis-tap cannot
+  move a product to another shop. The stock movement that `place_order()` and
+  `cancel_order()` perform is exempted by a transaction-local flag **plus** a shape
+  check that only `stock_qty` may differ — a flag alone would be a hole any
+  customer could borrow. Proved by `supabase/tests/20_product_guard_test.sql`.
+- **Loose goods are sold as packs, not fractions.** Register M4 looked like "make
+  `quantity` a numeric so 500 g can be ordered". That was **rejected**: `quantity`
+  stays an integer and counts *packs*, because a fractional quantity makes
+  `order_items.line_total_paise` fractional, and the two roundings (line totals and
+  the order total) could disagree by one paisa intermittently. Instead the pack is
+  structured data — `products.sold_by` (`piece`/`measure`), `pack_size`, `pack_unit`,
+  plus the `product_pack_options` view that normalises g/ml onto one scale
+  (migration `20261021000004`, test 21). The product screen offers "also in 1 kg"
+  chips at **each product's own price**; the guard freezes the pack as identity, so a
+  price edit cannot turn a 1 kg bag into a 5 kg one. `src/lib/pack.ts` is pure and
+  covered by `npm run check:packs`.
+- **The owner adds a product from the phone, in Kannada.** Register M6. The web
+  panel could always create a product; the app could not, which contradicted the
+  phone-first premise of the Shelf tab. `create_product_from_shop()`
+  (migration `20261021000005`, test 22) refuses a blank Kannada name and the English
+  name copied across — `products.name_kn` was `not null` but an empty string
+  satisfied it, and one in three adults here cannot read the English name. It takes
+  no `store_id` (the server picks the active shop) and derives the customer-facing
+  pack text from the structured pack. The screen is
+  `src/components/add-product-panel.tsx`.
+- **Crash reporting and CI are in.** Sentry (`src/lib/crash-reporting.ts`, started
+  in the root layout) reports JavaScript errors from real phones; its DSN is a
+  **write-only ingest key** and belongs in the app, unlike the Supabase keys, but it
+  still lives in `.env`. It sends **no** personal data — `sendDefaultPii: false`
+  plus a `beforeSend` that strips the user block, cookies and query strings — and it
+  is inert when no DSN is set. **Native crashes need a real build; Expo Go does not
+  capture them.** `.github/workflows/checks.yml` runs typecheck, lint (i18n parity +
+  auth doors), the session check, the database suite and `expo-doctor` on every push,
+  using the same commands a developer runs. See `PRODUCTION.md` for the one argued
+  `expo-doctor` exemption.
+- **Not built yet**, in the intended order: push notifications → Razorpay → live
+  rider tracking/maps. Everything so far runs in Expo Go; push notifications and
   Razorpay need an EAS development build.
 
 `ROADMAP.md` is the detailed phase-by-phase plan; read it alongside this file.
+`SCALE-AND-TRACKING.md` is where the app goes *after* it works: the UI
+improvement list, the perceived-speed and concurrency work, and the detailed
+design for rider location tracking (data path, throttling, privacy rules, and
+the deliberately-vendor-free map decision). It is the newest of these files;
+where it disagrees with an older fact, check its date.
 
 ## 8. Keep the build log honest
 

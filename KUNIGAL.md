@@ -158,9 +158,21 @@ English, and the English should be improved to match where it is weak:
 
 ## 8. Open gaps (honest)
 
-- **Voice is not yet in the app's ears.** There is no text-to-speech, and with
+- ~~**Voice is not yet in the app's ears.** There is no text-to-speech, and with
   ~31% low literacy that is the biggest unfilled accessibility gap for this
-  specific town. Tracked in `ROADMAP.md`, not yet built.
+  specific town.~~
+  **Built** (register H4): `apps/mobile/src/lib/speech.ts` reads a product and a
+  basket aloud in Kannada, from the same `name_kn` and `kn.json` strings the screen
+  shows. The `speech.*` keys live in both locales like every other string.
+
+  The honest caveat, and it is a real one: **`expo-speech` uses the phone's own TTS
+  engine, and many phones will not have Kannada voice data installed** (on Android
+  it is a separate download). When there is no Kannada voice the engine does not
+  fail — it reads Kannada text with an English voice, which is confident nonsense.
+  So the Listen button is **hidden entirely** until the device confirms a real
+  Kannada voice, and nothing is lost when it is: the price is still on screen and
+  the shop's number is one tap away. This means the feature helps the people who
+  *do* have the voice data, and never lies to the ones who do not.
 - **No dialect review.** This voice is written in plain old-Mysuru Kannada. It
   should be read once by a Kunigal local before launch; wording may shift
   (`ಬುಟ್ಟಿ` vs a local preference) without any code change, because every string

@@ -1,0 +1,140 @@
+name: Checks
+
+# Register H12: nothing was automatic. Every gate already existed and passed
+# locally — which is exactly why it needed to stop depending on somebody
+# remembering to run it. A policy that is only enforced by habit is not enforced.
+#
+# This runs the SAME commands a developer runs (`npm run lint`, `npm run
+# typecheck`, `npm run test:db`, …). There are no CI-only scripts on purpose: if
+# this is green, `npm run lint && npm run typecheck && npm run test:db` is green
+# on your machine too, and neither one is a special case.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  # So a gate can be re-run by hand without an empty commit.
+  workflow_dispatch:
+
+# A new push to the same branch makes the old run irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # The gates. One job, because they share the database that `test:db` boots and
+  # splitting them would pay for the install three times.
+  # ---------------------------------------------------------------------------
+  checks:
+    name: Lint, typecheck and database tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install PostgreSQL 16
+        # The test runner boots a throwaway cluster with `initdb`/`pg_ctl`; it
+        # does not use a service or a container. Ubuntu's repo has 16.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-16
+          # `initdb` refuses to run as root, so the runner user needs the binaries
+          # on PATH and a directory it can write to.
+          echo "/usr/lib/postgresql/16/bin" >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (both apps)
+        run: npm run typecheck
+
+      - name: Lint, i18n parity and the auth-door check
+        # `npm run lint` chains all three. The auth-door check matters most in
+        # CI: it is the assertion that a RELEASE build has no dev login, and
+        # nobody can eyeball that from a diff.
+        run: npm run lint
+
+      - name: Session survives a restart
+        run: npm run check:session
+
+      - name: Database tests against real PostgreSQL
+        # Boots its own cluster, applies every migration in filename order, loads
+        # the seed and fixtures, runs every suite, then throws it all away.
+        run: npm run test:db
+
+  # ---------------------------------------------------------------------------
+  # Expo's own opinion of the project. Separate job so a doctor complaint reads
+  # as "your SDK is inconsistent", not "your tests failed".
+  # ---------------------------------------------------------------------------
+  expo-doctor:
+    name: Expo doctor
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check the SDK is internally consistent
+        working-directory: apps/mobile
+        run: |
+          # `expo-doctor` flags two things here, and only one is a real failure.
+          #
+          #   * A package that has drifted off the SDK's expected version is a
+          #     real problem and must fail the build. That is the whole point of
+          #     running the doctor in CI.
+          #   * "✖ Check for issues with Metro config" is a FALSE POSITIVE. That
+          #     line is deliberate and required by Expo's own monorepo guide; see
+          #     the comment in apps/mobile/metro.config.js. Removing it to quieten
+          #     the warning is the change that would actually break the bundle.
+          #
+          # So: fail on ANY remaining complaint of any kind — including whatever
+          # new check the doctor gains next — and tolerate only that one block.
+          set +e
+          OUTPUT="$(npx expo-doctor 2>&1)"
+          STATUS=$?
+          echo "$OUTPUT"
+
+          if [ "$STATUS" -eq 0 ]; then
+            echo "doctor is clean"
+            exit 0
+          fi
+
+          # Remove the known-benign Metro block by deleting from its heading up to
+          # the next heading or the summary. A line-by-line filter was tried first
+          # and was wrong: the heading and the "N checks failed" summary survived
+          # it, so the job failed on its own exemption.
+          REMAINING="$(
+            printf '%s\n' "$OUTPUT" \
+              | awk '
+                  /^✖ Check for issues with Metro config$/ { skip = 1; next }
+                  /^✖ / { skip = 0 }
+                  /^[0-9]+ checks? failed/ { skip = 1; next }
+                  skip { next }
+                  { print }
+                '
+          )"
+
+          # A bare "✖ Check for ..." anywhere in what is left is a real failure.
+          if printf '%s\n' "$REMAINING" | grep -qE '^✖ Check'; then
+            echo "::error::expo-doctor found a real problem (see the output above)."
+            exit 1
+          fi
+
+          echo "only the known, deliberate Metro-config warning remains — passing"
