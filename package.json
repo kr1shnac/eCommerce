@@ -1,0 +1,26 @@
+{
+  "name": "kunigal-grocery",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Grocery & essentials delivery app for Kunigal, Karnataka — mobile app, shop admin panel and Supabase database.",
+  "workspaces": [
+    "apps/*"
+  ],
+  "scripts": {
+    "mobile": "npm run start --workspace @kunigal/mobile",
+    "mobile:android": "npm run android --workspace @kunigal/mobile",
+    "mobile:ios": "npm run ios --workspace @kunigal/mobile",
+    "mobile:web": "npm run web --workspace @kunigal/mobile",
+    "admin": "npm run dev --workspace @kunigal/admin",
+    "dev": "concurrently --names \"mobile,admin\" --prefix-colors \"green,cyan\" \"npm:mobile\" \"npm:admin\"",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "clean": "npm run clean --workspaces --if-present"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
