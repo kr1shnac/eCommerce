@@ -168,6 +168,7 @@ npm run dev                       # both at once
 
 npm run typecheck                 # tsc --noEmit in both apps
 npm run lint                      # eslint in both apps
+npm run test:db                   # all database tests against real PostgreSQL
 ```
 
 After changing `.env`, restart with `npm run mobile -- -c` (the `-c` clears the

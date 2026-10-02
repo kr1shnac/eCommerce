@@ -77,6 +77,51 @@ grant usage on schema auth to anon, authenticated, service_role;
 grant execute on function auth.uid(), auth.role() to anon, authenticated, service_role;
 
 -- -----------------------------------------------------------------------------
+-- Minimal stand-in for Supabase Storage.
+--
+-- Why this is here: 20261003000001_images_and_history.sql wraps its whole body in
+-- `if exists (storage schema) and exists (storage.buckets)`. On a throwaway
+-- PostgreSQL neither exists, so that migration silently did nothing and the
+-- product-images RLS policies were never created. Rule 9.7 says a policy is not
+-- done until a test proves the forbidden case fails, so the policies have to
+-- actually exist for the tests to mean anything.
+--
+-- Only the columns and grants that the policies touch are here. Supabase's real
+-- storage.objects has a great deal more (metadata jsonb, path_tokens, etc.); none
+-- of it is used by this project.
+--
+-- The grants matter as much as the tables. Without them, "a customer cannot
+-- upload" would pass for the wrong reason — a missing GRANT rather than the RLS
+-- policy — so the admin-can-upload assertion is what proves the refusals are
+-- real policy refusals.
+-- -----------------------------------------------------------------------------
+
+create schema if not exists storage;
+
+create table if not exists storage.buckets (
+  id                 text primary key,
+  name               text        not null,
+  public             boolean     not null default false,
+  file_size_limit    bigint,
+  allowed_mime_types text[],
+  created_at         timestamptz not null default now(),
+  updated_at         timestamptz not null default now()
+);
+
+create table if not exists storage.objects (
+  id         uuid primary key default gen_random_uuid(),
+  bucket_id  text not null references storage.buckets (id),
+  name       text not null,
+  owner      uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+grant usage on schema storage to anon, authenticated, service_role;
+grant select on storage.buckets, storage.objects to anon, authenticated, service_role;
+grant insert, update, delete on storage.objects to authenticated, service_role;
+
+-- -----------------------------------------------------------------------------
 -- Recording every assertion instead of aborting on the first failure, so one
 -- run tells you everything that is broken.
 -- -----------------------------------------------------------------------------
@@ -211,6 +256,39 @@ begin
     v_count = p_expected_rows,
     case when v_count = p_expected_rows then ''
          else format('affected %s row(s), wanted %s', v_count, p_expected_rows) end
+  );
+end;
+$$;
+
+-- -----------------------------------------------------------------------------
+-- Assert that a statement really did insert something.
+--
+-- The counterpart to touches() for the other direction. "This INSERT was
+-- allowed" and "this INSERT worked" are different claims: a statement that
+-- matches no rows, or a filter that silently drops the row, satisfies the first
+-- and not the second. Use it whenever the point of the test is that a valid
+-- value is ACCEPTED, so the refusal tests cannot pass by everything being
+-- rejected.
+-- -----------------------------------------------------------------------------
+create or replace function test_result.inserted(
+  p_label text,
+  p_sql text
+)
+returns void
+language plpgsql
+as $$
+declare
+  v_count bigint;
+begin
+  execute p_sql;
+  get diagnostics v_count = row_count;
+
+  perform test_result.record(
+    current_setting('test_result.suite', true),
+    p_label,
+    v_count > 0,
+    case when v_count > 0 then ''
+         else format('affected %s row(s), wanted at least 1', v_count) end
   );
 end;
 $$;

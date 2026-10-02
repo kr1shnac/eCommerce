@@ -74,9 +74,27 @@ echo "=== $SUITE ==="
 # Set the scene: one mango left, priced so a single packet clears the shop's
 # Rs 100 minimum. That lets both customers order nothing BUT the contested mango,
 # so nothing else can be locking the row for them.
-# -----------------------------------------------------------------------------
-psql_q -c "update public.products set stock_qty = 1, is_active = true, price_paise = 12000 where id = '$MANGO';" >/dev/null
+#
+# mrp_paise is raised alongside price_paise on purpose. The constraint added by
+# 20261003000002_db_constraints.sql (products_mrp_paise_ge_price) requires
+# mrp_paise >= price_paise, and the fixture mango is seeded at mrp 1200. Bumping
+# the price to 12000 while leaving the MRP behind is refused by the database.
+# This script runs `set -uo pipefail` with no `-e`, so it carried on regardless:
+# the price stayed at 1000, every caller was turned away with below_minimum, and
+# the race under test never actually started.
+psql_q -c "update public.products set stock_qty = 1, is_active = true, price_paise = 12000, mrp_paise = 15000 where id = '$MANGO';" >/dev/null
 psql_q -c "update public.store_settings set is_open = true, open_time = '00:00', close_time = '23:59' where store_id = '$STORE';" >/dev/null
+
+# Guard the setup itself. Without this, a setup statement that the database
+# refuses turns into four confusing assertion failures much further down.
+setup_price="$(psql_q -t -A -c "select price_paise from public.products where id = '$MANGO';")"
+if [ "$setup_price" != "12000" ]; then
+  echo "  FAIL setup did not take: mango is $setup_price paise, wanted 12000"
+  echo "        (the rest of this race cannot mean anything until that is fixed)"
+  assert 0 "race: the contested mango was really priced above the shop minimum" "price_paise=$setup_price"
+  exit 1
+fi
+assert 1 "race: the contested mango was really priced above the shop minimum"
 
 # =============================================================================
 # Race 1 · two place_order calls fired at the same instant

@@ -6,6 +6,8 @@
 -- here has to reach into a price, that is a sign the design is wrong.
 -- =============================================================================
 
+select test_result.begin_suite('02 place_order');
+
 -- Start from a known shelf. This file takes stock away, so it puts it back
 -- first. Done as the table owner because that is not what is under test.
 reset role;
@@ -21,8 +23,52 @@ update public.products set stock_qty = 0,  is_active = true, price_paise = 8000
 update public.products set stock_qty = 1, is_active = true, price_paise = 1000
   where id = '20000000-0000-4000-8000-00000000ffff';   -- test product, 1 left
 
+-- =============================================================================
+-- 1. The happy path
+-- =============================================================================
 
-;
+set role authenticated;
+select test_result.sign_in('11111111-1111-1111-1111-111111111111');
+
+do $$
+declare
+  v_result jsonb;
+begin
+  -- 2 x Tomato at 1800 plus 3 x Onion at 2600 = 11400, over the 10000 minimum.
+  v_result := public.place_order(
+    '[{"product_id":"20000000-0000-4000-8000-000000000001","quantity":2},
+      {"product_id":"20000000-0000-4000-8000-000000000002","quantity":3}]',
+    '00000000-0000-4000-8000-000000000001',
+    '50000000-0000-4000-8000-000000000001',
+    'happy-path-key-0001'
+  );
+
+  perform test_result.ok('happy path: ok', v_result ->> 'ok' = 'true', v_result::text);
+  perform test_result.eq('happy path: 2 x 1800 + 3 x 2600', (v_result ->> 'subtotal_paise')::bigint, 11400);
+  perform test_result.eq('happy path: Kunigal zone fee is 1500', (v_result ->> 'delivery_fee_paise')::bigint, 1500);
+  perform test_result.eq('happy path: total', (v_result ->> 'total_paise')::bigint, 12900);
+
+  perform test_result.eq(
+    'happy path: the order really landed, as placed',
+    (select status::text from public.orders where id = (v_result ->> 'order_id')::uuid),
+    'placed'
+  );
+  perform test_result.eq(
+    'happy path: two line items were written',
+    (select count(*) from public.order_items where order_id = (v_result ->> 'order_id')::uuid),
+    2
+  );
+  perform test_result.eq(
+    'happy path: tomato stock went 40 -> 38',
+    (select stock_qty from public.products where id = '20000000-0000-4000-8000-000000000001'),
+    38
+  );
+  perform test_result.eq(
+    'happy path: onion stock went 60 -> 57',
+    (select stock_qty from public.products where id = '20000000-0000-4000-8000-000000000002'),
+    57
+  );
+end;
 $$;
 
 -- =============================================================================

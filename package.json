@@ -13,6 +13,7 @@
     "mobile:web": "npm run web --workspace @kunigal/mobile",
     "admin": "npm run dev --workspace @kunigal/admin",
     "dev": "concurrently --names \"mobile,admin\" --prefix-colors \"green,cyan\" \"npm:mobile\" \"npm:admin\"",
+    "test:db": "./supabase/tests/run.sh",
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"
