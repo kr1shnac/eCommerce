@@ -15,8 +15,9 @@ Supabase connection.)*
 The owner's ask, in their words: *"make the account logged in … if I had multiple
 orders, so I have been ordering it regularly. So how will it be looking?"* — they
 wanted to **open the app and see a shop that is already in use**, not an empty
-first-run. Three pieces: a demo sign-in, six weeks of believable order history,
-and **real photographs of the goods** instead of emoji.
+first-run. Four pieces: a demo sign-in, six weeks of believable order history,
+**real photographs of the goods** instead of emoji on the tiles, and a second pass
+at the app bar and the welcome.
 
 ### 1. Three demo accounts, by email + password
 
@@ -60,13 +61,13 @@ one carrying a coupon discount, several on riders) so the customer's Orders tab,
 - `supabase/tests/12_demo_data_test.sql` grew by two assertions (history older
   than 28 days; ≥10 distinct delivered products) and the counts were updated.
 
-### 2b. What the demo actually looks like when opened
+### 3. What the demo actually looks like when opened
 
-Verified against the **live** project by signing in over the API as the customer
-and reading through RLS (not with a service key): 25 orders across every status,
-2 addresses (one default), a shortlist, and one order carrying a coupon discount.
+Read through RLS from the customer's own session on the live project (never with a
+service key): 25 orders across every status, 2 addresses (one default), a
+shortlist, and one order carrying a coupon discount.
 
-### 3. Photographs instead of emoji on the product tiles
+### 4. Photographs instead of emoji on the product tiles
 
 - `apps/mobile/src/components/product-card.tsx`: the emoji **corner tag on a real
   photo is gone**. A product with a photo now shows *only* the photo; the emoji
@@ -91,7 +92,7 @@ and reading through RLS (not with a service key): 25 orders across every status,
   fallback, not dead data.** A picture can always be swapped or removed and the tile
   still reads.
 
-### 4. App bar and welcome, second pass
+### 5. App bar and welcome, second pass
 
 - The **horse roundel is out of the app bar**. At 44px between the language toggle
   and the bag it read as a sticker, and a shop that shows real photographs does not
@@ -115,15 +116,21 @@ and reading through RLS (not with a service key): 25 orders across every status,
 - `npm run typecheck` — clean, both apps.
 - `npm run lint` — clean; `check:i18n` OK (416 keys in both languages, up from 408
   with the one new greeting key).
-- `npm run test:db` — see the note at the end of this entry.
+- `npm run test:db` — **348/348** against real PostgreSQL. Nothing in this session
+  changed a table, policy, function or trigger, so this is a regression check
+  rather than new coverage; the guard triggers were also confirmed back on after
+  the demo data was rewritten.
 - The three demo accounts were verified by **signing in against the live project**
   over the auth API (all three return a session), and the customer's session was
   then used to read 25 orders / 2 addresses / the shortlist **through RLS**.
-- The uploaded photos were verified by **fetching one public URL back** from
-  Storage (`200 image/jpeg`).
+- All 28 uploaded photos were verified by **HEAD-requesting their public Storage
+  URLs** (`200 image/jpeg`, no misses), and the 28 `products.image_url` writes were
+  verified by reading the column back as the **customer** through RLS: 34 products
+  visible, 28 with a photo, 6 without.
 - **Not verified on a device.** No emulator or phone is available in this
   environment, so the new panel, the wordmark and the photo tiles are **read from
-  the code, not seen**. This needs a real look on a 5-inch screen.
+  the code, not seen**. This needs a real look on a 5-inch screen. The pixels of
+  the photographs themselves were **never looked at** — see the decision below.
 
 ### Decisions and reasons
 
