@@ -27,17 +27,17 @@ select test_result.begin_suite('12 demo data');
 -- -----------------------------------------------------------------------------
 
 select test_result.eq(
-  'demo.sql created 9 orders',
+  'demo.sql created 25 orders',
   (select count(*) from public.orders where order_number like 'KNG-D%'),
-  9
+  25
 );
 
 select test_result.eq(
-  'demo.sql made 29 order lines',
+  'demo.sql made 135 order lines',
   (select count(*) from public.order_items i
      join public.orders o on o.id = i.order_id
     where o.order_number like 'KNG-D%'),
-  29
+  135
 );
 
 select test_result.eq(
@@ -58,10 +58,27 @@ select test_result.eq(
 );
 
 select test_result.eq(
-  '2 orders were delivered, 1 was cancelled',
+  '18 orders were delivered, 1 was cancelled',
   (select count(*) from public.orders
     where order_number like 'KNG-D%' and status = 'delivered'),
-  2
+  18
+);
+
+-- The point of the six-week history: the Orders tab should look like a household
+-- that shops here regularly, not like a test fixture. So the oldest order has to
+-- be weeks old, and the delivered ones have to repeat-purchase real products.
+select test_result.ok(
+  'the demo history reaches back over four weeks',
+  (select now() - min(placed_at) > interval '28 days'
+     from public.orders where order_number like 'KNG-D%')
+);
+
+select test_result.ok(
+  '"Buy again" has a real shortlist to remember (10+ distinct products)',
+  (select count(distinct product_id) >= 10
+     from public.order_items i
+     join public.orders o on o.id = i.order_id
+    where o.order_number like 'KNG-D%' and o.status = 'delivered')
 );
 
 select test_result.eq(
@@ -108,14 +125,14 @@ select test_result.eq(
   'every demo order snapshots the Kunigal address',
   (select count(*) from public.orders
     where order_number like 'KNG-D%' and delivery_address ->> 'pincode' = '572130'),
-  9
+  25
 );
 
 select test_result.eq(
   'the demo fee is the zone fee (Rs 15)',
   (select count(*) from public.orders
     where order_number like 'KNG-D%' and delivery_fee_paise = 1500),
-  9
+  25
 );
 
 -- Asha already had an address from the fixtures, so demo.sql must NOT have
@@ -221,9 +238,9 @@ set role authenticated;
 select test_result.sign_in('11111111-1111-1111-1111-111111111111');  -- Asha
 
 select test_result.eq(
-  'Asha can read all 9 demo orders through RLS',
+  'Asha can read all 25 demo orders through RLS',
   (select count(*) from public.orders where order_number like 'KNG-D%'),
-  9
+  25
 );
 
 set role authenticated;

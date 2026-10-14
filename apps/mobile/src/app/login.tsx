@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { DemoAccounts } from '@/components/demo-accounts';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -259,6 +260,8 @@ export default function LoginScreen() {
             </ThemedText>
           </Pressable>
         ) : null}
+
+        <DemoAccounts />
 
         <View style={styles.help}>
           <Ionicons name="information-circle-outline" size={16} color={theme.textSecondary} />

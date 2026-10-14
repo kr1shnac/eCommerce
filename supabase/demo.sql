@@ -2,10 +2,11 @@
 -- demo.sql — development-only sample data (NEVER run this on production)
 -- =============================================================================
 -- Everything a developer needs to SEE the app working, without tapping through a
--- week of orders by hand. It fills every data-driven screen:
+-- month of orders by hand. It fills every data-driven screen:
 --
---   customer  the Home "Saved" rail (favourites) and the "Buy again" rail, the
---             Orders tab (9 orders, one per status), one order carrying a real
+--   customer  the Home "Saved" rail (favourites) and a real "Buy again" rail, the
+--             Orders tab — 25 orders: one for every status in flight, plus six
+--             weeks of delivered history behind them — one order carrying a real
 --             coupon discount, and two delivery addresses for the checkout picker;
 --   rider     a waiting pool to accept from, deliveries in progress, and
 --             delivered-today history;
@@ -25,6 +26,9 @@
 -- works even if the only phone you have signed in is your own). If a profile with
 -- role = 'delivery' exists, several orders are assigned to that rider; the owner
 -- sees every order on the board automatically.
+--
+-- Brand-new project with no accounts at all? Run supabase/demo-accounts.sql
+-- first: it makes a customer, a rider and an owner you can sign in as.
 --
 -- SAFE TO RE-RUN
 --   It first deletes the orders it made last time. Demo orders are the ones whose
@@ -228,6 +232,35 @@ begin
     (9, '20000000-0000-4000-8000-000000000026', 2);
 
   -- ---------------------------------------------------------------------------
+  -- 10 … 25 · six weeks of ordinary shopping. Nobody writes seventeen baskets by
+  -- hand, so these are built from what this household actually repeats: milk and
+  -- curd every single time, then the vegetables, biscuits, tea, rice, dal and oil
+  -- rotating through the rest. Deterministic on purpose (a plain modulo, no
+  -- random()), so two runs of demo.sql leave the same shop behind and the test
+  -- can count it exactly. The modulo is deliberately over 11 and multiplies the
+  -- two numbers rather than adding them, so no two weeks' baskets line up: a
+  -- repeating total every third order is exactly what makes demo data look fake.
+  -- ---------------------------------------------------------------------------
+  insert into demo_items (seq, product_id, qty)
+  select g.seq, s.product_id, s.qty
+    from generate_series(10, 25) as g (seq)
+    join (values
+      (1,  '20000000-0000-4000-8000-000000000006'::uuid, 2, true),   -- Full Cream Milk
+      (2,  '20000000-0000-4000-8000-000000000007'::uuid, 1, true),   -- Curd
+      (3,  '20000000-0000-4000-8000-000000000004'::uuid, 1, false),  -- Banana
+      (4,  '20000000-0000-4000-8000-000000000001'::uuid, 2, false),  -- Tomato
+      (5,  '20000000-0000-4000-8000-000000000002'::uuid, 1, false),  -- Onion
+      (6,  '20000000-0000-4000-8000-000000000003'::uuid, 1, false),  -- Potato
+      (7,  '20000000-0000-4000-8000-000000000022'::uuid, 2, false),  -- Biscuits
+      (8,  '20000000-0000-4000-8000-000000000024'::uuid, 1, false),  -- Tea Powder
+      (9,  '20000000-0000-4000-8000-000000000010'::uuid, 1, false),  -- Sona Masoori Rice
+      (10, '20000000-0000-4000-8000-000000000013'::uuid, 1, false),  -- Toor Dal
+      (11, '20000000-0000-4000-8000-000000000015'::uuid, 1, false),  -- Sunflower Oil
+      (12, '20000000-0000-4000-8000-000000000028'::uuid, 1, false)   -- Wheat Bread
+    ) as s (ord, product_id, qty, always)
+      on s.always or ((g.seq * 3 + s.ord * 5) % 11) < 5;
+
+  -- ---------------------------------------------------------------------------
   -- Build the orders. Everything that writes to `orders` sits in the inner
   -- BEGIN...END block (a nested block shares this block's variables), which is
   -- what guarantees the guard trigger is switched back on when it unwinds.
@@ -247,7 +280,26 @@ begin
         (6, 'delivered',        0, 8,  0, true,  true,  null),
         (7, 'delivered',        2, 6,  0, true,  true,  null),
         (8, 'cancelled',        4, 2,  0, false, false, null),
-        (9, 'placed',           0, 0, 20, false, false, 'KUNIGAL50')
+        (9, 'placed',           0, 0, 20, false, false, 'KUNIGAL50'),
+        -- 10 … 25 · the last six weeks, delivered one at a time, spaced every two
+        -- or three days. This is the history that makes "Buy again" worth having,
+        -- and it is what a regular customer's Orders tab actually looks like.
+        (10, 'delivered',        3, 10, 0, true, true, null),
+        (11, 'delivered',        5,  9, 0, true, true, null),
+        (12, 'delivered',        8, 11, 0, true, true, null),
+        (13, 'delivered',       10,  8, 0, true, true, null),
+        (14, 'delivered',       13, 10, 0, true, true, null),
+        (15, 'delivered',       15,  9, 0, true, true, null),
+        (16, 'delivered',       18, 11, 0, true, true, null),
+        (17, 'delivered',       20,  8, 0, true, true, null),
+        (18, 'delivered',       23, 10, 0, true, true, null),
+        (19, 'delivered',       26,  9, 0, true, true, null),
+        (20, 'delivered',       28, 11, 0, true, true, null),
+        (21, 'delivered',       31,  8, 0, true, true, null),
+        (22, 'delivered',       34, 10, 0, true, true, null),
+        (23, 'delivered',       36,  9, 0, true, true, null),
+        (24, 'delivered',       39, 11, 0, true, true, null),
+        (25, 'delivered',       41,  8, 0, true, true, null)
       ) as t (seq, status, days_ago, hours_ago, mins_ago, assign, with_time, coupon)
     loop
       -- What the shop charged for THIS basket, from the shelf prices.
@@ -327,8 +379,9 @@ begin
   end;
 
   raise notice
-    'demo.sql: done for customer %. % rider(s) found. 9 orders (one with a coupon '
-    'discount), a saved shortlist, and a Kunigal address — across all three faces.',
+    'demo.sql: done for customer %. % rider(s) found. 25 orders — six weeks of '
+    'history plus one per live status, one carrying a coupon discount — a saved '
+    'shortlist and Kunigal addresses, across all three faces.',
     v_customer,
     (select count(*) from public.profiles where role = 'delivery');
 end $$;

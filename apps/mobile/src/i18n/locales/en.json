@@ -139,6 +139,15 @@
     "changeNumber": "Change number",
     "signIn": "Sign in",
     "testNumbers": "Use a Supabase test phone number (not your real number).",
+    "demo": {
+      "title": "Demo accounts",
+      "tag": "DEV",
+      "hint": "Development only. Sign in as one of the seeded accounts to look around.",
+      "customer": "Sign in as a customer",
+      "delivery": "Sign in as a rider",
+      "admin": "Sign in as the shop owner",
+      "failed": "The demo sign-in did not work. Check the accounts exist in the project."
+    },
     "error": {
       "invalidCode": "That code is invalid. Please try again.",
       "expiredCode": "The code has expired. Send a new one.",
