@@ -6,6 +6,158 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-14 — Demo accounts, six weeks of order history, real product photos
+
+*(seventh session of the day; covers `9f15bef` and the commits after it. The
+entry below is the language/photo/app-bar pass, and the one below that is the
+Supabase connection.)*
+
+The owner's ask, in their words: *"make the account logged in … if I had multiple
+orders, so I have been ordering it regularly. So how will it be looking?"* — they
+wanted to **open the app and see a shop that is already in use**, not an empty
+first-run. Three pieces: a demo sign-in, six weeks of believable order history,
+and **real photographs of the goods** instead of emoji.
+
+### 1. Three demo accounts, by email + password
+
+The app's own sign-in is **phone OTP**, and phone auth is **disabled** on the
+hosted project (`Auth → Providers → Phone` is off), so no OTP could ever be sent
+and `auth.users` was empty — which is also why `supabase/demo.sql` had never been
+able to apply. Rather than turn phone auth on (it needs an SMS provider and money),
+the demo accounts sign in with the one provider that *is* on: email + password.
+
+- `supabase/demo-accounts.sql` (**new, development only**) inserts three users
+  straight into `auth.users` / `auth.identities` with fixed UUIDs so it is safe to
+  re-run: customer **Asha Gowda** (`asha@kunigal.test`), rider **Ravi Kumar**
+  (`ravi@kunigal.test`) and owner (`owner@kunigal.test`), each with a matching
+  `public.profiles` row carrying the right `role`.
+- The password is **passed in**, never written down:
+  `psql … -v demo_password='…' -f supabase/demo-accounts.sql`. Nothing secret is in
+  the repo, and the file header says why it is not a migration (it writes to
+  `auth`, which migrations should not).
+- `apps/mobile/src/lib/demo-accounts.ts` (**new**) + `src/components/demo-accounts.tsx`
+  (**new**) put one "sign in as …" button per role on the sign-in screen. The whole
+  block is inside `if (__DEV__)` and reads its addresses from
+  `EXPO_PUBLIC_DEMO_*` in `apps/mobile/.env` (git-ignored), so **nothing ships and
+  no credential is in the repo** — `.env.example` documents the five variables as
+  commented placeholders.
+
+### 2. Six weeks of order history
+
+`supabase/demo.sql` went from 9 orders to **25** (135 line items, 18 delivered,
+one carrying a coupon discount, several on riders) so the customer's Orders tab,
+"Buy again" rail and the owner's board all have something real in them.
+
+- The 16 historic delivered baskets are **generated deterministically**, not
+  hand-written: the item mix comes from a slug list and a modulo, and each basket's
+  size/price comes from `(seq * 3 + ord * 5) % 11`. The first attempt used a
+  modulo of 3/2 and the totals repeated every third order, which is exactly the
+  thing that makes seeded data look fake. Deterministic means the numbers are
+  reproducible, so `12_demo_data_test.sql` can assert them.
+- History now reaches back **past 28 days** on purpose, so a date-grouped Orders
+  list shows more than one month heading, and "Buy again" has 10+ distinct
+  delivered products to choose from.
+- `supabase/tests/12_demo_data_test.sql` grew by two assertions (history older
+  than 28 days; ≥10 distinct delivered products) and the counts were updated.
+
+### 2b. What the demo actually looks like when opened
+
+Verified against the **live** project by signing in over the API as the customer
+and reading through RLS (not with a service key): 25 orders across every status,
+2 addresses (one default), a shortlist, and one order carrying a coupon discount.
+
+### 3. Photographs instead of emoji on the product tiles
+
+- `apps/mobile/src/components/product-card.tsx`: the emoji **corner tag on a real
+  photo is gone**. A product with a photo now shows *only* the photo; the emoji
+  plate survives purely as the fallback for a product with no picture. The owner
+  asked to stop decorating real photographs — a sticker on top of a picture says
+  the picture is decoration, and the whole point of the photos is credibility.
+- 27 of the 34 product photos were sourced, centre-cropped, resized to 640×640
+  JPEG and uploaded to the existing public `product-images` bucket at
+  `seed/<slug>.jpg` **as the owner account** (`product_images_admin_write` needs
+  `is_admin()`, so the anon key alone cannot write), then written into
+  `products.image_url` **through the REST API as the owner**, so the RLS policy is
+  what allowed it. `supabase/demo-images.sql` (**new, development only**) is the
+  same change as SQL and records the source and licence of every picture; it is
+  safe to re-run.
+- **Seven products deliberately keep the emoji**: paneer, butter, mustard-oil,
+  chilli-powder, potato-chips, mixture-namkeen and coffee-powder. Their search
+  candidates were all the wrong thing (a watch for onion was the kind of result
+  that made a title check necessary), and a wrong photograph is worse than a drawn
+  one. Two more — `dishwash-bar` and `toothpaste` — only had marginal candidates
+  (a bath soap, a mockup) and are worth a second look.
+- `seed.sql` keeps `image_url` NULL and keeps every emoji: **the emoji is the
+  fallback, not dead data.** A picture can always be swapped or removed and the tile
+  still reads.
+
+### 4. App bar and welcome, second pass
+
+- The **horse roundel is out of the app bar**. At 44px between the language toggle
+  and the bag it read as a sticker, and a shop that shows real photographs does not
+  need to draw itself. The app bar is now the **wordmark** (name over promise) plus
+  language toggle and bag. The `🐎` stays where the shop introduces itself — the
+  sign-in screen.
+- The greeting and the destination pill now sit together on one **soft accent
+  panel** at the top of the shelf, so the first thing on screen is a designed block
+  rather than three loose lines.
+- When the app knows who is signed in, the greeting **uses their name** —
+  `home.greetNamed` = `"{greeting}, {name}"` in English and, in Kannada,
+  `"{name} ಅವರೇ, {greeting}"`: Kannada names the person first and adds the
+  respectful *ಅವರೇ*, so the hello arrives before the hour of the day. Recorded in
+  `KUNIGAL.md` with the other decisions where the two languages deliberately
+  differ.
+- `DESIGN.md` §5 and §6 were corrected: they still described the corner emoji tag
+  and the app-bar roundel that this session removed.
+
+### Verified, and how
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean; `check:i18n` OK (416 keys in both languages, up from 408
+  with the one new greeting key).
+- `npm run test:db` — see the note at the end of this entry.
+- The three demo accounts were verified by **signing in against the live project**
+  over the auth API (all three return a session), and the customer's session was
+  then used to read 25 orders / 2 addresses / the shortlist **through RLS**.
+- The uploaded photos were verified by **fetching one public URL back** from
+  Storage (`200 image/jpeg`).
+- **Not verified on a device.** No emulator or phone is available in this
+  environment, so the new panel, the wordmark and the photo tiles are **read from
+  the code, not seen**. This needs a real look on a 5-inch screen.
+
+### Decisions and reasons
+
+- **Email + password for the demo, not phone OTP.** Phone auth is off on the
+  hosted project; turning it on needs a paid SMS provider. The demo path is behind
+  `__DEV__` and reads its credentials from the git-ignored `.env`, so nothing ships.
+- **The photos are picked by candidate title and licence, not by eye.** The images
+  are CC0 / public-domain (a few `by`/`by-sa`) stock shots, and this session picked
+  one candidate per product from its title — the sandbox could not display the
+  downloaded previews to check them. Treat `demo-images.sql` as a **starting point
+  the owner should eyeball**, and use the admin panel's photo screen to replace
+  anything that is not the right thing. Seven products whose candidates all looked
+  wrong were left NULL on purpose, so the emoji shows instead of a misleading
+  picture.
+- **Photos live in `demo-images.sql`, not `seed.sql`.** The seed file documents
+  `image_url` as deliberately NULL, and it is right: the shop's *shelf* is its
+  names, prices and emoji; a project-specific Storage URL is demo furniture.
+- **The horse left the app bar rather than being redrawn.** The owner asked for the
+  icon in the top bar to go; the mark on the sign-in screen still carries it.
+
+### Open gaps
+
+- No user in the hosted project has a **real photo of the actual shop's goods** —
+  these are stock stand-ins. The admin panel can replace them one by one.
+- `supabase/demo-accounts.sql` and `supabase/demo-images.sql` are **development
+  only**. Before go-live, delete the demo users (`demo-accounts.sql` documents the
+  delete) and clear `products.image_url` if the pictures are not the shop's own.
+- `supabase_migrations.schema_migrations` still does not exist on the hosted
+  project, so a future `supabase db push` would try to re-apply all 17 migrations.
+- Only Home has the app-bar treatment; Cart / Orders / Account still use the plain
+  header.
+
+---
+
 ## 2026-10-14 — One language source, a photo-first shelf, and a real app bar
 
 *(sixth session of the day; the entry below is the Supabase connection)*

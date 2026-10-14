@@ -30,6 +30,7 @@
     "greetMorning": "ಶುಭೋದಯ",
     "greetAfternoon": "ನಮಸ್ಕಾರ",
     "greetEvening": "ಶುಭ ಸಂಜೆ",
+    "greetNamed": "{name} ಅವರೇ, {greeting}",
     "ask": "ಇಂದು ಏನು ಬೇಕು?",
     "deliveringTo": "ಕುಣಿಗಲ್‌ಗೆ ಡೆಲಿವರಿ",
     "deliveryIn": "~{minutes} ನಿಮಿಷದಲ್ಲಿ",

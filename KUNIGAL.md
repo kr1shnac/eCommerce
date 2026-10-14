@@ -122,6 +122,9 @@ English, and the English should be improved to match where it is weak:
 - **Reorder.** En: "Reorder." Kn: *"ಮತ್ತೆ ಆರ್ಡರ್ ಮಾಡಿ"* — "order again", which
   is what a person says.
 - **Rider greeting.** *"ನಮಸ್ಕಾರ {name}"* — the ordinary respectful hello.
+- **Home greeting.** En: "Good evening, Asha." Kn: *"{name} ಅವರೇ, {greeting}"* —
+  Kannada names the person first and adds the respectful *ಅವರೇ*, so the hello
+  arrives before the hour of the day.
 - **Empty states** reassure rather than report: *"ಬುಟ್ಟಿ ಖಾಲಿಯಾಗಿದೆ"* ("the
   basket is empty"), not "no items found".
 

@@ -30,6 +30,7 @@
     "greetMorning": "Good morning",
     "greetAfternoon": "Good afternoon",
     "greetEvening": "Good evening",
+    "greetNamed": "{greeting}, {name}",
     "ask": "What do you need today?",
     "deliveringTo": "Delivering to Kunigal",
     "deliveryIn": "in ~{minutes} min",

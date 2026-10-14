@@ -80,14 +80,6 @@ export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
             </View>
           )}
 
-          {/* The same emoji, kept as a little tag on a real photo, so the shelf
-              still looks like this shop's shelf once photos arrive. */}
-          {showImage ? (
-            <View style={[styles.emojiTag, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <ThemedText style={styles.emojiTagText}>{emoji}</ThemedText>
-            </View>
-          ) : null}
-
           {off !== null && !isOutOfStock ? (
             <Badge label={`-${off}%`} tone="secondary" solid style={styles.offBadge} />
           ) : null}
@@ -175,18 +167,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   emoji: { fontSize: 54, lineHeight: 64 },
-  emojiTag: {
-    position: 'absolute',
-    bottom: Spacing.two,
-    left: Spacing.two,
-    width: 30,
-    height: 30,
-    borderRadius: 15,
-    borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emojiTagText: { fontSize: 16, lineHeight: 20 },
   offBadge: { position: 'absolute', top: Spacing.two, left: Spacing.two },
   heart: { position: 'absolute', top: Spacing.one, right: Spacing.one },
   soldOut: {

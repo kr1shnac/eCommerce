@@ -172,6 +172,15 @@ export default function HomeScreen() {
   const greetingKey =
     hour < 12 ? 'home.greetMorning' : hour < 17 ? 'home.greetAfternoon' : 'home.greetEvening';
 
+  // Greet a customer we know by name. The name comes from the session, so it is
+  // there the moment sign-in finishes and gone the moment it signs out; a
+  // customer with no name on file simply gets the plain greeting.
+  const firstName =
+    (session?.user.user_metadata?.full_name as string | undefined)?.trim().split(/\s+/)[0] ?? null;
+  const greeting = firstName
+    ? t('home.greetNamed', { greeting: t(greetingKey), name: firstName })
+    : t(greetingKey);
+
   const renderProduct = ({ item }: { item: Product }) => (
     <View style={styles.cardSlot}>
       <ProductCard
@@ -183,24 +192,33 @@ export default function HomeScreen() {
 
   const listHeader = (
     <View>
-      <ThemedText type="title">{t(greetingKey)}</ThemedText>
-      <ThemedText type="small" themeColor="textSecondary" style={styles.ask}>
-        {t('home.ask')}
-      </ThemedText>
+      {/*
+        The welcome. A soft panel rather than three loose lines, so the top of
+        the shelf reads as one designed thing: who we are talking to, what we
+        are for, and where it is going — in that order.
+      */}
+      <View style={[styles.hero, { backgroundColor: theme.accentSoft, borderColor: theme.accentBorder }]}>
+        <ThemedText type="title" numberOfLines={2}>
+          {greeting}
+        </ThemedText>
+        <ThemedText type="small" style={[styles.ask, { color: theme.accent }]}>
+          {t('home.ask')}
+        </ThemedText>
 
-      {/* Where it is going, and whether the shop is taking orders yet. */}
-      <View style={styles.statusRow}>
-        <View style={[styles.pill, { backgroundColor: theme.accentSoft }]}>
-          <Ionicons name="location" size={14} color={theme.accent} />
-          <ThemedText type="caption" style={{ color: theme.accent }} numberOfLines={1}>
-            {defaultAddress
-              ? `${zoneAreaName(zone, language) ?? defaultAddress.city} ${defaultAddress.pincode}`
-              : t('home.deliveringTo')}
-          </ThemedText>
+        {/* Where it is going, and whether the shop is taking orders yet. */}
+        <View style={styles.statusRow}>
+          <View style={[styles.pill, { backgroundColor: theme.card, borderColor: theme.accentBorder }]}>
+            <Ionicons name="location" size={14} color={theme.accent} />
+            <ThemedText type="caption" style={{ color: theme.text }} numberOfLines={1}>
+              {defaultAddress
+                ? `${zoneAreaName(zone, language) ?? defaultAddress.city} ${defaultAddress.pincode}`
+                : t('home.deliveringTo')}
+            </ThemedText>
+          </View>
+          {!isClosed && zone?.eta_minutes ? (
+            <Badge label={t('home.deliveryIn', { minutes: zone.eta_minutes })} tone="success" icon="time-outline" />
+          ) : null}
         </View>
-        {!isClosed && zone?.eta_minutes ? (
-          <Badge label={t('home.deliveryIn', { minutes: zone.eta_minutes })} tone="success" icon="time-outline" />
-        ) : null}
       </View>
 
       {isClosed ? (
@@ -492,23 +510,24 @@ export default function HomeScreen() {
   );
 }
 
-/** Kunigal is "Horse town": a small horse roundel is the shop's mark. */
+/**
+ * The shop's wordmark for the app bar: name over promise, no icon.
+ *
+ * The horse roundel used to sit here. It earned its keep nowhere: at 44px on a
+ * small-town phone it read as a sticker between two buttons, and a shop that
+ * puts real photographs of its shelves on the screen does not need to draw
+ * itself. Craft emotes the brand through BEHAVIOUR, not a mark.
+ */
 function BrandMark() {
   const { t } = useTranslation();
-  const theme = useTheme();
   return (
-    <View style={styles.brand}>
-      <View style={[styles.brandCircle, { backgroundColor: theme.accent }]}>
-        <ThemedText style={styles.brandEmoji}>🐎</ThemedText>
-      </View>
-      <View style={styles.flex}>
-        <ThemedText type="heading" numberOfLines={1}>
-          {t('home.title')}
-        </ThemedText>
-        <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
-          {t('home.subtitle')}
-        </ThemedText>
-      </View>
+    <View style={styles.flex}>
+      <ThemedText type="heading" numberOfLines={1}>
+        {t('home.title')}
+      </ThemedText>
+      <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
+        {t('home.subtitle')}
+      </ThemedText>
     </View>
   );
 }
@@ -639,16 +658,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, flex: 1 },
-  brandCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: Radii.pill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandEmoji: { fontSize: 22, lineHeight: 28 },
   content: { paddingHorizontal: Spacing.three },
+  hero: {
+    gap: Spacing.one,
+    padding: Spacing.three,
+    borderRadius: Radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   ask: { marginTop: 2 },
   statusRow: {
     flexDirection: 'row',

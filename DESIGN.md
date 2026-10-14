@@ -126,16 +126,20 @@ Both palettes are complete and are chosen at runtime:
   are the goal once the owner starts photographing the shelf. Until then the emoji
   is not a placeholder apology but a designed tile: the product's own `products.emoji`
   (falling back to the category `icon`) sits on a soft circular plate, tinted
-  against the tile, with a hairline edge. Emoji also survive *on* a real photo, as
-  a small round tag in the corner, so the shelf keeps its character either way.
+  against the tile, with a hairline edge. A product that HAS a photo gets the
+  photograph and nothing else: no corner tag, no plate. A sticker on top of a
+  picture says the picture is decoration; a shelf of real photographs is what earns
+  trust.
 - **Emoji are a design language, not a fallback.** They carry sections too: a 🎁
   marks offers, 🔥 the deals rail, 🔁 "buy again", 💚 the shortlist, 🧺 the grid.
   `SectionHeader` takes an optional `emoji`, and the glyph is hidden from screen
   readers (the title already says what it is). This is deliberate for a town where
   roughly one in three adults cannot comfortably read a sentence (KUNIGAL.md §2):
   the picture lands before the word.
-- **The horse** is Kunigal's own nickname ("Horse town"), so it is the shop's
-  mark (`🐎` roundel on Home).
+- **The horse** is Kunigal's own nickname ("Horse town"), so it is the shop's mark
+  (`🐎` on the sign-in screen). It is deliberately *not* in the app bar: at 44px
+  between two buttons a roundel reads as a sticker, and the wordmark says the name
+  better. The mark belongs where the shop introduces itself, not on every screen.
 - Icons are Ionicons; a status is always icon + colour + word.
 
 ---
@@ -152,12 +156,17 @@ quick-commerce layout conventions on top.**
   actually popular here right now: a **sticky basket bar** ("3 items · ₹240 ·
   View basket"), horizontal category and deals rails, a 2-column grid, one-tap
   Add.
-- **A real app bar on Home.** The brand roundel, the language chip and the bag
-  (with its count) sit in a bar that does not scroll, and the **search field lives
+- **A real app bar on Home.** The wordmark (name over promise), the language chip
+  and the bag stay in a bar that does not scroll, and the **search field lives
   in it** rather than inside the list. On a small phone, search that scrolls away
   is search you cannot reach; keeping it pinned is the single biggest "feels like a
   real app" change. The greeting, the delivery pill and the offers rail scroll
-  beneath it.
+  beneath it. No brand roundel — see the horse note in §5.
+- **The welcome is a panel, not a paragraph.** The greeting, the one-line question
+  ("What do you need today?") and the destination pill sit together on a soft accent
+  panel at the top of the list, so the first thing a customer sees is one designed
+  block rather than three loose lines. When the app knows who is signed in, the
+  greeting uses their name.
 
 Deliberately **rejected**:
 
