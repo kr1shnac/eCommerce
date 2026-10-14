@@ -36,7 +36,7 @@ import { isStoreOpen } from '@/lib/store-hours';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import { useCartStore } from '@/store/cart-store';
-import { currentLanguage } from '@/store/language-store';
+import { useLanguageStore } from '@/store/language-store';
 import type { Product } from '@/types/database';
 
 /**
@@ -53,10 +53,13 @@ import type { Product } from '@/types/database';
  * green Add pill is the one thing to press.
  */
 export default function HomeScreen() {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  // Everything language-dependent on this screen reads this one value, so the
+  // labels and the product/category names can never disagree.
+  const language = useLanguageStore((state) => state.language);
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [term, setTerm] = useState('');
 
@@ -191,36 +194,12 @@ export default function HomeScreen() {
           <Ionicons name="location" size={14} color={theme.accent} />
           <ThemedText type="caption" style={{ color: theme.accent }} numberOfLines={1}>
             {defaultAddress
-              ? `${zoneAreaName(zone, i18n.language) ?? defaultAddress.city} ${defaultAddress.pincode}`
+              ? `${zoneAreaName(zone, language) ?? defaultAddress.city} ${defaultAddress.pincode}`
               : t('home.deliveringTo')}
           </ThemedText>
         </View>
         {!isClosed && zone?.eta_minutes ? (
           <Badge label={t('home.deliveryIn', { minutes: zone.eta_minutes })} tone="success" icon="time-outline" />
-        ) : null}
-      </View>
-
-      <View style={[styles.searchBar, Elevation.card, { backgroundColor: theme.card, borderColor: theme.border, shadowColor: theme.shadow }]}>
-        <Ionicons name="search" size={20} color={theme.textSecondary} />
-        <TextInput
-          value={term}
-          onChangeText={setTerm}
-          placeholder={t('home.searchPlaceholder')}
-          placeholderTextColor={theme.textTertiary}
-          style={[styles.searchInput, kannadaInputFont(currentLanguage()), { color: theme.text }]}
-          returnKeyType="search"
-          autoCorrect={false}
-          autoCapitalize="none"
-          accessibilityLabel={t('home.searchPlaceholder')}
-        />
-        {term.length > 0 ? (
-          <Pressable
-            onPress={() => setTerm('')}
-            accessibilityRole="button"
-            accessibilityLabel={t('home.clearSearch')}
-            hitSlop={10}>
-            <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
-          </Pressable>
         ) : null}
       </View>
 
@@ -241,7 +220,7 @@ export default function HomeScreen() {
           never comes between the customer and what they typed. */}
       {!isSearching && (offers.data?.length ?? 0) > 0 ? (
         <>
-          <SectionHeader title={t('home.offersTitle')} style={styles.sectionTitle} />
+          <SectionHeader emoji="🎁" title={t('home.offersTitle')} style={styles.sectionTitle} />
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -262,7 +241,7 @@ export default function HomeScreen() {
                   </ThemedText>
                 </View>
                 <ThemedText type="caption" style={{ color: theme.successInk }} numberOfLines={2}>
-                  {localizedDescription(offer, i18n.language === 'kn' ? 'kn' : 'en')}
+                  {localizedDescription(offer, language)}
                 </ThemedText>
                 <ThemedText type="caption" themeColor="textSecondary">
                   {t('home.offerMin', { amount: formatPaise(offer.min_order_paise) })}
@@ -291,7 +270,7 @@ export default function HomeScreen() {
           <CategoryChip
             key={category.id}
             icon={category.icon}
-            label={localizedName(category)}
+            label={localizedName(category, language)}
             isSelected={categoryId === category.id && !isSearching}
             onPress={() => {
               setCategoryId(category.id);
@@ -304,6 +283,7 @@ export default function HomeScreen() {
       {!isSearching && deals.length > 0 ? (
         <>
           <SectionHeader
+            emoji="🔥"
             title={t('home.dealsTitle')}
             style={styles.sectionTitle}
             action={
@@ -327,6 +307,7 @@ export default function HomeScreen() {
 
       {!isSearching ? (
         <ProductRail
+          emoji="🔁"
           title={t('home.buyAgainTitle')}
           products={buyAgainProducts}
           emojiByCategory={emojiByCategory}
@@ -335,13 +316,14 @@ export default function HomeScreen() {
 
       {!isSearching ? (
         <ProductRail
+          emoji="💚"
           title={t('home.savedTitle')}
           products={savedProducts}
           emojiByCategory={emojiByCategory}
         />
       ) : null}
 
-      <SectionHeader title={t('home.productsTitle')} style={styles.sectionTitle} />
+      <SectionHeader emoji="🧺" title={t('home.productsTitle')} style={styles.sectionTitle} />
     </View>
   );
 
@@ -359,9 +341,72 @@ export default function HomeScreen() {
   return (
     <View style={styles.screen}>
       <OfflineBanner />
-      <View style={[styles.brandBar, { paddingTop: insets.top + Spacing.two }]}>
-        <BrandMark />
-        <LanguageSwitch variant="toggle" />
+      {/* The app bar. The brand, the language chip and the bag stay put while the
+          shelf scrolls; the search field lives up here instead of inside the
+          scrolling list, so it is always one tap away at the top of the screen. */}
+      <View
+        style={[
+          styles.appBar,
+          Elevation.card,
+          {
+            paddingTop: insets.top + Spacing.two,
+            backgroundColor: theme.card,
+            borderBottomColor: theme.border,
+            shadowColor: theme.shadow,
+          },
+        ]}>
+        <View style={styles.appBarTop}>
+          <BrandMark />
+          <View style={styles.appBarActions}>
+            <LanguageSwitch variant="toggle" />
+            <Pressable
+              onPress={() => router.push('/(tabs)/cart')}
+              accessibilityRole="button"
+              accessibilityLabel={t('tabs.cart')}
+              style={({ pressed }) => [
+                styles.iconButton,
+                { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+                pressed && styles.basketPressed,
+              ]}>
+              <Ionicons name="cart-outline" size={20} color={theme.text} />
+              {basketCount > 0 ? (
+                <View style={[styles.cartBadge, { backgroundColor: theme.secondary }]}>
+                  <ThemedText type="caption" style={{ color: theme.onSecondary }}>
+                    {basketCount > 99 ? '99+' : basketCount}
+                  </ThemedText>
+                </View>
+              ) : null}
+            </Pressable>
+          </View>
+        </View>
+
+        <View
+          style={[
+            styles.searchBar,
+            { backgroundColor: theme.backgroundElement, borderColor: theme.border },
+          ]}>
+          <Ionicons name="search" size={20} color={theme.textSecondary} />
+          <TextInput
+            value={term}
+            onChangeText={setTerm}
+            placeholder={t('home.searchPlaceholder')}
+            placeholderTextColor={theme.textTertiary}
+            style={[styles.searchInput, kannadaInputFont(language), { color: theme.text }]}
+            returnKeyType="search"
+            autoCorrect={false}
+            autoCapitalize="none"
+            accessibilityLabel={t('home.searchPlaceholder')}
+          />
+          {term.length > 0 ? (
+            <Pressable
+              onPress={() => setTerm('')}
+              accessibilityRole="button"
+              accessibilityLabel={t('home.clearSearch')}
+              hitSlop={10}>
+              <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
+            </Pressable>
+          ) : null}
+        </View>
       </View>
 
       <FlatList
@@ -379,7 +424,7 @@ export default function HomeScreen() {
         ItemSeparatorComponent={() => <View style={styles.columnGap} />}
         // Re-render the cards when the language changes OR when any cart
         // quantity changes, so an "Add" button flips to a stepper immediately.
-        extraData={[i18n.language, cartRevision]}
+        extraData={[language, cartRevision]}
         refreshControl={
           <RefreshControl
             refreshing={products.isRefetching && !products.isLoading}
@@ -471,6 +516,9 @@ function BrandMark() {
 /** A compact card on the "market deals" rail. */
 function DealCard({ product, emoji }: { product: Product; emoji?: string }) {
   const theme = useTheme();
+  // Read the language here rather than relying on a re-render: this card shows a
+  // DB name, and it must follow the switch even on its own.
+  const language = useLanguageStore((state) => state.language);
   const off = discountPercent(product.price_paise, product.mrp_paise);
 
   return (
@@ -480,7 +528,7 @@ function DealCard({ product, emoji }: { product: Product; emoji?: string }) {
         {off !== null ? <Badge label={`-${off}%`} tone="secondary" solid /> : null}
       </View>
       <ThemedText type="smallBold" numberOfLines={1}>
-        {localizedName(product)}
+        {localizedName(product, language)}
       </ThemedText>
       <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1}>
         {product.unit}
@@ -493,7 +541,11 @@ function DealCard({ product, emoji }: { product: Product; emoji?: string }) {
           </ThemedText>
         ) : null}
       </View>
-      <AddToCart productId={product.id} productName={localizedName(product)} stock={product.stock_qty} />
+      <AddToCart
+        productId={product.id}
+        productName={localizedName(product, language)}
+        stock={product.stock_qty}
+      />
     </Card>
   );
 }
@@ -511,10 +563,12 @@ function zoneAreaName(
 /** A horizontal shelf of full product cards, used for "Buy again" / "Saved". */
 function ProductRail({
   title,
+  emoji,
   products,
   emojiByCategory,
 }: {
   title: string;
+  emoji?: string;
   products: Product[];
   emojiByCategory: Map<string, string>;
 }) {
@@ -522,7 +576,7 @@ function ProductRail({
 
   return (
     <>
-      <SectionHeader title={title} style={styles.sectionTitle} />
+      <SectionHeader emoji={emoji} title={title} style={styles.sectionTitle} />
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -552,6 +606,38 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     paddingHorizontal: Spacing.three,
     paddingBottom: Spacing.two,
+  },
+  appBar: {
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.two,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  appBarTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  appBarActions: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  cartBadge: {
+    position: 'absolute',
+    top: 1,
+    right: 1,
+    minWidth: 20,
+    height: 20,
+    paddingHorizontal: 4,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   brand: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, flex: 1 },
   brandCircle: {
@@ -585,7 +671,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
     minHeight: 52,
-    marginTop: Spacing.three,
     paddingHorizontal: Spacing.three,
     borderRadius: Radii.md,
     borderWidth: StyleSheet.hairlineWidth,

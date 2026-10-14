@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet, View } from 'react-native';
 
@@ -12,10 +13,15 @@ const LABELS: Record<Language, string> = {
   kn: 'ಕನ್ನಡ',
 };
 
-/** The letter shown on the one-tap toggle: what tapping will take you TO. */
-const TOGGLE_GLYPH: Record<Language, string> = {
-  en: 'ಕ', // currently English -> tap for Kannada
-  kn: 'A', // currently Kannada -> tap for English
+/**
+ * The short chip shown in a header. It names the language you are IN, not the one
+ * you would switch to: a compact button that read "ಕ" while the app was in
+ * English looked like a stray Kannada letter rather than a control, which is how
+ * the header ended up feeling half-translated.
+ */
+const SHORT_LABELS: Record<Language, string> = {
+  en: 'EN',
+  kn: 'ಕನ',
 };
 
 type LanguageSwitchProps = {
@@ -23,8 +29,8 @@ type LanguageSwitchProps = {
   compact?: boolean;
   /**
    * `segmented` shows both options as one either/or control.
-   * `toggle` is a single small button for a tight header — it switches to the
-   * other language, and its letter names that language.
+   * `toggle` is a single small pill for a tight header: it shows a globe and the
+   * language you are in (EN / ಕನ), and tapping it moves you to the other one.
    */
   variant?: 'segmented' | 'toggle';
 };
@@ -53,8 +59,9 @@ export function LanguageSwitch({ compact = false, variant = 'segmented' }: Langu
           { backgroundColor: theme.backgroundElement, borderColor: theme.border },
           pressed && styles.pressed,
         ]}>
-        <ThemedText type="smallBold" style={[styles.toggleGlyph, { color: theme.accent }]}>
-          {TOGGLE_GLYPH[language]}
+        <Ionicons name="globe-outline" size={16} color={theme.accent} />
+        <ThemedText type="smallBold" style={{ color: theme.text }}>
+          {SHORT_LABELS[language]}
         </ThemedText>
       </Pressable>
     );
@@ -115,13 +122,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   toggle: {
-    width: 44,
-    height: 44,
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    paddingHorizontal: Spacing.two + 2,
     borderRadius: Radii.pill,
     borderWidth: StyleSheet.hairlineWidth,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
-  toggleGlyph: { fontSize: 18 },
   pressed: { opacity: 0.75 },
 });

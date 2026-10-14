@@ -12,6 +12,7 @@ import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedName } from '@/lib/localized';
 import { discountPercent, formatPaise } from '@/lib/money';
+import { useLanguageStore } from '@/store/language-store';
 import type { Product } from '@/types/database';
 
 type ProductCardProps = {
@@ -37,13 +38,17 @@ export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
   const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
+  // The name is DB text, so it follows the language store directly. That way the
+  // card can never settle on a stale language just because it happened to render
+  // during a switch.
+  const language = useLanguageStore((state) => state.language);
   const [imageFailed, setImageFailed] = useState(false);
 
   const off = discountPercent(product.price_paise, product.mrp_paise);
   const isOutOfStock = product.stock_qty <= 0;
   const showImage = Boolean(product.image_url) && !imageFailed;
   const emoji = product.emoji ?? fallbackEmoji ?? '🛒';
-  const name = localizedName(product);
+  const name = localizedName(product, language);
 
   const openDetail = () => router.push({ pathname: '/product/[id]', params: { id: product.id } });
 
@@ -64,13 +69,24 @@ export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
             <Image
               source={{ uri: product.image_url ?? '' }}
               style={styles.image}
-              contentFit="contain"
+              contentFit="cover"
               transition={150}
               onError={() => setImageFailed(true)}
             />
           ) : (
-            <ThemedText style={styles.emoji}>{emoji}</ThemedText>
+            <View
+              style={[styles.emojiPlate, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <ThemedText style={styles.emoji}>{emoji}</ThemedText>
+            </View>
           )}
+
+          {/* The same emoji, kept as a little tag on a real photo, so the shelf
+              still looks like this shop's shelf once photos arrive. */}
+          {showImage ? (
+            <View style={[styles.emojiTag, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <ThemedText style={styles.emojiTagText}>{emoji}</ThemedText>
+            </View>
+          ) : null}
 
           {off !== null && !isOutOfStock ? (
             <Badge label={`-${off}%`} tone="secondary" solid style={styles.offBadge} />
@@ -136,8 +152,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  image: { width: '78%', height: '78%' },
+  image: { width: '100%', height: '100%' },
+  /**
+   * The no-photo-yet state, designed rather than bare: the emoji sits on a soft
+   * plate with a hairline, so an unphotographed product still reads as a deliberate
+   * tile rather than a blank hole on the shelf.
+   */
+  emojiPlate: {
+    width: '72%',
+    aspectRatio: 1,
+    maxWidth: 112,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   emoji: { fontSize: 54, lineHeight: 64 },
+  emojiTag: {
+    position: 'absolute',
+    bottom: Spacing.two,
+    left: Spacing.two,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emojiTagText: { fontSize: 16, lineHeight: 20 },
   offBadge: { position: 'absolute', top: Spacing.two, left: Spacing.two },
   heart: { position: 'absolute', top: Spacing.one, right: Spacing.one },
   soldOut: {

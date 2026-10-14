@@ -6,6 +6,105 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-14 — One language source, a photo-first shelf, and a real app bar
+
+*(sixth session of the day; the entry below is the Supabase connection)*
+
+### What changed and why
+
+Three things the owner asked for after running the app: (1) Kannada appeared in
+places while English was selected — **specifically the category chips**; (2) they
+want real product photos to be the main thing, with the emoji kept and used
+creatively; (3) the top bar should be planned properly, like a real app.
+
+**1. The language could be read from two places, so it could disagree.**
+
+- The bug: the app had **two sources of truth**. The Zustand store drove the
+  Kannada font and the tab bar; `i18n.language` drove `t()` *and* the DB-name
+  helpers (`localizedName`, `localizedDescription`). `setLanguage` updated them in
+  two steps (`set()` then `await i18n.changeLanguage()`), so a render could land
+  between them. The category chips were the one list that asked for a name through
+  the second path, which is exactly where the owner saw Kannada under an English
+  UI.
+- `apps/mobile/src/store/language-store.ts` is now the **single source**: a
+  module-level `current`, exposed as `currentLanguage()`. `setLanguage` sets
+  `current`, flips i18next and writes the store **inside one tick**, so React
+  batches them into a single render — there is no frame that is half English and
+  half Kannada. (I probed i18next directly: with bundled resources
+  `changeLanguage` updates `i18n.language`, emits `languageChanged` and returns
+  the new `t()` **synchronously**, before the promise settles. That is what makes
+  the one-tick order safe.)
+- `localizedName(...)`/`localizedItemName(...)` defaults now resolve to that one
+  value, and the screens that render DB names pass it explicitly: the category
+  chips (`localizedName(category, language)`), `DealCard` and `ProductCard` now
+  read the store directly, so a card cannot settle on a stale language.
+- `apps/mobile/src/components/language-switch.tsx`: the home-header toggle used to
+  show the **destination** language as a single glyph — `ಕ` while in English. It
+  read as a stray untranslated Kannada letter (and tapping it did switch you to
+  Kannada). It is now a globe + the language you are **in** (`EN` / `ಕನ`), and the
+  segmented control on Account is unchanged.
+
+**2. Photos first, emoji as the shop's own face.**
+
+- `apps/mobile/src/components/product-card.tsx`: a real `image_url` now fills the
+  tile (`contentFit="cover"`) instead of floating at 78%. With no photo, the emoji
+  sits on a **soft circular plate** (card colour, hairline edge) so an
+  unphotographed product looks designed, not blank. On a photo, the same emoji
+  stays as a small round tag in the corner — the shelf keeps its character either
+  way. No photos are bundled; the owner uploads them via the existing
+  `admin/photos.tsx` + `product-images` bucket, and the card picks them up.
+- `apps/mobile/src/components/ui/section-header.tsx` takes an optional `emoji`,
+  hidden from screen readers. Emoji is now a system, not a fallback: 🎁 offers, 🔥
+  deals, 🔁 buy again, 💚 shortlist, 🧺 the grid.
+
+**3. A real app bar on Home** (`apps/mobile/src/app/(tabs)/index.tsx`).
+
+- The brand roundel, the language chip and a **bag button with its count** sit in
+  a bar that does not scroll; the **search field moved out of the scrolling list
+  into the bar**, where it is always one tap away. Greeting, delivery pill and the
+  offers rail scroll beneath. `DESIGN.md` §5 and §6 record this.
+
+### Verified, and how
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean; `check:i18n` OK (408 keys, no new strings were needed —
+  the emoji are data, and the toggle reuses `account.languageLabel`).
+- `npm run test:db` — **346/346** against real PostgreSQL. Nothing in this session
+  touched a table, policy, function or trigger, so this is a regression check, not
+  new coverage.
+- The i18next timing claim above was **probed directly** in Node against the real
+  locale files (`createInstance` + `init` → `changeLanguage`): state, the
+  `languageChanged` event and `t()` all update synchronously.
+- **Not verified on a device.** No emulator or phone is available here, so the
+  layout of the new app bar, the emoji plate and the photo crop are **read from the
+  code, not seen**. Worth a glance on a real 5-inch screen next time.
+
+### Decisions and reasons
+
+- **One source of truth for language, and only one.** Two was the actual defect;
+  the chips were just where it showed. Anything that needs the language outside
+  React now calls `currentLanguage()`, and inside React reads the store.
+- **Emoji stay even when a photo exists** (as a corner tag). The owner asked to
+  keep the emoji; the shelf is also how a non-reader recognises a product, and the
+  photo can be a generic pack shot.
+- **Photos are `cover`, not `contain`.** Photo-first reads better edge-to-edge;
+  if pack shots on white start looking cropped, this is the one knob to revisit.
+- **Kept the language toggle one-tap**, rather than sending people to Account: in
+  this town the language is the setting a person may need *before* they can read
+  anything else.
+
+### Open gaps
+
+- The hosted project still has **no users**, so nothing can sign in yet and
+  `supabase/demo.sql` cannot run (it needs an existing profile). Promote the first
+  account with `update public.profiles set role = 'admin' where id = '<uuid>';`.
+- `supabase_migrations.schema_migrations` does not exist on the hosted project, so
+  a future `supabase db push` would try to re-apply all 17 migrations.
+- Only the Home screen got the app-bar treatment; Cart / Orders / Account still
+  use the plain header.
+
+---
+
 ## 2026-10-14 — Connecting the admin panel to a hosted Supabase project
 
 *(fifth session of the day; the four entries below are the design-system pass,

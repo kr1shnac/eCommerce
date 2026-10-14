@@ -121,9 +121,19 @@ Both palettes are complete and are chosen at runtime:
 
 ## 5. Iconography and imagery
 
-- **Emoji are the pictures.** Every product carries its own `products.emoji`,
-  falling back to the category `icon`. A real `image_url` always wins. Emoji
-  render instantly, work offline, and are legible to a non-reader.
+- **Photos first, emoji as the shop's own face.** A product with `image_url`
+  shows the photo, cropped to fill the tile (`contentFit="cover"`) — real photos
+  are the goal once the owner starts photographing the shelf. Until then the emoji
+  is not a placeholder apology but a designed tile: the product's own `products.emoji`
+  (falling back to the category `icon`) sits on a soft circular plate, tinted
+  against the tile, with a hairline edge. Emoji also survive *on* a real photo, as
+  a small round tag in the corner, so the shelf keeps its character either way.
+- **Emoji are a design language, not a fallback.** They carry sections too: a 🎁
+  marks offers, 🔥 the deals rail, 🔁 "buy again", 💚 the shortlist, 🧺 the grid.
+  `SectionHeader` takes an optional `emoji`, and the glyph is hidden from screen
+  readers (the title already says what it is). This is deliberate for a town where
+  roughly one in three adults cannot comfortably read a sentence (KUNIGAL.md §2):
+  the picture lands before the word.
 - **The horse** is Kunigal's own nickname ("Horse town"), so it is the shop's
   mark (`🐎` roundel on Home).
 - Icons are Ionicons; a status is always icon + colour + word.
@@ -142,6 +152,12 @@ quick-commerce layout conventions on top.**
   actually popular here right now: a **sticky basket bar** ("3 items · ₹240 ·
   View basket"), horizontal category and deals rails, a 2-column grid, one-tap
   Add.
+- **A real app bar on Home.** The brand roundel, the language chip and the bag
+  (with its count) sit in a bar that does not scroll, and the **search field lives
+  in it** rather than inside the list. On a small phone, search that scrolls away
+  is search you cannot reach; keeping it pinned is the single biggest "feels like a
+  real app" change. The greeting, the delivery pill and the offers rail scroll
+  beneath it.
 
 Deliberately **rejected**:
 
