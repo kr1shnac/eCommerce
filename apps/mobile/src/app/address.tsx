@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -14,10 +15,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Radii, Spacing } from '@/constants/theme';
 import { useAddAddress } from '@/hooks/use-orders';
 import { useDeliveryZones } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
+import { localizedName } from '@/lib/localized';
 
 /**
  * Add a delivery address.
@@ -26,7 +31,14 @@ import { useTheme } from '@/hooks/use-theme';
  * types, so somebody in a village the shop does not serve finds out before they
  * fill in the rest. place_order() checks it again, because this check is a
  * courtesy, not a security control.
+ *
+ * The label ("Home" / "Work" / "Other") is three big chips rather than a text
+ * box, because typing a word is exactly the thing this audience should not have
+ * to do twice. The chosen label is stored as the customer typed it — it is
+ * their own name for their own place, so it is not re-translated later.
  */
+const LABEL_KEYS = ['address.labelHome', 'address.labelWork', 'address.labelOther'] as const;
+
 export default function NewAddressScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -37,7 +49,7 @@ export default function NewAddressScreen() {
   const zones = useDeliveryZones();
   const addAddress = useAddAddress();
 
-  const [label, setLabel] = useState('Home');
+  const [label, setLabel] = useState<string>(t('address.labelHome'));
   const [fullName, setFullName] = useState('');
   const [phone, setPhone] = useState('');
   const [line1, setLine1] = useState('');
@@ -66,7 +78,7 @@ export default function NewAddressScreen() {
 
     try {
       const saved = await addAddress.mutateAsync({
-        label: label.trim() || 'Home',
+        label: label.trim() || t('address.labelHome'),
         full_name: fullName.trim(),
         phone: phone.trim(),
         line1: line1.trim(),
@@ -100,7 +112,7 @@ export default function NewAddressScreen() {
     },
   ) => (
     <View style={styles.field}>
-      <ThemedText type="small" themeColor="textSecondary">
+      <ThemedText type="smallBold" themeColor="textSecondary">
         {t(labelKey)}
       </ThemedText>
       <TextInput
@@ -115,7 +127,12 @@ export default function NewAddressScreen() {
         accessibilityLabel={t(labelKey)}
         style={[
           styles.input,
-          { color: theme.text, borderColor: options?.invalid ? theme.danger : theme.border },
+          {
+            color: theme.text,
+            backgroundColor: theme.backgroundElement,
+            borderColor:
+              options?.invalid && touched ? theme.danger : theme.border,
+          },
         ]}
       />
     </View>
@@ -126,58 +143,100 @@ export default function NewAddressScreen() {
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       style={[styles.screen, { backgroundColor: theme.background }]}>
       <OfflineBanner />
-      <ScrollView
-        contentContainerStyle={[
-          styles.content,
-          { paddingTop: insets.top + Spacing.three, paddingBottom: insets.bottom + Spacing.five },
-        ]}
-        keyboardShouldPersistTaps="handled">
-        <ThemedText style={styles.title}>{t('address.title')}</ThemedText>
+      <View style={[styles.headerRow, { paddingTop: insets.top + Spacing.two }]}>
+        <IconButton icon="arrow-back" label={t('common.back')} onPress={() => router.back()} />
+        <ThemedText type="subtitle">{t('address.title')}</ThemedText>
+      </View>
 
-        {field(label, setLabel, 'address.label')}
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.five }]}
+        keyboardShouldPersistTaps="handled">
+        <View style={styles.field}>
+          <ThemedText type="smallBold" themeColor="textSecondary">
+            {t('address.label')}
+          </ThemedText>
+          <View style={styles.labelRow}>
+            {LABEL_KEYS.map((key) => {
+              const value = t(key);
+              const active = label === value;
+              return (
+                <Pressable
+                  key={key}
+                  onPress={() => setLabel(value)}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: active }}
+                  accessibilityLabel={value}
+                  style={({ pressed }) => [
+                    styles.labelChip,
+                    {
+                      backgroundColor: active ? theme.accent : theme.backgroundElement,
+                      borderColor: active ? theme.accent : theme.border,
+                    },
+                    pressed && styles.pressed,
+                  ]}>
+                  <ThemedText
+                    type="smallBold"
+                    style={{ color: active ? theme.onAccent : theme.textSecondary }}>
+                    {value}
+                  </ThemedText>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
         {field(fullName, setFullName, 'address.fullName', {
           placeholder: 'address.namePlaceholder',
-          invalid: touched && fullName.trim().length < 2,
+          invalid: fullName.trim().length < 2,
         })}
         {field(phone, setPhone, 'address.phone', {
           placeholder: 'address.phonePlaceholder',
           keyboardType: 'phone-pad',
           maxLength: 12,
-          invalid: touched && phone.replace(/\D/g, '').length < 10,
+          invalid: phone.replace(/\D/g, '').length < 10,
         })}
         {field(line1, setLine1, 'address.line1', {
           placeholder: 'address.line1Placeholder',
-          invalid: touched && line1.trim().length < 4,
+          invalid: line1.trim().length < 4,
         })}
         {field(line2, setLine2, 'address.line2')}
         {field(landmark, setLandmark, 'address.landmark')}
 
         <View style={styles.row}>
           <View style={styles.rowItem}>
-            {field(city, setCity, 'address.city', { invalid: touched && city.trim().length < 2 })}
+            {field(city, setCity, 'address.city', { invalid: city.trim().length < 2 })}
           </View>
           <View style={styles.rowItemSmall}>
             {field(pincode, setPincode, 'address.pincode', {
               placeholder: 'address.pincodePlaceholder',
               keyboardType: 'number-pad',
               maxLength: 6,
-              invalid: touched && !pincodeLooksReal,
+              invalid: !pincodeLooksReal,
             })}
           </View>
         </View>
 
         {pincodeLooksReal ? (
           isServed ? (
-            <ThemedText type="small" style={{ color: theme.accent }}>
-              {t('address.servedHere', {
-                area: t('address.areaName', { name: zone?.area_name_en ?? '' }),
-                eta: zone?.eta_minutes ?? 0,
-              })}
-            </ThemedText>
+            <Card tone="accent" style={styles.zoneCard}>
+              <Ionicons name="checkmark-circle" size={20} color={theme.accent} />
+              <ThemedText type="smallBold" style={[styles.flex, { color: theme.accent }]}>
+                {t('address.servedHere', {
+                  area: localizedName({
+                    name_en: zone?.area_name_en ?? '',
+                    name_kn: zone?.area_name_kn ?? null,
+                  }),
+                  eta: zone?.eta_minutes ?? 0,
+                })}
+              </ThemedText>
+            </Card>
           ) : (
-            <ThemedText type="small" style={{ color: theme.danger }}>
-              {t('address.notServed')}
-            </ThemedText>
+            <Card tone="danger" style={styles.zoneCard}>
+              <Ionicons name="close-circle" size={20} color={theme.danger} />
+              <ThemedText type="smallBold" style={[styles.flex, { color: theme.dangerInk }]}>
+                {t('address.notServed')}
+              </ThemedText>
+            </Card>
           )
         ) : null}
 
@@ -187,32 +246,17 @@ export default function NewAddressScreen() {
           </ThemedText>
         ) : null}
 
-        <Pressable
-          onPress={onSave}
-          disabled={!isValid || addAddress.isPending}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !isValid, busy: addAddress.isPending }}
-          accessibilityLabel={t('address.save')}
-          style={({ pressed }) => [
-            styles.button,
-            { backgroundColor: theme.accent },
-            (!isValid || addAddress.isPending) && styles.buttonDisabled,
-            pressed && styles.pressed,
-          ]}>
-          <ThemedText type="smallBold" style={styles.buttonLabel}>
-            {addAddress.isPending ? t('common.pleaseWait') : t('address.save')}
-          </ThemedText>
-        </Pressable>
+        <Button
+          label={addAddress.isPending ? t('common.pleaseWait') : t('address.save')}
+          size="lg"
+          fullWidth
+          busy={addAddress.isPending}
+          disabled={!isValid}
+          onPress={() => void onSave()}
+          style={styles.saveButton}
+        />
 
-        <Pressable
-          onPress={() => router.back()}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.cancel')}
-          style={styles.cancelButton}>
-          <ThemedText type="small" themeColor="textSecondary">
-            {t('common.cancel')}
-          </ThemedText>
-        </Pressable>
+        <Button label={t('common.cancel')} variant="ghost" fullWidth onPress={() => router.back()} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -220,44 +264,39 @@ export default function NewAddressScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  flex: { flex: 1 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    paddingBottom: Spacing.two,
+  },
   content: {
     paddingHorizontal: Spacing.four,
     gap: Spacing.three,
   },
-  title: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '700',
+  field: { gap: Spacing.one },
+  labelRow: { flexDirection: 'row', gap: Spacing.two, flexWrap: 'wrap' },
+  labelChip: {
+    minHeight: 44,
+    paddingHorizontal: Spacing.four,
+    borderRadius: Radii.pill,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  field: {
-    gap: Spacing.one,
-  },
-  row: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-  },
+  row: { flexDirection: 'row', gap: Spacing.three },
   rowItem: { flex: 2 },
   rowItemSmall: { flex: 1 },
   input: {
     minHeight: 52,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.two,
+    borderRadius: Radii.lg,
     paddingHorizontal: Spacing.three,
     fontSize: 16,
   },
-  button: {
-    minHeight: 52,
-    borderRadius: Spacing.two,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: Spacing.two,
-  },
-  buttonDisabled: { opacity: 0.5 },
-  buttonLabel: { color: '#ffffff' },
+  zoneCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  saveButton: { marginTop: Spacing.two },
   pressed: { opacity: 0.8 },
-  cancelButton: {
-    minHeight: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
 });

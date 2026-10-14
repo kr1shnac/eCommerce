@@ -257,7 +257,7 @@ select test_result.refused(
 select test_result.eq(
   'and that zone kept its real pincode',
   (select pincode from public.delivery_zones where id = '30000000-0000-4000-8000-000000000001'),
-  '571915'
+  '572130'
 );
 
 -- -----------------------------------------------------------------------------

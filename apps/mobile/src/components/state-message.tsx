@@ -1,7 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import { ActivityIndicator, Pressable, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -11,7 +12,8 @@ import { useTheme } from '@/hooks/use-theme';
  *
  * Notice there is no place to put a raw error message. The caller passes a
  * TRANSLATED hint, because `error.message` from PostgREST is for the console,
- * not for a customer in Kunigal.
+ * not for a customer in Kunigal. Each state gets a big friendly picture, so the
+ * screen still says something to a reader who cannot read the words.
  */
 
 type StateMessageProps = {
@@ -20,17 +22,31 @@ type StateMessageProps = {
   onRetry?: () => void;
   retryLabel?: string;
   tone?: 'neutral' | 'danger';
+  /** Overrides the default picture for the tone. */
+  art?: string;
 };
 
-export function StateMessage({ title, hint, onRetry, retryLabel, tone = 'neutral' }: StateMessageProps) {
+export function StateMessage({
+  title,
+  hint,
+  onRetry,
+  retryLabel,
+  tone = 'neutral',
+  art,
+}: StateMessageProps) {
   const { t } = useTranslation();
   const theme = useTheme();
 
+  const picture = art ?? (tone === 'danger' ? '📡' : '🧺');
+
   return (
     <View style={styles.container}>
+      <View style={[styles.artWrap, { backgroundColor: theme.backgroundElement }]}>
+        <ThemedText style={styles.art}>{picture}</ThemedText>
+      </View>
       <ThemedText
-        type="smallBold"
-        style={tone === 'danger' ? { color: theme.danger, textAlign: 'center' } : { textAlign: 'center' }}>
+        type="bodyStrong"
+        style={[styles.title, tone === 'danger' ? { color: theme.danger } : undefined]}>
         {title}
       </ThemedText>
       {hint ? (
@@ -39,15 +55,13 @@ export function StateMessage({ title, hint, onRetry, retryLabel, tone = 'neutral
         </ThemedText>
       ) : null}
       {onRetry ? (
-        <Pressable
+        <Button
+          label={retryLabel ?? t('common.retry')}
+          icon="refresh"
+          variant="outline"
           onPress={onRetry}
-          accessibilityRole="button"
-          accessibilityLabel={retryLabel ?? t('common.retry')}
-          style={({ pressed }) => [styles.retry, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={{ color: theme.accent }}>
-            {retryLabel ?? t('common.retry')}
-          </ThemedText>
-        </Pressable>
+          style={styles.retry}
+        />
       ) : null}
     </View>
   );
@@ -59,7 +73,7 @@ export function LoadingState({ label }: { label?: string }) {
 
   return (
     <View style={styles.container}>
-      <ActivityIndicator color={theme.accent} />
+      <ActivityIndicator color={theme.accent} size="large" />
       <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
         {label ?? t('common.loading')}
       </ThemedText>
@@ -71,22 +85,20 @@ const styles = StyleSheet.create({
   container: {
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: Spacing.five,
+    paddingVertical: Spacing.six,
     paddingHorizontal: Spacing.four,
     gap: Spacing.two,
   },
-  hint: {
-    textAlign: 'center',
-  },
-  retry: {
-    // 44px minimum tap target (rule 9.9), even though the text is 14px.
-    minHeight: 44,
-    minWidth: 96,
+  artWrap: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.three,
+    marginBottom: Spacing.two,
   },
-  pressed: {
-    opacity: 0.6,
-  },
+  art: { fontSize: 42, lineHeight: 52 },
+  title: { textAlign: 'center' },
+  hint: { textAlign: 'center' },
+  retry: { marginTop: Spacing.two, minWidth: 140 },
 });

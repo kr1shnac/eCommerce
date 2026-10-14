@@ -9,7 +9,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OfflineBanner } from '@/components/offline-banner';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCart } from '@/hooks/use-cart';
 import { PlaceOrderRejected, useAddresses, usePlaceOrder } from '@/hooks/use-orders';
 import { previewFee, useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
@@ -32,6 +36,10 @@ import type { PlaceOrderError as PlaceOrderErrorCode } from '@/types/database';
  *  3. If the shop says something is no longer available, the basket is changed,
  *     the customer is told, and they go back to the basket to confirm again.
  *     Nothing is ever dropped quietly.
+ *
+ * The one green button on the screen is the one that spends money; every reason
+ * the order cannot be placed is shown above it, in words, so the customer is
+ * never left guessing why the button is grey.
  */
 export default function CheckoutScreen() {
   const { t } = useTranslation();
@@ -59,7 +67,7 @@ export default function CheckoutScreen() {
   useEffect(() => {
     if (list.length === 0 || addressId) return;
     const preferred = list.find((address) => address.is_default) ?? list[0];
-     
+
     setAddressId((prev: string | null) => prev ?? preferred.id); // eslint-disable-line react-hooks/set-state-in-effect
   }, [list, addressId]);
 
@@ -140,15 +148,10 @@ export default function CheckoutScreen() {
 
   const banner = (
     <View style={styles.backRow}>
-      <Pressable
-        onPress={() => router.back()}
-        accessibilityRole="button"
-        accessibilityLabel={t('common.back')}
-        hitSlop={8}
-        style={styles.backButton}>
-        <Ionicons name="arrow-back" size={22} color={theme.text} />
-      </Pressable>
-      <ThemedText style={styles.header}>{t('checkout.title')}</ThemedText>
+      <IconButton icon="arrow-back" label={t('common.back')} onPress={() => router.back()} />
+      <ThemedText type="subtitle" style={styles.flex}>
+        {t('checkout.title')}
+      </ThemedText>
     </View>
   );
 
@@ -172,26 +175,28 @@ export default function CheckoutScreen() {
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
       <OfflineBanner />
-      {banner}
+      <View style={{ paddingTop: insets.top }}>{banner}</View>
 
       <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 140 }]}
+        contentContainerStyle={[styles.content, { paddingBottom: 160 }]}
         keyboardShouldPersistTaps="handled">
-        <ThemedText style={styles.sectionTitle}>{t('checkout.deliverTo')}</ThemedText>
+        <ThemedText type="heading" style={styles.sectionTitle}>
+          {t('checkout.deliverTo')}
+        </ThemedText>
 
         {addresses.isLoading ? (
           <LoadingState />
         ) : addresses.isError ? (
           <StateMessage title={t('address.listError')} onRetry={addresses.refetch} tone="danger" />
         ) : list.length === 0 ? (
-          <StateMessage title={t('address.emptyTitle')} hint={t('address.emptyHint')} />
+          <StateMessage title={t('address.emptyTitle')} hint={t('address.emptyHint')} art="📍" />
         ) : (
           <View style={styles.addressList}>
             {list.map((address) => {
               const active = address.id === addressId;
-              const lines = addressLines(address);
+              const lines = addressLines(address, t('order.near'));
 
               return (
                 <Pressable
@@ -202,24 +207,29 @@ export default function CheckoutScreen() {
                   accessibilityLabel={lines.join(', ')}
                   style={({ pressed }) => [
                     styles.address,
-                    { borderColor: active ? theme.accent : theme.border, backgroundColor: theme.background },
+                    {
+                      borderColor: active ? theme.accent : theme.border,
+                      backgroundColor: active ? theme.accentSoft : theme.card,
+                      borderWidth: active ? 2 : StyleSheet.hairlineWidth,
+                    },
                     pressed && styles.pressed,
                   ]}>
-                  <View style={styles.flex}>
-                    <ThemedText type="smallBold">
-                      {`${address.label ?? t('address.labelFallback')}${
-                        address.is_default ? ` · ${t('address.defaultBadge')}` : ''
-                      }`}
-                    </ThemedText>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {lines.join(', ')}
-                    </ThemedText>
-                  </View>
                   <Ionicons
                     name={active ? 'radio-button-on' : 'radio-button-off'}
                     size={22}
                     color={active ? theme.accent : theme.textSecondary}
                   />
+                  <View style={styles.flexColumn}>
+                    <View style={styles.addressTop}>
+                      <ThemedText type="smallBold">{address.label ?? t('address.labelFallback')}</ThemedText>
+                      {address.is_default ? (
+                        <Badge label={t('address.defaultBadge')} tone="accent" icon="star" />
+                      ) : null}
+                    </View>
+                    <ThemedText type="small" themeColor="textSecondary">
+                      {lines.join(', ')}
+                    </ThemedText>
+                  </View>
                 </Pressable>
               );
             })}
@@ -228,7 +238,7 @@ export default function CheckoutScreen() {
               onPress={() => router.push({ pathname: '/address', params: { pick: '1' } })}
               accessibilityRole="button"
               accessibilityLabel={t('address.addNew')}
-              style={styles.addAddress}>
+              style={({ pressed }) => [styles.addAddress, pressed && styles.pressed]}>
               <Ionicons name="add-circle-outline" size={22} color={theme.accent} />
               <ThemedText type="smallBold" style={{ color: theme.accent }}>
                 {t('address.addNew')}
@@ -237,8 +247,10 @@ export default function CheckoutScreen() {
           </View>
         )}
 
-        <ThemedText style={styles.sectionTitle}>{t('checkout.itemsTitle', { count: cart.unitCount })}</ThemedText>
-        <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.background }]}>
+        <ThemedText type="heading" style={styles.sectionTitle}>
+          {t('checkout.itemsTitle', { count: cart.unitCount })}
+        </ThemedText>
+        <Card style={styles.section}>
           {cart.lines.map((line) => (
             <View key={line.productId} style={styles.summaryLine}>
               <ThemedText type="small" numberOfLines={2} style={styles.flex}>
@@ -251,41 +263,49 @@ export default function CheckoutScreen() {
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
           <View style={styles.summaryLine}>
-            <ThemedText type="small">{t('checkout.subtotal')}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {t('checkout.subtotal')}
+            </ThemedText>
             <ThemedText type="small">{formatPaise(cart.subtotalPaise)}</ThemedText>
           </View>
 
           <View style={styles.summaryLine}>
-            <ThemedText type="small">{t('checkout.deliveryFee')}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {t('checkout.deliveryFee')}
+            </ThemedText>
             <ThemedText type="small">
               {fee.deliveryFeePaise === null ? t('checkout.notAvailable') : formatPaise(fee.deliveryFeePaise)}
             </ThemedText>
           </View>
 
           <View style={styles.totalLine}>
-            <ThemedText type="smallBold">{t('checkout.total')}</ThemedText>
-            <ThemedText type="smallBold">{formatPaise(totalPaise)}</ThemedText>
+            <ThemedText type="bodyStrong">{t('checkout.total')}</ThemedText>
+            <ThemedText type="price">{formatPaise(totalPaise)}</ThemedText>
           </View>
 
           {freeOverPaise !== null && cart.subtotalPaise < freeOverPaise ? (
-            <ThemedText type="small" themeColor="textSecondary">
+            <ThemedText type="caption" themeColor="textSecondary">
               {t('checkout.freeDeliveryHint', { amount: formatPaise(freeOverPaise) })}
             </ThemedText>
           ) : null}
-        </View>
+        </Card>
 
-        <ThemedText style={styles.sectionTitle}>{t('checkout.paymentTitle')}</ThemedText>
-        <View style={[styles.card, styles.cod, { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}>
-          <Ionicons name="cash-outline" size={22} color={theme.accent} />
-          <View style={styles.flex}>
-            <ThemedText type="smallBold">{t('checkout.cod')}</ThemedText>
+        <ThemedText type="heading" style={styles.sectionTitle}>
+          {t('checkout.paymentTitle')}
+        </ThemedText>
+        <Card tone="accent" style={styles.cod}>
+          <Ionicons name="cash-outline" size={24} color={theme.accent} />
+          <View style={styles.flexColumn}>
+            <ThemedText type="bodyStrong">{t('checkout.cod')}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {t('checkout.codHint')}
             </ThemedText>
           </View>
-        </View>
+        </Card>
 
-        <ThemedText style={styles.sectionTitle}>{t('checkout.noteTitle')}</ThemedText>
+        <ThemedText type="heading" style={styles.sectionTitle}>
+          {t('checkout.noteTitle')}
+        </ThemedText>
         <TextInput
           value={note}
           onChangeText={(text) => setNote(text.slice(0, 120))}
@@ -294,113 +314,135 @@ export default function CheckoutScreen() {
           multiline
           editable={!placeOrder.isPending}
           accessibilityLabel={t('checkout.noteTitle')}
-          style={[styles.note, { color: theme.text, borderColor: theme.border }]}
+          style={[
+            styles.note,
+            { color: theme.text, borderColor: theme.border, backgroundColor: theme.card },
+          ]}
         />
 
         {blockedCode ? (
-          <ThemedText type="small" style={[styles.error, { color: theme.danger }]}>
-            {t(`checkout.error.${blockedCode}`)}
-          </ThemedText>
+          <View style={styles.errorRow}>
+            <Ionicons name="alert-circle-outline" size={16} color={theme.danger} />
+            <ThemedText type="small" style={[styles.flex, { color: theme.danger }]}>
+              {t(`checkout.error.${blockedCode}`)}
+            </ThemedText>
+          </View>
         ) : null}
       </ScrollView>
 
-      <View style={[styles.footer, { backgroundColor: theme.background, borderColor: theme.border }]}>
+      <View
+        style={[
+          styles.footer,
+          Elevation.floating,
+          {
+            backgroundColor: theme.card,
+            borderColor: theme.border,
+            shadowColor: theme.shadow,
+            paddingBottom: insets.bottom + Spacing.three,
+          },
+        ]}>
         {reasons.length > 0 ? (
-          <ThemedText type="small" style={[styles.reasons, { color: theme.danger }]}>
-            {reasons.join('  ')}
-          </ThemedText>
+          <View style={styles.reasons}>
+            {reasons.map((reason) => (
+              <View key={reason} style={styles.reasonRow}>
+                <Ionicons name="alert-circle" size={15} color={theme.warningInk} />
+                <ThemedText type="caption" style={[styles.flex, { color: theme.warningInk }]}>
+                  {reason}
+                </ThemedText>
+              </View>
+            ))}
+          </View>
         ) : (
-          <ThemedText type="small" themeColor="textSecondary">
-            {t('checkout.payOnDelivery')}
-          </ThemedText>
+          <View style={styles.reasonRow}>
+            <Ionicons name="cash-outline" size={15} color={theme.textSecondary} />
+            <ThemedText type="caption" themeColor="textSecondary">
+              {t('checkout.payOnDelivery')}
+            </ThemedText>
+          </View>
         )}
 
-        <Pressable
-          onPress={onPlaceOrder}
+        <Button
+          label={placeOrder.isPending ? t('common.pleaseWait') : t('checkout.placeOrder')}
+          iconRight="checkmark-circle-outline"
+          size="lg"
+          fullWidth
+          busy={placeOrder.isPending}
           disabled={!canPlace}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canPlace, busy: placeOrder.isPending }}
-          accessibilityLabel={t('checkout.placeOrder')}
-          style={({ pressed }) => [
-            styles.place,
-            { backgroundColor: theme.accent },
-            !canPlace && styles.disabled,
-            pressed && styles.pressed,
-          ]}>
-          <ThemedText type="smallBold" style={styles.placeLabel}>
-            {placeOrder.isPending ? t('common.pleaseWait') : t('checkout.placeOrder')}
-          </ThemedText>
-        </Pressable>
+          onPress={() => void onPlaceOrder()}
+          style={styles.place}
+        />
       </View>
     </View>
   );
 }
 
-function addressLines(address: {
-  full_name: string;
-  line1: string;
-  line2: string | null;
-  landmark: string | null;
-  city: string;
-  pincode: string;
-}): string[] {
+function addressLines(
+  address: {
+    full_name: string;
+    line1: string;
+    line2: string | null;
+    landmark: string | null;
+    city: string;
+    pincode: string;
+  },
+  nearWord: string,
+): string[] {
   return [
     address.line1,
     address.line2,
-    address.landmark ? `Near ${address.landmark}` : null,
+    address.landmark ? `${nearWord} ${address.landmark}` : null,
     `${address.city} ${address.pincode}`,
   ].filter((part): part is string => Boolean(part));
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  flex: { flex: 1 },
+  flexColumn: { flex: 1, gap: 2 },
   backRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two,
   },
-  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  header: { fontSize: 24, lineHeight: 30, fontWeight: '700' },
   content: { paddingHorizontal: Spacing.three, gap: Spacing.two },
-  sectionTitle: { marginTop: Spacing.three, fontSize: 16, lineHeight: 22, fontWeight: '700' },
+  sectionTitle: { marginTop: Spacing.three },
+  section: { gap: Spacing.one },
   addressList: { gap: Spacing.two },
   address: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
     minHeight: 56,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.three,
+    borderRadius: Radii.lg,
     padding: Spacing.three,
   },
-  flex: { flex: 1, gap: 2 },
+  addressTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   addAddress: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
     minHeight: 44,
   },
-  card: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-    gap: Spacing.one,
-  },
   summaryLine: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.two },
   divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.two },
-  totalLine: { flexDirection: 'row', justifyContent: 'space-between', marginTop: Spacing.two },
-  cod: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  totalLine: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: Spacing.two,
+  },
+  cod: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
   note: {
     minHeight: 88,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.three,
+    borderRadius: Radii.lg,
     padding: Spacing.three,
     fontSize: 15,
     textAlignVertical: 'top',
   },
-  error: { textAlign: 'center' },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   footer: {
     position: 'absolute',
     left: 0,
@@ -409,11 +451,10 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.three,
-    paddingBottom: Spacing.four,
+    gap: Spacing.one,
   },
-  reasons: { marginBottom: Spacing.two },
-  place: { minHeight: 52, borderRadius: Spacing.two, alignItems: 'center', justifyContent: 'center' },
-  disabled: { opacity: 0.5 },
-  placeLabel: { color: '#ffffff' },
+  reasons: { gap: Spacing.one, marginBottom: Spacing.two },
+  reasonRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  place: { marginTop: Spacing.one },
   pressed: { opacity: 0.8 },
 });

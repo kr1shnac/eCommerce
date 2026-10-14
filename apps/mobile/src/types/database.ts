@@ -63,6 +63,13 @@ export type Product = {
   unit: string;
   stock_qty: number;
   image_url: string | null;
+  /**
+   * A picture for the shelf, for shops that have no product photography.
+   * `image_url` (a real photo) wins in the UI; this is the fallback, and beats
+   * the category's icon. Required for Kunigal, where one in three adults cannot
+   * comfortably read the product name (see `DESIGN.md`).
+   */
+  emoji: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -131,6 +138,10 @@ export type Order = {
   notes: string | null;
   /** Set by the app so a double tap or a retry cannot create a second order. */
   idempotency_key: string | null;
+  /** The rider who claimed (or was given) this order. NULL means nobody yet. */
+  assigned_to: string | null;
+  /** Set together with assigned_to. If one is null the other is too. */
+  assigned_at: string | null;
   placed_at: string;
   /** When the shop promised this would arrive, from the zone's ETA. */
   estimated_delivery_at: string | null;
@@ -209,16 +220,56 @@ export type CancelOrderResult =
   | { ok: true; order_id: string; order_number: string }
   | { ok: false; error: 'not_logged_in' | 'order_not_found' | 'cannot_cancel'; status?: OrderStatus };
 
+/**
+ * supabase-js expects every table to carry a `Relationships` array; leaving it
+ * out makes `.update()` resolve its argument to `never`, which is why writes
+ * used to need `as any`. The `orders <-> order_items` pair is declared because
+ * the app embeds line items with `select('*, order_items(*)')`; without it that
+ * embedded select types as an error.
+ */
+type Relationship = {
+  foreignKeyName: string;
+  columns: string[];
+  isOneToOne: boolean;
+  referencedRelation: string;
+  referencedColumns: string[];
+};
+
+type Table<
+  Row,
+  Insert = Partial<Row>,
+  Update = Partial<Row>,
+  Relationships extends Relationship[] = [],
+> = {
+  Row: Row;
+  Insert: Insert;
+  Update: Update;
+  Relationships: Relationships;
+};
+
 type TableRowMap = {
-  stores: { Row: Store; Insert: Partial<Store> & { name: string; slug: string }; Update: Partial<Store> };
-  profiles: { Row: Profile; Insert: Partial<Profile>; Update: Partial<Profile> };
-  categories: { Row: Category; Insert: Partial<Category>; Update: Partial<Category> };
-  products: { Row: Product; Insert: Partial<Product>; Update: Partial<Product> };
-  addresses: { Row: Address; Insert: Partial<Address>; Update: Partial<Address> };
-  delivery_zones: { Row: DeliveryZone; Insert: Partial<DeliveryZone>; Update: Partial<DeliveryZone> };
-  store_settings: { Row: StoreSettings; Insert: Partial<StoreSettings>; Update: Partial<StoreSettings> };
-  orders: { Row: Order; Insert: Partial<Order>; Update: Partial<Order> };
-  order_items: { Row: OrderItem; Insert: Partial<OrderItem>; Update: Partial<OrderItem> };
+  stores: Table<Store, Partial<Store> & { name: string; slug: string }>;
+  profiles: Table<Profile>;
+  categories: Table<Category>;
+  products: Table<Product>;
+  addresses: Table<Address>;
+  delivery_zones: Table<DeliveryZone>;
+  store_settings: Table<StoreSettings>;
+  orders: Table<Order>;
+  order_items: Table<
+    OrderItem,
+    Partial<OrderItem>,
+    Partial<OrderItem>,
+    [
+      {
+        foreignKeyName: 'order_items_order_id_fkey';
+        columns: ['order_id'];
+        isOneToOne: false;
+        referencedRelation: 'orders';
+        referencedColumns: ['id'];
+      },
+    ]
+  >;
 };
 
 export type Database = {

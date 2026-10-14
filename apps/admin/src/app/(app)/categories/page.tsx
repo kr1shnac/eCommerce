@@ -1,40 +1,66 @@
-// eslint-disable @typescript-eslint/no-explicit-any react-hooks/set-state-in-effect
 "use client";
 
-import { useEffect, useState } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import { Button, Input, Label } from '@/components/ui';
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { Button, Input, Label } from "@/components/ui";
+
+type CategoryRow = {
+  id: string;
+  name_en: string;
+  name_kn: string;
+  sort_order: number;
+  is_active: boolean;
+};
+
+/** Read the whole list. Kept outside the component so it is not a reactive dep. */
+async function fetchCategories(supabase: ReturnType<typeof createClient>): Promise<CategoryRow[]> {
+  const { data, error } = await supabase
+    .from("categories")
+    .select("id, name_en, name_kn, sort_order, is_active")
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as CategoryRow[];
+}
 
 export default function CategoriesPage() {
-  const supabase = createClient();
-  const [items, setItems] = useState<any[]>([]);
+  const supabase = useMemo(() => createClient(), []);
+  const [items, setItems] = useState<CategoryRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [nameEn, setNameEn] = useState('');
-  const [nameKn, setNameKn] = useState('');
-  const [sortOrder, setSortOrder] = useState('0');
+  const [nameEn, setNameEn] = useState("");
+  const [nameKn, setNameKn] = useState("");
+  const [sortOrder, setSortOrder] = useState("0");
   const [isActive, setIsActive] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);
 
-  const load = async () => {
-    setLoading(true);
-    const { data } = await supabase
-      .from('categories')
-      .select('*')
-      .order('sort_order', { ascending: true })
-      .order('created_at', { ascending: true });
-    setItems(data ?? []);
-    setLoading(false);
-  };
-
+  // The awaited work happens before any setState, so this is not a
+  // synchronous setState inside an effect.
   useEffect(() => {
-    load();
-  }, []);
+    let active = true;
+    void (async () => {
+      try {
+        const rows = await fetchCategories(supabase);
+        if (active) setItems(rows);
+      } catch (error) {
+        console.warn("[categories] could not load", error);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
+
+  const reload = async () => {
+    setItems(await fetchCategories(supabase));
+  };
 
   const reset = () => {
     setEditingId(null);
-    setNameEn('');
-    setNameKn('');
-    setSortOrder('0');
+    setNameEn("");
+    setNameKn("");
+    setSortOrder("0");
     setIsActive(true);
   };
 
@@ -42,21 +68,26 @@ export default function CategoriesPage() {
     const payload = {
       name_en: nameEn.trim(),
       name_kn: nameKn.trim(),
-      sort_order: parseInt(sortOrder) || 0,
+      sort_order: Number.parseInt(sortOrder, 10) || 0,
       is_active: isActive,
     };
     if (!payload.name_en || !payload.name_kn) return;
     if (editingId) {
-      await supabase.from('categories').update(payload).eq('id', editingId);
+      await supabase.from("categories").update(payload).eq("id", editingId);
     } else {
-      const { data: store } = await supabase.from('stores').select('id').eq('is_active', true).limit(1).maybeSingle();
-      if (store?.id) await supabase.from('categories').insert({ ...payload, store_id: store.id });
+      const { data: store } = await supabase
+        .from("stores")
+        .select("id")
+        .eq("is_active", true)
+        .limit(1)
+        .maybeSingle();
+      if (store?.id) await supabase.from("categories").insert({ ...payload, store_id: store.id });
     }
     reset();
-    load();
+    await reload();
   };
 
-  const edit = (c: any) => {
+  const edit = (c: CategoryRow) => {
     setEditingId(c.id);
     setNameEn(c.name_en);
     setNameKn(c.name_kn);
@@ -64,16 +95,16 @@ export default function CategoriesPage() {
     setIsActive(c.is_active);
   };
 
-  const toggleActive = async (c: any) => {
-    await supabase.from('categories').update({ is_active: !c.is_active }).eq('id', c.id);
-    load();
+  const toggleActive = async (c: CategoryRow) => {
+    await supabase.from("categories").update({ is_active: !c.is_active }).eq("id", c.id);
+    await reload();
   };
 
   const move = async (id: string, delta: number) => {
     const current = items.find((i) => i.id === id);
     if (!current) return;
-    await supabase.from('categories').update({ sort_order: current.sort_order + delta }).eq('id', id);
-    load();
+    await supabase.from("categories").update({ sort_order: current.sort_order + delta }).eq("id", id);
+    await reload();
   };
 
   return (
@@ -97,11 +128,13 @@ export default function CategoriesPage() {
           <span>Active</span>
         </label>
         <div className="flex gap-2">
-          <Button onClick={save}>{editingId ? 'Update' : 'Create'}</Button>
+          <Button onClick={save}>{editingId ? "Update" : "Create"}</Button>
           {editingId && <Button variant="outline" onClick={reset}>Cancel</Button>}
         </div>
       </div>
-      {loading ? <p>Loading...</p> : (
+      {loading ? (
+        <p>Loading...</p>
+      ) : (
         <div className="border rounded">
           <table className="w-full text-sm">
             <thead className="border-b bg-gray-50">
@@ -119,12 +152,14 @@ export default function CategoriesPage() {
                   <td className="p-2">{c.sort_order}</td>
                   <td className="p-2">{c.name_en}</td>
                   <td className="p-2">{c.name_kn}</td>
-                  <td className="p-2">{c.is_active ? 'Yes' : 'No'}</td>
+                  <td className="p-2">{c.is_active ? "Yes" : "No"}</td>
                   <td className="p-2 text-right flex justify-end gap-1">
                     <Button variant="ghost" onClick={() => move(c.id, -1)}>-</Button>
                     <Button variant="ghost" onClick={() => move(c.id, 1)}>+</Button>
-                    <Button variant="outline"  onClick={() => toggleActive(c)}>{c.is_active ? 'Deactivate' : 'Activate'}</Button>
-                    <Button variant="outline"  onClick={() => edit(c)}>Edit</Button>
+                    <Button variant="outline" onClick={() => toggleActive(c)}>
+                      {c.is_active ? "Deactivate" : "Activate"}
+                    </Button>
+                    <Button variant="outline" onClick={() => edit(c)}>Edit</Button>
                   </td>
                 </tr>
               ))}

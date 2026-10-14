@@ -63,8 +63,9 @@ panel. Do **not** run `npm install` inside `apps/`.
 ### Option A — dashboard (no extra tools, recommended)
 
 1. Go to **SQL Editor → New query**.
-2. Open `supabase/migrations/20261002000001_foundation.sql`, paste it, **Run**.
-3. Repeat for each remaining file, in this order:
+2. Open every file in `supabase/migrations/` and run them **in filename order**.
+   There are 14 files; the list is simply `ls supabase/migrations` sorted
+   alphabetically:
 
    ```
    20261002000001_foundation.sql
@@ -74,11 +75,23 @@ panel. Do **not** run `npm install` inside `apps/`.
    20261002000005_orders.sql
    20261002000006_row_level_security.sql
    20261002000007_grants_and_indexes.sql
+   20261002000008_place_order.sql
+   20261002000009_line_item_price_guard.sql
+   20261003000001_images_and_history.sql
+   20261003000002_db_constraints.sql
+   20261013000001_rider_assignment.sql
+   20261013000002_realtime_orders.sql
+   20261014000001_product_emoji.sql
    ```
 
-4. Finally open `supabase/seed.sql`, paste it, **Run**. This adds 1 store,
-   8 categories and 34 products with English + Kannada names.
-5. **Table Editor** should now show `products` with 34 rows.
+3. Open `supabase/seed.sql`, paste it, **Run**. This adds 1 store, 8 categories
+   and 34 products with English + Kannada names and a per-product `emoji`.
+4. **Table Editor** should now show `products` with 34 rows.
+5. *(Optional, development only)* Open `supabase/demo.sql`, paste it, **Run**.
+   It needs your profile to exist, so sign in once in the app first. It creates
+   8 orders across every status, assigns some to a rider, and gives the customer
+   a Kunigal address — enough to make all three faces look alive. **Never run it
+   on a production project.** Safe to re-run; it cleans up its own orders first.
 
 ### Option B — Supabase CLI
 
@@ -99,17 +112,19 @@ supabase start          # Docker required
 supabase db reset       # applies every migration + seed.sql
 ```
 
-### Make yourself an admin (needed later for the web panel)
+### Choose your role (admin, rider, or customer)
 
-Sign up once, then in **SQL Editor**:
+Sign up once in the app, then in **SQL Editor** set the role. It decides which
+face of the app that account sees:
 
 ```sql
 update public.profiles
-set role = 'admin'
+set role = 'admin'          -- 'admin' = shop owner, 'delivery' = rider
 where id = '<paste-the-user-uuid-here>';
 ```
 
-You can find the uuid in **Authentication → Users**.
+You can find the uuid in **Authentication → Users**. After the first owner
+exists, they can set everyone else's role from the app's **Team** tab.
 
 ---
 
@@ -165,16 +180,29 @@ npm run dev          # mobile dev server + admin panel on http://localhost:3000
 ## 6. What you should see
 
 **Home tab**
-- Header: "Kunigal Grocery" and a green "Delivering to Kunigal" pill.
+- Header: the shop's horse mark and wordmark, a **sun/moon** theme toggle and an
+  **English / ಕನ್ನಡ** switcher.
 - A row of category chips: **All**, then 8 categories with emoji icons.
-- A two-column grid of product cards. Each card shows a tile (the category
-  emoji, because seed images are empty on purpose), the product name, the pack
-  size, and a green price such as **₹18.00** with a struck-through MRP and a
-  green discount badge.
+- A two-column grid of product cards. Each card shows a large emoji tile (the
+  shop has no product photos on purpose — a tomato has to *look* like a tomato),
+  the product name, the pack size, and a green price such as **₹18.00** with a
+  struck-through MRP and a discount badge.
+- Add an item and a **basket bar** rises from the bottom — "3 items · ₹120 →
+  View basket" — so paying is always one tap away from the shelf.
 - Pull down to refresh.
 
-**Other tabs** — Cart, Orders and Account show a friendly "coming soon" screen.
-Account also has the **English / ಕನ್ನಡ** switcher.
+**Other tabs**
+- **Cart** — add items from Home, adjust quantities, see the subtotal and any
+  "your cart changed" notices. **Checkout** chooses an address (or adds one),
+  shows the delivery fee, and places the order with one big green button.
+- **Orders** — your order history with status badges and filters
+  (All / Active / Done); tap one for its tracker, items and total, or **Reorder**.
+- **Account** — your profile, the **Appearance** switch (System / Light / Dark),
+  the **English / ಕನ್ನಡ** switcher, and Call-the-shop.
+
+**Light and dark.** Every screen is designed twice. Light is a warm cream page
+with white cards; dark is a soft charcoal, not black. Follow the phone by
+default, or pin it in Account.
 
 **Try this**
 1. Tap **Dairy & Milk** — the grid filters to 4 products.
@@ -184,6 +212,14 @@ Account also has the **English / ಕನ್ನಡ** switcher.
    red "Out of stock" label.
 4. Stop the dev server, or turn off Wi-Fi — Home shows a "Could not load the
    catalogue" message with a **Retry** button.
+
+**The two staff faces** (same app, different login)
+- Sign in as a user whose `profiles.role = 'delivery'` → the **Deliveries**
+  screen: a waiting pool to accept from, your own deliveries with a single
+  "next step" button and a Call button, and today's delivered count.
+- Sign in as `profiles.role = 'admin'` → the **shop board**: live orders, rider
+  assignment, and a **Team** tab to set people's roles. The storefront icon in
+  the header switches to the customer view.
 
 ---
 
@@ -198,7 +234,9 @@ npm run admin         # Next.js on http://localhost:3000
 npm run dev           # both at once
 
 npm run typecheck     # tsc --noEmit in both apps
-npm run lint          # eslint in both apps
+npm run lint          # eslint in both apps, then the i18n key check
+npm run check:i18n    # en/kn key parity + every key used in code exists
+npm run test:db       # all database tests against a throwaway PostgreSQL 16
 ```
 
 ---

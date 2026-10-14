@@ -1,24 +1,19 @@
-// eslint-disable react-hooks/set-state-in-effect
 import { Ionicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  Alert,
-  FlatList,
-  Image,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  View,
-} from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
 import { QuantityStepper } from '@/components/quantity-stepper';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCart, type CartLineView } from '@/hooks/use-cart';
 import { useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
@@ -26,7 +21,6 @@ import { localizedName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useCartStore } from '@/store/cart-store';
-import type { Product } from '@/types/database';
 
 /**
  * The basket.
@@ -35,6 +29,10 @@ import type { Product } from '@/types/database';
  * anything sold out or pulled from the shelf is reported to the customer in
  * their language and only then changed in the basket (rule 9.5 and the
  * "never silently drop items" requirement).
+ *
+ * Each line keeps the product's emoji where a photo is missing, so a customer
+ * who reads slowly still sees *what* is in the basket at a glance, and the one
+ * green thing on the screen is the button that spends the money.
  */
 export default function CartScreen() {
   const { t } = useTranslation();
@@ -49,25 +47,14 @@ export default function CartScreen() {
   const removeLine = useCartStore((state) => state.remove);
   const hasHydrated = useCartStore((state) => state.hasHydrated);
 
-  // Told about here, shown on the screen the customer came from.
-  const [adjustments, setAdjustments] = useState<ReturnType<typeof useCart>['adjustments']>([]);
+  // A signature of the adjustments currently in the cart, so "Keep for now"
+  // hides exactly the set the customer dismissed, and a new change shows again.
   const [dismissed, setDismissed] = useState<string>('');
 
   const signature = useMemo(
     () => cart.adjustments.map((item) => `${item.productId}:${item.to}`).join(','),
     [cart.adjustments],
   );
-
-  useEffect(() => {
-    if (signature.length > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAdjustments(cart.adjustments);
-    } else {
-       
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setAdjustments([]);
-    }
-  }, [signature, cart.adjustments]);
 
   const onRefresh = () => {
     cart.refetch();
@@ -76,7 +63,6 @@ export default function CartScreen() {
 
   const onApplyAdjustments = () => {
     cart.applyAdjustments();
-    setAdjustments([]);
     setDismissed('');
   };
 
@@ -84,24 +70,25 @@ export default function CartScreen() {
     const product = item.product;
     const name = product ? localizedName(product) : t('cart.unavailableItem');
     const max = product && product.is_active ? product.stock_qty : 0;
+    const emoji = product?.emoji ?? '🛒';
+    const showImage = Boolean(product?.image_url);
 
     return (
-      <View style={[styles.line, { borderColor: theme.border, backgroundColor: theme.background }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={name}
-          onPress={() => router.push('/(tabs)')}>
-          <View style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
-            {product?.image_url ? (
-              <Image source={{ uri: product.image_url }} style={styles.thumbImage} resizeMode="contain" />
-            ) : (
-              <ThemedText style={styles.thumbEmoji}>🛒</ThemedText>
-            )}
-          </View>
-        </Pressable>
+      <View
+        style={[
+          styles.line,
+          { borderColor: theme.border, backgroundColor: theme.card },
+        ]}>
+        <View style={[styles.thumb, { backgroundColor: theme.backgroundElement }]}>
+          {showImage ? (
+            <Image source={{ uri: product?.image_url ?? '' }} style={styles.thumbImage} contentFit="contain" />
+          ) : (
+            <ThemedText style={styles.thumbEmoji}>{emoji}</ThemedText>
+          )}
+        </View>
 
         <View style={styles.lineBody}>
-          <ThemedText numberOfLines={2} style={styles.lineName}>
+          <ThemedText type="bodyStrong" numberOfLines={2}>
             {name}
           </ThemedText>
           {product ? (
@@ -122,23 +109,20 @@ export default function CartScreen() {
               onChange={(next) => setQuantity(item.productId, next)}
               compact
             />
-            <ThemedText type="smallBold" style={styles.lineTotal}>
+            <ThemedText type="price" style={styles.lineTotal}>
               {formatPaise(item.lineTotalPaise)}
             </ThemedText>
           </View>
-
-          <Pressable
-            onPress={() => removeLine(item.productId)}
-            accessibilityRole="button"
-            accessibilityLabel={t('cart.removeItem', { name })}
-            hitSlop={8}
-            style={styles.removeButton}>
-            <Ionicons name="trash-outline" size={16} color={theme.danger} />
-            <ThemedText type="small" style={{ color: theme.danger }}>
-              {t('cart.remove')}
-            </ThemedText>
-          </Pressable>
         </View>
+
+        <Pressable
+          onPress={() => removeLine(item.productId)}
+          accessibilityRole="button"
+          accessibilityLabel={t('cart.removeItem', { name })}
+          hitSlop={8}
+          style={styles.removeButton}>
+          <Ionicons name="trash-outline" size={18} color={theme.danger} />
+        </Pressable>
       </View>
     );
   };
@@ -147,7 +131,7 @@ export default function CartScreen() {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <OfflineBanner />
-        <ThemedText style={styles.header}>{t('cart.title')}</ThemedText>
+        <Header title={t('cart.title')} />
         <StateMessage title={t('home.setupTitle')} hint={t('home.setupHint')} />
       </View>
     );
@@ -155,20 +139,16 @@ export default function CartScreen() {
 
   const minOrder = settings.data?.min_order_value_paise ?? 0;
   const belowMinimum = cart.subtotalPaise < minOrder;
-  const showAdjustments = adjustments.length > 0 && dismissed !== signature;
+  const showAdjustments = cart.adjustments.length > 0 && dismissed !== signature;
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
       <OfflineBanner />
 
-      <View style={styles.headerRow}>
-        <ThemedText style={styles.header}>{t('cart.title')}</ThemedText>
-        {cart.lineCount > 0 ? (
-          <ThemedText type="small" themeColor="textSecondary">
-            {t('cart.itemCount', { count: cart.unitCount })}
-          </ThemedText>
-        ) : null}
-      </View>
+      <Header
+        title={t('cart.title')}
+        subtitle={cart.lineCount > 0 ? t('cart.itemCount', { count: cart.unitCount }) : undefined}
+      />
 
       {!hasHydrated || cart.isLoading ? (
         <LoadingState />
@@ -177,18 +157,24 @@ export default function CartScreen() {
           data={cart.lines}
           keyExtractor={(item) => item.productId}
           renderItem={renderLine}
-          contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + 140 }]}
+          contentContainerStyle={[
+            styles.list,
+            { paddingBottom: cart.lineCount > 0 ? insets.bottom + 200 : insets.bottom + Spacing.five },
+          ]}
           refreshControl={
             <RefreshControl refreshing={false} onRefresh={onRefresh} tintColor={theme.accent} />
           }
           ListHeaderComponent={
             showAdjustments ? (
-              <View style={[styles.notice, { backgroundColor: theme.accentSoft }]}>
-                <ThemedText type="smallBold" style={{ color: theme.accent }}>
-                  {t('cart.adjustedTitle')}
-                </ThemedText>
-                {adjustments.map((adjustment) => (
-                  <ThemedText key={adjustment.productId} type="small" style={styles.noticeLine}>
+              <Card tone="accent" style={styles.notice}>
+                <View style={styles.noticeTitle}>
+                  <Ionicons name="information-circle" size={18} color={theme.accent} />
+                  <ThemedText type="smallBold" style={{ color: theme.accent }}>
+                    {t('cart.adjustedTitle')}
+                  </ThemedText>
+                </View>
+                {cart.adjustments.map((adjustment) => (
+                  <ThemedText key={adjustment.productId} type="small" themeColor="textSecondary">
                     {adjustment.to > 0
                       ? t('cart.adjustedReduced', {
                           name: adjustment.name || t('cart.unavailableItem'),
@@ -201,26 +187,20 @@ export default function CartScreen() {
                   </ThemedText>
                 ))}
                 <View style={styles.noticeActions}>
-                  <Pressable
+                  <Button
+                    label={t('cart.applyAdjustments')}
+                    variant="outline"
+                    size="md"
                     onPress={onApplyAdjustments}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('cart.applyAdjustments')}
-                    style={styles.noticeButton}>
-                    <ThemedText type="smallBold" style={{ color: theme.accent }}>
-                      {t('cart.applyAdjustments')}
-                    </ThemedText>
-                  </Pressable>
-                  <Pressable
+                  />
+                  <Button
+                    label={t('cart.keepForNow')}
+                    variant="ghost"
+                    size="md"
                     onPress={() => setDismissed(signature)}
-                    accessibilityRole="button"
-                    accessibilityLabel={t('cart.keepForNow')}
-                    style={styles.noticeButton}>
-                    <ThemedText type="small" themeColor="textSecondary">
-                      {t('cart.keepForNow')}
-                    </ThemedText>
-                  </Pressable>
+                  />
                 </View>
-              </View>
+              </Card>
             ) : null
           }
           ListEmptyComponent={
@@ -232,45 +212,78 @@ export default function CartScreen() {
                 onRetry={cart.refetch}
               />
             ) : (
-              <StateMessage title={t('cart.emptyTitle')} hint={t('cart.emptyHint')} />
+              <View>
+                <StateMessage title={t('cart.emptyTitle')} hint={t('cart.emptyHint')} art="🧺" />
+                <View style={styles.emptyAction}>
+                  <Button
+                    label={t('cart.emptyAction')}
+                    icon="storefront-outline"
+                    variant="primary"
+                    onPress={() => router.push('/(tabs)')}
+                  />
+                </View>
+              </View>
             )
           }
         />
       )}
 
       {cart.lineCount > 0 ? (
-        <View style={[styles.footer, { backgroundColor: theme.background, borderColor: theme.border }]}>
+        <View
+          style={[
+            styles.footer,
+            Elevation.floating,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              shadowColor: theme.shadow,
+              paddingBottom: insets.bottom + Spacing.three,
+            },
+          ]}>
           <View style={styles.totalRow}>
-            <ThemedText type="smallBold">{t('cart.subtotal')}</ThemedText>
-            <ThemedText type="smallBold">{formatPaise(cart.subtotalPaise)}</ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {t('cart.subtotal')}
+            </ThemedText>
+            <ThemedText type="price">{formatPaise(cart.subtotalPaise)}</ThemedText>
           </View>
-          <ThemedText type="small" themeColor="textSecondary">
-            {t('cart.deliveryAtCheckout')}
-          </ThemedText>
 
           {belowMinimum ? (
-            <ThemedText type="small" style={{ color: theme.danger }}>
-              {t('cart.belowMinimum', { amount: formatPaise(minOrder - cart.subtotalPaise) })}
+            <Badge
+              tone="warning"
+              icon="alert-circle-outline"
+              label={t('cart.belowMinimum', { amount: formatPaise(minOrder - cart.subtotalPaise) })}
+              style={styles.minBadge}
+            />
+          ) : (
+            <ThemedText type="caption" themeColor="textSecondary">
+              {t('cart.deliveryAtCheckout')}
             </ThemedText>
-          ) : null}
+          )}
 
-          <Pressable
-            onPress={() => router.push('/checkout')}
+          <Button
+            label={t('cart.checkout')}
+            iconRight="arrow-forward"
+            size="lg"
+            fullWidth
             disabled={belowMinimum || store.isLoading}
-            accessibilityRole="button"
-            accessibilityState={{ disabled: belowMinimum }}
-            accessibilityLabel={t('cart.checkout')}
-            style={({ pressed }) => [
-              styles.checkout,
-              { backgroundColor: theme.accent },
-              (belowMinimum || store.isLoading) && styles.checkoutDisabled,
-              pressed && styles.pressed,
-            ]}>
-            <ThemedText type="smallBold" style={styles.checkoutLabel}>
-              {t('cart.checkout')}
-            </ThemedText>
-          </Pressable>
+            onPress={() => router.push('/checkout')}
+            style={styles.checkoutButton}
+          />
         </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** Title + optional count, in one place so every tab screen's head matches. */
+function Header({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <View style={styles.headerRow}>
+      <ThemedText type="title">{title}</ThemedText>
+      {subtitle ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {subtitle}
+        </ThemedText>
       ) : null}
     </View>
   );
@@ -280,15 +293,12 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   headerRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
+    gap: Spacing.two,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-  },
-  header: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '700',
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.three,
   },
   list: {
     paddingHorizontal: Spacing.three,
@@ -296,22 +306,22 @@ const styles = StyleSheet.create({
   },
   line: {
     flexDirection: 'row',
+    alignItems: 'flex-start',
     gap: Spacing.three,
-    padding: Spacing.two,
-    borderRadius: Spacing.three,
+    padding: Spacing.two + 2,
+    borderRadius: Radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
   thumb: {
-    width: 64,
-    height: 64,
-    borderRadius: Spacing.two,
+    width: 60,
+    height: 60,
+    borderRadius: Radii.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   thumbImage: { width: '80%', height: '80%' },
-  thumbEmoji: { fontSize: 26 },
+  thumbEmoji: { fontSize: 30, lineHeight: 36 },
   lineBody: { flex: 1, gap: 2 },
-  lineName: { fontSize: 15, lineHeight: 20, fontWeight: '600' },
   lineControls: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -320,28 +330,19 @@ const styles = StyleSheet.create({
   },
   lineTotal: { marginLeft: Spacing.two },
   removeButton: {
-    flexDirection: 'row',
+    width: 36,
+    height: 36,
     alignItems: 'center',
-    gap: Spacing.one,
-    marginTop: Spacing.one,
-    minHeight: 28,
-  },
-  notice: {
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-    gap: Spacing.one,
-    marginBottom: Spacing.two,
-  },
-  noticeLine: { color: '#1B1B1F' },
-  noticeActions: {
-    flexDirection: 'row',
-    gap: Spacing.three,
-    marginTop: Spacing.two,
-  },
-  noticeButton: {
-    minHeight: 44,
     justifyContent: 'center',
   },
+  notice: { gap: Spacing.one, marginBottom: Spacing.two },
+  noticeTitle: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  noticeActions: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    marginTop: Spacing.two,
+  },
+  emptyAction: { alignItems: 'center', marginTop: -Spacing.three },
   footer: {
     position: 'absolute',
     left: 0,
@@ -350,21 +351,13 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: Spacing.three,
     paddingTop: Spacing.three,
-    paddingBottom: Spacing.four,
     gap: Spacing.one,
   },
   totalRow: {
     flexDirection: 'row',
+    alignItems: 'baseline',
     justifyContent: 'space-between',
   },
-  checkout: {
-    marginTop: Spacing.two,
-    minHeight: 52,
-    borderRadius: Spacing.two,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  checkoutDisabled: { opacity: 0.5 },
-  checkoutLabel: { color: '#ffffff' },
-  pressed: { opacity: 0.8 },
+  minBadge: { alignSelf: 'flex-start' },
+  checkoutButton: { marginTop: Spacing.two },
 });

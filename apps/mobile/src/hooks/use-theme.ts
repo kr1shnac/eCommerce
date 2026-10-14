@@ -1,14 +1,25 @@
+import { Colors, type Theme } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeStore } from '@/store/theme-store';
+
 /**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
+ * Which palette is active: the customer's explicit choice, or the phone's.
+ *
+ * This is the single source of the answer for the whole app, including the
+ * navigation container's own theme and the status bar in `app/_layout.tsx`, so a
+ * screen never disagrees with the tab bar about light or dark.
  */
 
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+export type ResolvedScheme = 'light' | 'dark';
 
-export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
+export function useResolvedScheme(): ResolvedScheme {
+  const preference = useThemeStore((state) => state.preference);
+  const system = useColorScheme();
 
-  return Colors[theme];
+  if (preference === 'system') return system === 'dark' ? 'dark' : 'light';
+  return preference;
+}
+
+export function useTheme(): Theme {
+  return Colors[useResolvedScheme()];
 }

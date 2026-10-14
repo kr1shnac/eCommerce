@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as Localization from 'expo-localization';
 import { createInstance } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
@@ -8,17 +7,22 @@ import kn from './locales/kn.json';
 
 export const LANGUAGES = ['en', 'kn'] as const;
 export type Language = (typeof LANGUAGES)[number];
-export const DEFAULT_LANGUAGE: Language = 'en';
+
+/**
+ * Kunigal-first: a fresh install starts in **Kannada**, because Kannada is what
+ * nearly every customer in this town reads. English is one tap away in Account
+ * and the choice is remembered (see `loadStoredLanguage`).
+ *
+ * The device language is deliberately **not** used to pick English. Most phones
+ * here are left on the factory English default even though the person holding
+ * the phone reads Kannada, so trusting the device locale would hand exactly the
+ * wrong language to the people this app is for. See `KUNIGAL.md` §2.
+ */
+export const DEFAULT_LANGUAGE: Language = 'kn';
 export const LANGUAGE_STORAGE_KEY = 'kunigal.language';
 
 export function isLanguage(value: unknown): value is Language {
   return typeof value === 'string' && (LANGUAGES as readonly string[]).includes(value);
-}
-
-/** Kannada on the device wins; everything else falls back to English. */
-export function deviceLanguage(): Language {
-  const code = Localization.getLocales()[0]?.languageCode?.toLowerCase();
-  return code?.startsWith('kn') ? 'kn' : DEFAULT_LANGUAGE;
 }
 
 // createInstance() gives us our own i18next object instead of mutating the
@@ -30,10 +34,15 @@ void i18n.use(initReactI18next).init({
     en: { translation: en },
     kn: { translation: kn },
   },
-  lng: deviceLanguage(),
+  lng: DEFAULT_LANGUAGE,
   fallbackLng: DEFAULT_LANGUAGE,
   supportedLngs: [...LANGUAGES],
-  interpolation: { escapeValue: false },
+  // Placeholders in this project are single-brace: "{count} items", "{amount}".
+  // i18next's default is double-brace ("{{count}}"), so without this line every
+  // placeholder would be shown to the customer verbatim. Declaring the
+  // delimiters here (rather than rewriting every key to "{{...}}") keeps the
+  // locale files readable. Enforced by scripts/check-i18n.mjs. See AGENTS.md 9.5.
+  interpolation: { escapeValue: false, prefix: '{', suffix: '}' },
 });
 
 export async function loadStoredLanguage(): Promise<Language | null> {

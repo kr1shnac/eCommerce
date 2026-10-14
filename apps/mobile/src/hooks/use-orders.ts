@@ -67,9 +67,12 @@ export const addressKeys = {
   list: ['addresses'] as const,
 };
 
-export function useAddresses() {
+export function useAddresses(options?: { enabled?: boolean }) {
   return useQuery<Address[]>({
     queryKey: addressKeys.list,
+    // Home asks for the default address only when somebody is signed in; asking
+    // while signed out would just be a wasted round trip that returns no rows.
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('addresses')
@@ -103,13 +106,13 @@ export function useAddAddress() {
 
   return useMutation({
     mutationFn: async (address: NewAddress) => {
-      const { data, error } = await (supabase
-        .from('addresses') as any)
-        .insert(address as any)
+      const { data, error } = await supabase
+        .from('addresses')
+        .insert(address)
         .select('*')
         .single();
       if (error) throw error;
-      return data as any;
+      return data;
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: addressKeys.list });
@@ -173,7 +176,7 @@ export function usePlaceOrder() {
         quantity,
       }));
 
-      const { data, error } = await (supabase.rpc as any)('place_order', {
+      const { data, error } = await supabase.rpc('place_order', {
         p_items: items,
         p_store_id: input.storeId,
         p_address_id: input.addressId,
@@ -185,7 +188,7 @@ export function usePlaceOrder() {
       // The function always returns jsonb; guard anyway rather than crash.
       if (!data || typeof data !== 'object') throw new Error('bad-place-order-response');
       if (!data.ok) throw new PlaceOrderRejected(data);
-      return data as any;
+      return data;
     },
     onSuccess: async () => {
       // The bag has been bought. Never leave a stale basket behind.
@@ -201,11 +204,11 @@ export function useCancelOrder() {
 
   return useMutation({
     mutationFn: async (orderId: string) => {
-      const { data, error } = await (supabase.rpc as any)('cancel_order', { p_order_id: orderId });
+      const { data, error } = await supabase.rpc('cancel_order', { p_order_id: orderId });
       if (error) throw error;
       if (!data || typeof data !== 'object') throw new Error('bad-cancel-order-response');
-      if (!(data as any).ok) throw new CancelOrderRejected(data as any);
-      return data as Address;
+      if (!data.ok) throw new CancelOrderRejected(data);
+      return data;
     },
     onSuccess: async (_result, orderId) => {
       await queryClient.invalidateQueries({ queryKey: orderKeys.list });

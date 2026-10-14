@@ -1,7 +1,7 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type CategoryChipProps = {
@@ -12,6 +12,13 @@ type CategoryChipProps = {
   onPress: () => void;
 };
 
+/**
+ * A category is a picture with a word under it, not a pill of text.
+ *
+ * In a town where one in three adults struggles to read a sentence, the emoji
+ * has to be the primary signal and the word the confirmation (KUNIGAL.md §2).
+ * Selection is shown by a tint, a border AND a heavier label, never colour alone.
+ */
 export function CategoryChip({ label, icon, isSelected, onPress }: CategoryChipProps) {
   const theme = useTheme();
 
@@ -19,19 +26,29 @@ export function CategoryChip({ label, icon, isSelected, onPress }: CategoryChipP
     <Pressable
       accessibilityRole="button"
       accessibilityState={{ selected: isSelected }}
+      accessibilityLabel={label}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.chip,
+        styles.tile,
+        Elevation.card,
         {
-          backgroundColor: isSelected ? theme.accent : theme.backgroundElement,
-          borderColor: isSelected ? theme.accent : theme.border,
+          backgroundColor: isSelected ? theme.accentSoft : theme.card,
+          borderColor: isSelected ? theme.accentBorder : theme.border,
+          shadowColor: theme.shadow,
         },
         pressed && styles.pressed,
       ]}>
-      {icon ? <ThemedText style={styles.icon}>{icon}</ThemedText> : null}
+      <View
+        style={[
+          styles.iconWrap,
+          { backgroundColor: isSelected ? theme.card : theme.backgroundElement },
+        ]}>
+        <ThemedText style={styles.icon}>{icon ?? '🛒'}</ThemedText>
+      </View>
       <ThemedText
-        type="smallBold"
-        style={[styles.label, { color: isSelected ? '#ffffff' : theme.text }]}>
+        type={isSelected ? 'smallBold' : 'small'}
+        numberOfLines={2}
+        style={[styles.label, isSelected ? { color: theme.accent } : undefined]}>
         {label}
       </ThemedText>
     </Pressable>
@@ -39,22 +56,23 @@ export function CategoryChip({ label, icon, isSelected, onPress }: CategoryChipP
 }
 
 const styles = StyleSheet.create({
-  chip: {
-    flexDirection: 'row',
+  tile: {
+    width: 88,
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: Spacing.three - 4,
-    paddingVertical: Spacing.two,
-    borderRadius: 999,
+    gap: Spacing.one + 2,
+    paddingVertical: Spacing.two + 2,
+    paddingHorizontal: Spacing.one,
+    borderRadius: Radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  pressed: {
-    opacity: 0.7,
+  iconWrap: {
+    width: 46,
+    height: 46,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  icon: {
-    fontSize: 15,
-  },
-  label: {
-    fontSize: 14,
-  },
+  icon: { fontSize: 24, lineHeight: 30 },
+  label: { textAlign: 'center', fontSize: 12.5, lineHeight: 17 },
+  pressed: { opacity: 0.75 },
 });

@@ -1,24 +1,36 @@
+import { Image } from 'expo-image';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Image, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 
 import { AddToCart } from '@/components/add-to-cart';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedName } from '@/lib/localized';
 import { discountPercent, formatPaise } from '@/lib/money';
 import type { Product } from '@/types/database';
 
-const OFF_BADGE_BG = '#0E7C4A';
-
 type ProductCardProps = {
   product: Product;
-  /** Emoji shown when the product has no image, or the image fails to load. */
+  /**
+   * Emoji shown when the product has no photo and no emoji of its own. The
+   * caller passes the category's icon; `products.emoji` (per item) wins over it,
+   * so the grid reads as a shelf of different things rather than eight copies of
+   * the same leaf.
+   */
   fallbackEmoji?: string;
 };
 
-export function ProductCard({ product, fallbackEmoji = '🛒' }: ProductCardProps) {
+/**
+ * One item on the shelf.
+ *
+ * Deliberately NOT wrapped in a Pressable: the only thing you can do with a
+ * product is add it to the basket, and a card-shaped tap target that swallows
+ * the Add button's taps is worse than no tap target at all.
+ */
+export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
   const { t } = useTranslation();
   const theme = useTheme();
   const [imageFailed, setImageFailed] = useState(false);
@@ -26,34 +38,41 @@ export function ProductCard({ product, fallbackEmoji = '🛒' }: ProductCardProp
   const off = discountPercent(product.price_paise, product.mrp_paise);
   const isOutOfStock = product.stock_qty <= 0;
   const showImage = Boolean(product.image_url) && !imageFailed;
+  const emoji = product.emoji ?? fallbackEmoji ?? '🛒';
 
-  // Deliberately not wrapped in a Pressable: the only thing you can do with a
-  // product is add it to the basket, and a card-shaped tap target that swallows
-  // the Add button's taps is worse than no tap target at all.
   return (
-    <View style={[styles.card, { backgroundColor: theme.background, borderColor: theme.border }]}>
+    <View
+      style={[
+        styles.card,
+        Elevation.card,
+        { backgroundColor: theme.card, borderColor: theme.border, shadowColor: theme.shadow },
+      ]}>
       <View style={[styles.imageBox, { backgroundColor: theme.backgroundElement }]}>
         {showImage ? (
           <Image
             source={{ uri: product.image_url ?? '' }}
             style={styles.image}
-            resizeMode="contain"
+            contentFit="contain"
+            transition={150}
             onError={() => setImageFailed(true)}
           />
         ) : (
-          <ThemedText style={styles.emoji}>{fallbackEmoji}</ThemedText>
+          <ThemedText style={styles.emoji}>{emoji}</ThemedText>
         )}
-        {off !== null && (
-          <View style={styles.offBadge}>
-            <ThemedText type="smallBold" style={styles.offBadgeText}>
-              {`${off}%`}
-            </ThemedText>
+
+        {off !== null && !isOutOfStock ? (
+          <Badge label={`-${off}%`} tone="secondary" solid style={styles.offBadge} />
+        ) : null}
+
+        {isOutOfStock ? (
+          <View style={[styles.soldOut, { backgroundColor: theme.overlay }]}>
+            <Badge label={t('home.outOfStock')} tone="danger" solid icon="close-circle" />
           </View>
-        )}
+        ) : null}
       </View>
 
       <View style={styles.body}>
-        <ThemedText numberOfLines={2} style={styles.name}>
+        <ThemedText type="bodyStrong" numberOfLines={2} style={styles.name}>
           {localizedName(product)}
         </ThemedText>
         <ThemedText type="small" themeColor="textSecondary" numberOfLines={1}>
@@ -61,21 +80,17 @@ export function ProductCard({ product, fallbackEmoji = '🛒' }: ProductCardProp
         </ThemedText>
 
         <View style={styles.priceRow}>
-          <ThemedText type="smallBold" style={[styles.price, { color: theme.accent }]}>
+          <ThemedText type="price" style={{ color: theme.text }}>
             {formatPaise(product.price_paise)}
           </ThemedText>
-          {off !== null && product.mrp_paise !== null && (
-            <ThemedText type="small" themeColor="textSecondary" style={styles.mrp}>
+          {off !== null && product.mrp_paise !== null ? (
+            <ThemedText type="small" themeColor="textTertiary" style={styles.mrp}>
               {formatPaise(product.mrp_paise)}
             </ThemedText>
-          )}
+          ) : null}
         </View>
 
-        {isOutOfStock ? (
-          <ThemedText type="smallBold" style={[styles.outOfStock, { color: theme.danger }]}>
-            {t('home.outOfStock')}
-          </ThemedText>
-        ) : (
+        {!isOutOfStock ? (
           <View style={styles.footer}>
             <AddToCart
               productId={product.id}
@@ -83,16 +98,23 @@ export function ProductCard({ product, fallbackEmoji = '🛒' }: ProductCardProp
               stock={product.stock_qty}
             />
           </View>
+        ) : (
+          <View style={styles.footerSpacer} />
         )}
       </View>
     </View>
   );
 }
 
+/**
+ * The "out of stock" state is carried by a dim overlay, a red badge and an ✕
+ * icon at once, so it does not rely on reading the word (KUNIGAL.md §2).
+ */
+
 const styles = StyleSheet.create({
   card: {
     flex: 1,
-    borderRadius: Spacing.three,
+    borderRadius: Radii.lg,
     borderWidth: StyleSheet.hairlineWidth,
     overflow: 'hidden',
   },
@@ -102,53 +124,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  image: {
-    width: '70%',
-    height: '70%',
-  },
-  emoji: {
-    fontSize: 40,
-  },
-  offBadge: {
+  image: { width: '78%', height: '78%' },
+  emoji: { fontSize: 54, lineHeight: 64 },
+  offBadge: { position: 'absolute', top: Spacing.two, left: Spacing.two },
+  soldOut: {
     position: 'absolute',
-    top: Spacing.one,
-    left: Spacing.one,
-    backgroundColor: OFF_BADGE_BG,
-    paddingHorizontal: 6,
-    paddingVertical: 1,
-    borderRadius: 6,
-  },
-  offBadgeText: {
-    color: '#ffffff',
-    fontSize: 11,
-    lineHeight: 15,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: {
-    padding: 10,
+    padding: Spacing.two + 2,
     gap: 2,
   },
-  name: {
-    fontSize: 15,
-    lineHeight: 20,
-    fontWeight: '600',
-  },
+  name: { minHeight: 48 },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    gap: 6,
+    gap: Spacing.one + 2,
     marginTop: Spacing.one,
   },
-  price: {
-    fontSize: 16,
-  },
-  mrp: {
-    textDecorationLine: 'line-through',
-  },
-  outOfStock: {
-    marginTop: 2,
-  },
-  footer: {
-    marginTop: Spacing.two,
-    alignItems: 'flex-start',
-  },
+  mrp: { textDecorationLine: 'line-through' },
+  footer: { marginTop: Spacing.two, alignItems: 'flex-start' },
+  footerSpacer: { height: 44 + Spacing.two },
 });

@@ -1,9 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { Pressable, StyleSheet } from 'react-native';
 
 import { QuantityStepper } from '@/components/quantity-stepper';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCartStore } from '@/store/cart-store';
 import { useTheme } from '@/hooks/use-theme';
 
@@ -37,10 +38,12 @@ export function AddToCart({ productId, productName, stock }: AddToCartProps) {
         accessibilityLabel={t('cart.addItem', { name: productName })}
         style={({ pressed }) => [
           styles.add,
-          { borderColor: theme.accent, backgroundColor: theme.background },
+          Elevation.card,
+          { backgroundColor: theme.accent, shadowColor: theme.shadow },
           pressed && styles.pressed,
         ]}>
-        <ThemedText type="smallBold" style={{ color: theme.accent }}>
+        <Ionicons name="add" size={16} color={theme.onAccent} />
+        <ThemedText type="smallBold" style={[styles.label, { color: theme.onAccent }]}>
           {t('cart.add')}
         </ThemedText>
       </Pressable>
@@ -60,15 +63,15 @@ export function AddToCart({ productId, productName, stock }: AddToCartProps) {
 
 const styles = StyleSheet.create({
   add: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 999,
-    minHeight: 44,
-    minWidth: 72,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: Spacing.one,
+    borderRadius: Radii.pill,
+    minHeight: 44,
+    minWidth: 88,
     paddingHorizontal: Spacing.three,
   },
-  pressed: {
-    opacity: 0.6,
-  },
+  label: { fontSize: 15 },
+  pressed: { opacity: 0.85 },
 });

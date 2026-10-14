@@ -1,16 +1,29 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CallShop } from '@/components/call-shop';
 import { LanguageSwitch } from '@/components/language-switch';
 import { OfflineBanner } from '@/components/offline-banner';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
-import { useAuthStore } from '@/store/auth-store';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { SectionHeader } from '@/components/ui/section-header';
+import { ThemeSwitch } from '@/components/ui/theme-switch';
+import { Radii, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useAuthStore } from '@/store/auth-store';
 
+/**
+ * The account tab: who you are, how the app looks, the language, and the one
+ * support channel this town uses (a phone call).
+ *
+ * Appearance and language are device preferences, not account data, so they are
+ * visible even when signed out — a customer can make the shop comfortable to
+ * read before they ever give us a phone number.
+ */
 export default function AccountScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -22,63 +35,69 @@ export default function AccountScreen() {
   const signOut = useAuthStore((state) => state.signOut);
 
   const phone = user?.phone ?? session?.user?.phone ?? '';
+  const lastDigits = phone.replace(/\D/g, '').slice(-2);
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
       <OfflineBanner />
-      <ThemedText style={styles.header}>{t('account.title')}</ThemedText>
 
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.background }]}>
-          <LanguageSwitch />
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+      <View style={styles.headerRow}>
+        <ThemedText type="title">{t('account.title')}</ThemedText>
+      </View>
 
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.five }]}>
+        <Card style={styles.profileCard}>
+          <View style={[styles.avatar, { backgroundColor: theme.accentSoft }]}>
+            {session && lastDigits ? (
+              <ThemedText type="subtitle" style={{ color: theme.accent }}>
+                {lastDigits}
+              </ThemedText>
+            ) : (
+              <Ionicons name="person" size={24} color={theme.accent} />
+            )}
+          </View>
+          <View style={styles.flex}>
+            <ThemedText type="bodyStrong">
+              {session ? t('account.signedIn') : t('account.signedOut')}
+            </ThemedText>
+            <ThemedText type="small" themeColor="textSecondary">
+              {session ? phone || t('account.phoneUnknown') : t('account.signInLater')}
+            </ThemedText>
+          </View>
+        </Card>
+
+        <View style={styles.actionSlot}>
           {session ? (
-            <View style={styles.row}>
-              <View style={styles.flex}>
-                <ThemedText type="smallBold">{t('account.signedIn')}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {phone || t('account.phoneUnknown')}
-                </ThemedText>
-              </View>
-              <Pressable
-                onPress={() => void signOut()}
-                accessibilityRole="button"
-                accessibilityLabel={t('account.signOut')}
-                style={({ pressed }) => [
-                  styles.button,
-                  { borderColor: theme.danger },
-                  pressed && styles.pressed,
-                ]}>
-                <Ionicons name="log-out-outline" size={20} color={theme.danger} />
-                <ThemedText type="smallBold" style={{ color: theme.danger }}>
-                  {t('account.signOut')}
-                </ThemedText>
-              </Pressable>
-            </View>
+            <Button
+              label={t('account.signOut')}
+              icon="log-out-outline"
+              variant="outline"
+              fullWidth
+              onPress={() => void signOut()}
+            />
           ) : (
-            <View style={styles.row}>
-              <View style={styles.flex}>
-                <ThemedText type="small">{t('account.signedOut')}</ThemedText>
-                <ThemedText type="small" themeColor="textSecondary">
-                  {t('account.signInLater')}
-                </ThemedText>
-              </View>
-              <Pressable
-                onPress={() => router.push('/login?returnTo=/(tabs)/account')}
-                accessibilityRole="button"
-                accessibilityLabel={t('auth.signIn')}
-                style={({ pressed }) => [
-                  styles.buttonSolid,
-                  { backgroundColor: theme.accent },
-                  pressed && styles.pressed,
-                ]}>
-                <ThemedText type="smallBold" style={styles.buttonLabel}>
-                  {t('auth.signIn')}
-                </ThemedText>
-              </Pressable>
-            </View>
+            <Button
+              label={t('auth.signIn')}
+              icon="log-in-outline"
+              fullWidth
+              onPress={() => router.push('/login?returnTo=/(tabs)/account')}
+            />
           )}
+        </View>
+
+        <SectionHeader title={t('common.appearance')} style={styles.sectionHeader} />
+        <Card style={styles.settingCard}>
+          <ThemeSwitch />
+        </Card>
+
+        <SectionHeader title={t('common.language')} style={styles.sectionHeader} />
+        <Card style={styles.settingCard}>
+          <LanguageSwitch />
+        </Card>
+
+        <View style={styles.callSlot}>
+          <CallShop />
         </View>
       </ScrollView>
     </View>
@@ -87,46 +106,27 @@ export default function AccountScreen() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  header: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '700',
+  flex: { flex: 1 },
+  headerRow: {
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.two,
   },
-  content: {
-    paddingHorizontal: Spacing.three,
-  },
-  card: {
-    marginTop: Spacing.two,
-    padding: Spacing.three,
-    borderRadius: Spacing.three,
-    borderWidth: StyleSheet.hairlineWidth,
+  content: { paddingHorizontal: Spacing.three, gap: Spacing.two },
+  profileCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: Spacing.three,
   },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-  },
-  flex: { flex: 1 },
-  divider: { height: StyleSheet.hairlineWidth },
-  button: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.one,
-    minHeight: 44,
-    paddingHorizontal: Spacing.two,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.two,
-  },
-  buttonSolid: {
-    minHeight: 44,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Spacing.two,
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  buttonLabel: { color: '#ffffff' },
-  pressed: { opacity: 0.7 },
+  actionSlot: { marginTop: Spacing.one },
+  sectionHeader: { marginTop: Spacing.three },
+  settingCard: { gap: Spacing.two },
+  callSlot: { marginTop: Spacing.three },
 });

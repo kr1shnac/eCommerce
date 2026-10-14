@@ -1,13 +1,34 @@
-import { Platform, StyleSheet, Text, type TextProps } from 'react-native';
+import { StyleSheet, Text, type TextProps } from 'react-native';
 
-import { Fonts, ThemeColor } from '@/constants/theme';
+import { Type, type ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+export type ThemedTextType =
+  | 'default'
+  | 'title'
+  | 'display'
+  | 'heading'
+  | 'subtitle'
+  | 'bodyStrong'
+  | 'small'
+  | 'smallBold'
+  | 'caption'
+  | 'price'
+  | 'priceLarge'
+  | 'link'
+  | 'linkPrimary'
+  | 'code';
+
 export type ThemedTextProps = TextProps & {
-  type?: 'default' | 'title' | 'small' | 'smallBold' | 'subtitle' | 'link' | 'linkPrimary' | 'code';
+  type?: ThemedTextType;
   themeColor?: ThemeColor;
 };
 
+/**
+ * Every piece of text in the app. Colour comes from the theme (never a hex), and
+ * size comes from the `Type` scale so Kannada's taller line heights are applied
+ * everywhere at once. See `constants/theme.ts`.
+ */
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
   const theme = useTheme();
 
@@ -17,9 +38,15 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         { color: theme[themeColor ?? 'text'] },
         type === 'default' && styles.default,
         type === 'title' && styles.title,
+        type === 'display' && styles.display,
+        type === 'heading' && styles.heading,
+        type === 'bodyStrong' && styles.bodyStrong,
         type === 'small' && styles.small,
         type === 'smallBold' && styles.smallBold,
         type === 'subtitle' && styles.subtitle,
+        type === 'caption' && styles.caption,
+        type === 'price' && styles.price,
+        type === 'priceLarge' && styles.priceLarge,
         type === 'link' && styles.link,
         type === 'linkPrimary' && styles.linkPrimary,
         type === 'code' && styles.code,
@@ -31,43 +58,28 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
 }
 
 const styles = StyleSheet.create({
-  small: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 500,
-  },
-  smallBold: {
-    fontSize: 14,
-    lineHeight: 20,
-    fontWeight: 700,
-  },
-  default: {
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: 500,
-  },
-  title: {
-    fontSize: 48,
-    fontWeight: 600,
-    lineHeight: 52,
-  },
+  default: { ...Type.body },
+  display: { ...Type.display },
+  title: { ...Type.title },
+  heading: { ...Type.heading },
   subtitle: {
-    fontSize: 32,
-    lineHeight: 44,
-    fontWeight: 600,
+    ...Type.body,
   },
+  bodyStrong: { ...Type.bodyStrong },
+  small: { ...Type.small },
+  smallBold: { ...Type.smallStrong },
+  caption: { ...Type.caption },
+  price: { ...Type.price },
+  priceLarge: { ...Type.priceLarge },
   link: {
-    lineHeight: 30,
-    fontSize: 14,
+    ...Type.body,
+    textDecorationLine: 'underline',
   },
   linkPrimary: {
-    lineHeight: 30,
-    fontSize: 14,
-    color: '#3c87f7',
+    ...Type.body,
   },
   code: {
-    fontFamily: Fonts.mono,
-    fontWeight: Platform.select({ android: 700 }) ?? 500,
-    fontSize: 12,
+    ...Type.small,
+    fontFamily: 'monospace',
   },
 });

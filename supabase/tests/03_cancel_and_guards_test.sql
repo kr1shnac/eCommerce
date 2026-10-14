@@ -228,7 +228,9 @@ select test_result.refused(
   $$
 );
 
--- The rider may move the status along, and only the status.
+-- The rider may claim an unassigned order and move the status along, and only
+-- the status. Since 20261013000001 a rider must own an order before advancing
+-- it, so the same UPDATE that moves it also claims it (assigned_to was NULL).
 select test_result.sign_in('44444444-4444-4444-4444-444444444444');
 
 do $$
@@ -239,9 +241,12 @@ begin
   where user_id = '11111111-1111-1111-1111-111111111111'
   order by placed_at desc limit 1;
 
-  update public.orders set status = 'out_for_delivery' where id = v_id;
+  update public.orders
+  set assigned_to = auth.uid(), status = 'out_for_delivery'
+  where id = v_id;
+
   perform test_result.eq(
-    'the rider can move an order to out_for_delivery',
+    'the rider can claim an order and move it to out_for_delivery',
     (select status::text from public.orders where id = v_id),
     'out_for_delivery'
   );

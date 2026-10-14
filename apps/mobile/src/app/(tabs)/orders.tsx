@@ -1,4 +1,6 @@
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, Pressable, RefreshControl, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,19 +8,36 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { OfflineBanner } from '@/components/offline-banner';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Radii, Spacing } from '@/constants/theme';
 import { useOrders, type OrderWithItems } from '@/hooks/use-orders';
-import { useAuthStore } from '@/store/auth-store';
 import { useTheme } from '@/hooks/use-theme';
-import { isSupabaseConfigured } from '@/lib/supabase';
-import { formatPaise } from '@/lib/money';
 import { localizedItemName } from '@/lib/localized';
+import { formatPaise } from '@/lib/money';
+import { orderStatusStyle } from '@/lib/order-status';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth-store';
+import { useCartStore } from '@/store/cart-store';
 
 /**
  * Past orders. Cash on delivery, so the useful thing here is "where is my bag"
  * — the status, the order number to read out on the phone, and how much to
- * hand over.
+ * hand over. Plus one-tap reorder, which is what a repeat customer actually
+ * wants (the same monthly list, not hunting through the shop again).
+ *
+ * The status is an icon AND a colour AND a word (lib/order-status.ts), and the
+ * small filter keeps a month of history from becoming one long scroll.
  */
+
+type Filter = 'all' | 'active' | 'done';
+
+const FILTER_KEY: Record<Filter, string> = {
+  all: 'orders.filterAll',
+  active: 'orders.filterActive',
+  done: 'orders.filterDone',
+};
+
 export default function OrdersScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -27,13 +46,37 @@ export default function OrdersScreen() {
 
   const session = useAuthStore((state) => state.session);
   const orders = useOrders();
+  const replaceAll = useCartStore((state) => state.replaceAll);
+  const [filter, setFilter] = useState<Filter>('all');
 
-  const statusLabel = (status: OrderWithItems['status']): string =>
-    t(`orders.status.${status}`);
+  const statusLabel = (status: OrderWithItems['status']): string => t(`orders.status.${status}`);
+
+  /** Same as the Reorder button on the order screen: refill the bag, go to cart. */
+  const onReorder = (order: OrderWithItems) => {
+    const items: Record<string, number> = {};
+    for (const item of order.order_items) {
+      if (!item.product_id) continue;
+      items[item.product_id] = (items[item.product_id] ?? 0) + item.quantity;
+    }
+    replaceAll(items);
+    router.push('/(tabs)/cart');
+  };
+
+  const all = useMemo(() => orders.data ?? [], [orders.data]);
+  const visible = useMemo(() => {
+    if (filter === 'active') {
+      return all.filter((order) => order.status !== 'delivered' && order.status !== 'cancelled');
+    }
+    if (filter === 'done') {
+      return all.filter((order) => order.status === 'delivered' || order.status === 'cancelled');
+    }
+    return all;
+  }, [all, filter]);
 
   const renderOrder = ({ item }: { item: OrderWithItems }) => {
     const first = item.order_items[0];
     const rest = item.order_items.length - 1;
+    const style = orderStatusStyle(theme, item.status);
 
     return (
       <Pressable
@@ -42,29 +85,53 @@ export default function OrdersScreen() {
         accessibilityLabel={`${item.order_number}, ${statusLabel(item.status)}, ${formatPaise(item.total_paise)}`}
         style={({ pressed }) => [
           styles.card,
-          { borderColor: theme.border, backgroundColor: theme.background },
+          { borderColor: theme.border, backgroundColor: theme.card },
           pressed && styles.pressed,
         ]}>
         <View style={styles.cardTop}>
           <ThemedText type="smallBold">{item.order_number}</ThemedText>
-          <View style={[styles.badge, { backgroundColor: theme.backgroundElement }]}>
-            <ThemedText type="smallBold">{statusLabel(item.status)}</ThemedText>
-          </View>
+          <Badge label={statusLabel(item.status)} tone={style.tone} icon={style.icon} />
         </View>
 
-        <ThemedText type="small" themeColor="textSecondary" numberOfLines={2}>
-          {first
-            ? `${first.quantity} × ${localizedItemName(first)}${
-                rest > 0 ? ` + ${rest} ${t('orders.moreItems', { count: rest })}` : ''
-              }`
-            : t('orders.noItems')}
-        </ThemedText>
+        <View style={styles.itemsRow}>
+          <View style={[styles.dot, { backgroundColor: style.soft }]}>
+            <ThemedText style={[styles.dotText, { color: style.ink }]}>
+              {item.order_items.length}
+            </ThemedText>
+          </View>
+          <ThemedText type="small" themeColor="textSecondary" numberOfLines={2} style={styles.flex}>
+            {first
+              ? `${first.quantity} × ${localizedItemName(first)}${
+                  rest > 0 ? ` ${t('orders.moreItems', { count: rest })}` : ''
+                }`
+              : t('orders.noItems')}
+          </ThemedText>
+        </View>
+
+        <View style={[styles.divider, { backgroundColor: theme.border }]} />
 
         <View style={styles.cardBottom}>
           <ThemedText type="small" themeColor="textSecondary">
             {formatDate(item.placed_at)}
           </ThemedText>
-          <ThemedText type="smallBold">{formatPaise(item.total_paise)}</ThemedText>
+          <View style={styles.bottomRight}>
+            <ThemedText type="price">{formatPaise(item.total_paise)}</ThemedText>
+            <Pressable
+              onPress={() => onReorder(item)}
+              accessibilityRole="button"
+              accessibilityLabel={t('order.reorder')}
+              hitSlop={8}
+              style={({ pressed }) => [
+                styles.reorder,
+                { backgroundColor: theme.accentSoft },
+                pressed && styles.pressed,
+              ]}>
+              <Ionicons name="repeat" size={15} color={theme.accent} />
+              <ThemedText type="caption" style={{ color: theme.accent }}>
+                {t('order.reorder')}
+              </ThemedText>
+            </Pressable>
+          </View>
         </View>
       </Pressable>
     );
@@ -74,7 +141,7 @@ export default function OrdersScreen() {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <OfflineBanner />
-        <ThemedText style={styles.header}>{t('orders.title')}</ThemedText>
+        <Header title={t('orders.title')} />
         <StateMessage title={t('home.setupTitle')} hint={t('home.setupHint')} />
       </View>
     );
@@ -84,34 +151,56 @@ export default function OrdersScreen() {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
         <OfflineBanner />
-        <ThemedText style={styles.header}>{t('orders.title')}</ThemedText>
-        <StateMessage
-          title={t('orders.signInTitle')}
-          hint={t('orders.signInHint')}
-        />
-        <Pressable
-          onPress={() => router.push('/login?returnTo=/(tabs)/orders')}
-          accessibilityRole="button"
-          accessibilityLabel={t('auth.signIn')}
-          style={({ pressed }) => [styles.signIn, { backgroundColor: theme.accent }, pressed && styles.pressed]}>
-          <ThemedText type="smallBold" style={styles.signInLabel}>
-            {t('auth.signIn')}
-          </ThemedText>
-        </Pressable>
+        <Header title={t('orders.title')} />
+        <StateMessage title={t('orders.signInTitle')} hint={t('orders.signInHint')} art="🔒" />
+        <View style={styles.centerAction}>
+          <Button
+            label={t('auth.signIn')}
+            icon="log-in-outline"
+            onPress={() => router.push('/login?returnTo=/(tabs)/orders')}
+          />
+        </View>
       </View>
     );
   }
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
       <OfflineBanner />
-      <ThemedText style={styles.header}>{t('orders.title')}</ThemedText>
+      <Header title={t('orders.title')} subtitle={all.length > 0 ? String(all.length) : undefined} />
+
+      <View style={styles.filters}>
+        {(Object.keys(FILTER_KEY) as Filter[]).map((option) => {
+          const active = option === filter;
+          return (
+            <Pressable
+              key={option}
+              onPress={() => setFilter(option)}
+              accessibilityRole="button"
+              accessibilityState={{ selected: active }}
+              accessibilityLabel={t(FILTER_KEY[option])}
+              style={({ pressed }) => [
+                styles.filter,
+                active
+                  ? { backgroundColor: theme.accent }
+                  : { backgroundColor: theme.backgroundElement, borderColor: theme.border, borderWidth: StyleSheet.hairlineWidth },
+                pressed && styles.pressed,
+              ]}>
+              <ThemedText
+                type="smallBold"
+                style={{ color: active ? theme.onAccent : theme.textSecondary }}>
+                {t(FILTER_KEY[option])}
+              </ThemedText>
+            </Pressable>
+          );
+        })}
+      </View>
 
       {orders.isLoading ? (
         <LoadingState />
       ) : (
         <FlatList
-          data={orders.data ?? []}
+          data={visible}
           keyExtractor={(item) => item.id}
           renderItem={renderOrder}
           contentContainerStyle={[styles.list, { paddingBottom: insets.bottom + Spacing.five }]}
@@ -131,11 +220,24 @@ export default function OrdersScreen() {
                 tone="danger"
               />
             ) : (
-              <StateMessage title={t('orders.emptyTitle')} hint={t('orders.emptyHint')} />
+              <StateMessage title={t('orders.emptyTitle')} hint={t('orders.emptyHint')} art="🧾" />
             )
           }
         />
       )}
+    </View>
+  );
+}
+
+function Header({ title, subtitle }: { title: string; subtitle?: string }) {
+  return (
+    <View style={styles.headerRow}>
+      <ThemedText type="title">{title}</ThemedText>
+      {subtitle ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {subtitle}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -154,12 +256,28 @@ function formatDate(value: string): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
-  header: {
-    fontSize: 24,
-    lineHeight: 30,
-    fontWeight: '700',
+  flex: { flex: 1 },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
     paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
+    paddingTop: Spacing.three,
+    paddingBottom: Spacing.two,
+  },
+  filters: {
+    flexDirection: 'row',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingBottom: Spacing.three,
+  },
+  filter: {
+    minHeight: 40,
+    paddingHorizontal: Spacing.three,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   list: {
     paddingHorizontal: Spacing.three,
@@ -167,10 +285,9 @@ const styles = StyleSheet.create({
   },
   card: {
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.three,
+    borderRadius: Radii.lg,
     padding: Spacing.three,
-    gap: Spacing.one,
-    minHeight: 88,
+    gap: Spacing.two,
   },
   cardTop: {
     flexDirection: 'row',
@@ -178,26 +295,31 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: Spacing.two,
   },
+  itemsRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  dot: {
+    width: 28,
+    height: 28,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  dotText: { fontSize: 13, fontWeight: '800' },
+  divider: { height: StyleSheet.hairlineWidth },
   cardBottom: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: Spacing.one,
+    gap: Spacing.two,
   },
-  badge: {
-    paddingHorizontal: Spacing.two,
-    paddingVertical: 2,
-    borderRadius: 999,
-  },
-  signIn: {
-    alignSelf: 'center',
-    marginTop: Spacing.three,
-    minHeight: 48,
-    paddingHorizontal: Spacing.five,
-    borderRadius: Spacing.two,
+  bottomRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  reorder: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    gap: Spacing.one,
+    minHeight: 32,
+    paddingHorizontal: Spacing.two + 2,
+    borderRadius: Radii.pill,
   },
-  signInLabel: { color: '#ffffff' },
-  pressed: { opacity: 0.7 },
+  centerAction: { alignItems: 'center' },
+  pressed: { opacity: 0.75 },
 });

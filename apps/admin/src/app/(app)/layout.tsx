@@ -11,13 +11,14 @@ export default async function AdminAppLayout({ children }: { children: React.Rea
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).maybeSingle();
   if (profile?.role !== 'admin') redirect('/login');
 
+  // This panel is the optional desk tool for bulk catalogue work. Orders and
+  // deliveries live in the mobile app (the owner's board and the rider screen),
+  // not here — see ROADMAP §2.
   const links = [
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/categories', label: 'Categories' },
     { href: '/products', label: 'Products' },
     { href: '/settings', label: 'Settings' },
-    { href: '/orders', label: 'Orders' },
-    { href: '/rider', label: 'Rider' },
   ];
 
   return (
@@ -28,6 +29,9 @@ export default async function AdminAppLayout({ children }: { children: React.Rea
             {l.label}
           </Link>
         ))}
+        <p className="pt-4 text-xs text-gray-500">
+          Orders and deliveries are in the mobile app.
+        </p>
       </aside>
       <main className="flex-1">{children}</main>
     </div>

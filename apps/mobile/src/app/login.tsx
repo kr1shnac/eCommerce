@@ -15,16 +15,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
-import { useAuthStore } from '@/store/auth-store';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Radii, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth-store';
 
 /**
  * Phone number, then a one-time code. Two steps on one screen.
  *
  * The customer is sent back to where they came from (usually the cart) once the
  * code is accepted, which is why this lives outside the tabs.
+ *
+ * No password, no email: in a town this size everybody has a phone and nobody
+ * remembers a password. The hero keeps the shop's horse mark, because a person
+ * who cannot read still knows they are in the right place.
  */
 
 type AuthErrorKey = 'invalidCode' | 'expiredCode' | 'tooManyAttempts' | 'notEnabled' | 'generic';
@@ -134,87 +140,106 @@ export default function LoginScreen() {
           { paddingTop: insets.top + Spacing.four, paddingBottom: insets.bottom + Spacing.four },
         ]}
         keyboardShouldPersistTaps="handled">
-        <ThemedText style={styles.title}>{t('auth.title')}</ThemedText>
+        <View style={styles.hero}>
+          <View style={[styles.roundel, { backgroundColor: theme.accentSoft }]}>
+            <ThemedText style={styles.horse}>🐎</ThemedText>
+          </View>
+          <ThemedText type="title" style={styles.heroTitle}>
+            {t('home.title')}
+          </ThemedText>
+        </View>
+
+        <ThemedText type="subtitle">{t('auth.title')}</ThemedText>
         <ThemedText type="small" themeColor="textSecondary" style={styles.subtitle}>
           {step === 'phone' ? t('auth.subtitlePhone') : t('auth.subtitleCode')}
         </ThemedText>
 
-        {step === 'phone' ? (
-          <View style={styles.field}>
-            <ThemedText type="small" themeColor="textSecondary">
-              {t('auth.phoneLabel')}
-            </ThemedText>
-            <View style={[styles.inputRow, { borderColor: theme.border, backgroundColor: theme.background }]}>
-              <ThemedText type="default" themeColor="textSecondary">
-                +91
+        <Card style={styles.form}>
+          {step === 'phone' ? (
+            <View style={styles.field}>
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                {t('auth.phoneLabel')}
+              </ThemedText>
+              <View
+                style={[
+                  styles.inputRow,
+                  { borderColor: theme.border, backgroundColor: theme.backgroundElement },
+                ]}>
+                <ThemedText type="bodyStrong" themeColor="textSecondary">
+                  +91
+                </ThemedText>
+                <TextInput
+                  value={phoneInput.replace(/^\+?91?/, '')}
+                  onChangeText={(text) => setPhoneInput(text.replace(/\D/g, '').slice(0, 10))}
+                  placeholder={t('auth.phonePlaceholder')}
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="phone-pad"
+                  autoComplete="tel"
+                  textContentType="telephoneNumber"
+                  maxLength={10}
+                  editable={!busy}
+                  accessibilityLabel={t('auth.phoneLabel')}
+                  style={[styles.input, { color: theme.text }]}
+                />
+              </View>
+            </View>
+          ) : (
+            <View style={styles.field}>
+              <ThemedText type="smallBold" themeColor="textSecondary">
+                {t('auth.codeSentTo', { phone: phone ?? '' })}
               </ThemedText>
               <TextInput
-                value={phoneInput.replace(/^\+?91?/, '')}
-                onChangeText={(text) => setPhoneInput(text.replace(/\D/g, '').slice(0, 10))}
-                placeholder={t('auth.phonePlaceholder')}
+                value={code}
+                onChangeText={(text) => setCode(text.replace(/\D/g, '').slice(0, 8))}
+                placeholder={t('auth.codePlaceholder')}
                 placeholderTextColor={theme.textSecondary}
-                keyboardType="phone-pad"
-                autoComplete="tel"
-                textContentType="telephoneNumber"
-                maxLength={10}
+                keyboardType="number-pad"
+                autoComplete="sms-otp"
+                textContentType="oneTimeCode"
                 editable={!busy}
-                accessibilityLabel={t('auth.phoneLabel')}
-                style={[styles.input, { color: theme.text }]}
+                accessibilityLabel={t('auth.codeLabel')}
+                style={[
+                  styles.input,
+                  styles.codeInput,
+                  { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
+                ]}
               />
             </View>
-          </View>
-        ) : (
-          <View style={styles.field}>
-            <ThemedText type="small" themeColor="textSecondary">
-              {t('auth.codeSentTo', { phone: phone ?? '' })}
-            </ThemedText>
-            <TextInput
-              value={code}
-              onChangeText={(text) => setCode(text.replace(/\D/g, '').slice(0, 8))}
-              placeholder={t('auth.codePlaceholder')}
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="number-pad"
-              autoComplete="sms-otp"
-              textContentType="oneTimeCode"
-              editable={!busy}
-              accessibilityLabel={t('auth.codeLabel')}
-              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-            />
-          </View>
-        )}
+          )}
 
-        {errorKey ? (
-          <ThemedText type="small" style={[styles.error, { color: theme.danger }]}>
-            {t(`auth.error.${errorKey}`)}
-          </ThemedText>
-        ) : null}
+          {errorKey ? (
+            <View style={styles.errorRow}>
+              <Ionicons name="alert-circle-outline" size={16} color={theme.danger} />
+              <ThemedText type="small" style={[styles.errorText, { color: theme.danger }]}>
+                {t(`auth.error.${errorKey}`)}
+              </ThemedText>
+            </View>
+          ) : null}
 
-        {!isSupabaseConfigured ? (
-          <ThemedText type="small" style={[styles.error, { color: theme.danger }]}>
-            {t('auth.error.notConfigured')}
-          </ThemedText>
-        ) : null}
+          {!isSupabaseConfigured ? (
+            <View style={styles.errorRow}>
+              <Ionicons name="alert-circle-outline" size={16} color={theme.danger} />
+              <ThemedText type="small" style={[styles.errorText, { color: theme.danger }]}>
+                {t('auth.error.notConfigured')}
+              </ThemedText>
+            </View>
+          ) : null}
 
-        <Pressable
-          onPress={step === 'phone' ? onSendCode : onVerifyCode}
-          disabled={!canSubmit}
-          accessibilityRole="button"
-          accessibilityState={{ disabled: !canSubmit, busy }}
-          accessibilityLabel={step === 'phone' ? t('auth.sendCode') : t('auth.verify')}
-          style={({ pressed }) => [
-            styles.button,
-            { backgroundColor: theme.accent },
-            !canSubmit && styles.buttonDisabled,
-            pressed && styles.pressed,
-          ]}>
-          <ThemedText type="smallBold" style={styles.buttonLabel}>
-            {busy
-              ? t('common.pleaseWait')
-              : step === 'phone'
-                ? t('auth.sendCode')
-                : t('auth.verify')}
-          </ThemedText>
-        </Pressable>
+          <Button
+            label={
+              busy
+                ? t('common.pleaseWait')
+                : step === 'phone'
+                  ? t('auth.sendCode')
+                  : t('auth.verify')
+            }
+            size="lg"
+            fullWidth
+            busy={busy}
+            disabled={!canSubmit}
+            onPress={() => void (step === 'phone' ? onSendCode() : onVerifyCode())}
+          />
+        </Card>
 
         {step === 'code' ? (
           <Pressable
@@ -226,7 +251,7 @@ export default function LoginScreen() {
             disabled={busy}
             accessibilityRole="button"
             style={styles.linkButton}>
-            <ThemedText type="small" style={{ color: theme.accent }}>
+            <ThemedText type="smallBold" style={{ color: theme.accent }}>
               {t('auth.changeNumber')}
             </ThemedText>
           </Pressable>
@@ -244,58 +269,49 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: {
-    flex: 1,
-  },
+  screen: { flex: 1 },
   content: {
     paddingHorizontal: Spacing.four,
-    gap: Spacing.three,
+    gap: Spacing.two,
     flexGrow: 1,
   },
-  title: {
-    fontSize: 26,
-    lineHeight: 32,
-    fontWeight: '700',
+  hero: { alignItems: 'center', gap: Spacing.two, marginBottom: Spacing.three },
+  roundel: {
+    width: 72,
+    height: 72,
+    borderRadius: Radii.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  subtitle: {
-    marginTop: -Spacing.two,
-  },
-  field: {
-    gap: Spacing.two,
-  },
+  horse: { fontSize: 36, lineHeight: 44 },
+  heroTitle: { textAlign: 'center' },
+  subtitle: { marginBottom: Spacing.two },
+  form: { gap: Spacing.three },
+  field: { gap: Spacing.two },
   inputRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.two,
+    borderRadius: Radii.lg,
     paddingHorizontal: Spacing.three,
   },
   input: {
     flex: 1,
     minHeight: 52,
-    fontSize: 17,
+    fontSize: 18,
     paddingVertical: Spacing.two,
     ...(Platform.OS === 'android' ? { paddingVertical: 0 } : {}),
   },
-  error: {
+  codeInput: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.three,
     textAlign: 'center',
+    letterSpacing: 8,
   },
-  button: {
-    minHeight: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Spacing.two,
-  },
-  buttonDisabled: {
-    opacity: 0.5,
-  },
-  buttonLabel: {
-    color: '#ffffff',
-  },
-  pressed: {
-    opacity: 0.8,
-  },
+  errorRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  errorText: { flex: 1 },
   linkButton: {
     minHeight: 44,
     alignItems: 'center',
@@ -307,7 +323,5 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     alignItems: 'flex-start',
   },
-  helpText: {
-    flex: 1,
-  },
+  helpText: { flex: 1 },
 });

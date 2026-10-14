@@ -28,6 +28,8 @@ type CartState = {
   setQuantity: (productId: string, quantity: number) => void;
   remove: (productId: string) => void;
   clear: () => void;
+  /** Put a whole list into the bag at once — used by "Reorder". */
+  replaceAll: (items: Record<string, number>) => void;
 };
 
 export const useCartStore = create<CartState>()(
@@ -64,6 +66,20 @@ export const useCartStore = create<CartState>()(
         }),
 
       clear: () => set({ items: {} }),
+
+      replaceAll: (items) =>
+        set(() => {
+          const next: Record<string, number> = {};
+          let lines = 0;
+          for (const [productId, quantity] of Object.entries(items)) {
+            if (lines >= MAX_LINES) break;
+            const whole = Math.floor(quantity);
+            if (!Number.isFinite(whole) || whole <= 0) continue;
+            next[productId] = whole;
+            lines += 1;
+          }
+          return { items: next };
+        }),
     }),
     {
       name: STORAGE_KEY,

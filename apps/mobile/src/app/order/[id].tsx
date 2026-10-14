@@ -1,25 +1,36 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { CallShop } from '@/components/call-shop';
 import { OfflineBanner } from '@/components/offline-banner';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { IconButton } from '@/components/ui/icon-button';
+import { Radii, Spacing } from '@/constants/theme';
 import { CancelOrderRejected, useCancelOrder, useOrder } from '@/hooks/use-orders';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
+import { orderStatusStyle } from '@/lib/order-status';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { useCartStore } from '@/store/cart-store';
 import type { OrderStatus } from '@/types/database';
 
 /**
  * One order: what was bought, what it cost, where it is going, and how to stop
  * it. Every number here comes from the snapshot the database wrote, so it cannot
  * change under the customer's feet if the shop edits a price later.
+ *
+ * The status is the headline: a badge at the top (icon + colour + word) and then
+ * the same four stops drawn as a tracker, so a customer who reads slowly still
+ * sees *how far along* the bag is without reading a sentence.
  */
 export default function OrderDetailScreen() {
   const { t } = useTranslation();
@@ -33,12 +44,21 @@ export default function OrderDetailScreen() {
 
   const order = useOrder(orderId);
   const cancelOrder = useCancelOrder();
+  const replaceAll = useCartStore((state) => state.replaceAll);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
   const data = order.data;
   const canCancel = data?.status === 'placed';
   const address = data?.delivery_address as
-    | { full_name?: string; phone?: string; line1?: string; line2?: string; landmark?: string; city?: string; pincode?: string }
+    | {
+        full_name?: string;
+        phone?: string;
+        line1?: string;
+        line2?: string;
+        landmark?: string;
+        city?: string;
+        pincode?: string;
+      }
     | null
     | undefined;
 
@@ -57,6 +77,21 @@ export default function OrderDetailScreen() {
     }
   };
 
+  /**
+   * Put the same things back in the basket. Prices are NOT copied — the cart
+   * reads them live, and `useCart` re-checks stock, so a reorder of something
+   * that has since sold out surfaces as an adjustment rather than a surprise.
+   */
+  const onReorder = () => {
+    const items: Record<string, number> = {};
+    for (const item of data?.order_items ?? []) {
+      if (!item.product_id) continue;
+      items[item.product_id] = (items[item.product_id] ?? 0) + item.quantity;
+    }
+    replaceAll(items);
+    router.push('/(tabs)/cart');
+  };
+
   if (!isSupabaseConfigured) {
     return (
       <View style={[styles.screen, { paddingTop: insets.top }]}>
@@ -66,20 +101,29 @@ export default function OrderDetailScreen() {
     );
   }
 
+  const status = data?.status ?? 'placed';
+  const statusStyle = orderStatusStyle(theme, status);
+
   return (
-    <View style={[styles.screen, { paddingTop: insets.top }]}>
+    <View style={styles.screen}>
       <OfflineBanner />
 
       <View style={styles.headerRow}>
-        <Pressable
+        <IconButton
+          icon="arrow-back"
+          label={t('common.back')}
           onPress={() => (router.canGoBack() ? router.back() : router.replace('/(tabs)/orders'))}
-          accessibilityRole="button"
-          accessibilityLabel={t('common.back')}
-          hitSlop={8}
-          style={styles.backButton}>
-          <Ionicons name="arrow-back" size={22} color={theme.text} />
-        </Pressable>
-        <ThemedText style={styles.header}>{data?.order_number ?? t('order.title')}</ThemedText>
+        />
+        <ThemedText type="subtitle" style={styles.flex} numberOfLines={1}>
+          {data?.order_number ?? t('order.title')}
+        </ThemedText>
+        {data ? (
+          <Badge
+            label={t(`orders.status.${status}`)}
+            tone={statusStyle.tone}
+            icon={statusStyle.icon}
+          />
+        ) : null}
       </View>
 
       {order.isLoading ? (
@@ -95,15 +139,18 @@ export default function OrderDetailScreen() {
         <ScrollView
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.five }]}>
           {justPlaced ? (
-            <View style={[styles.success, { backgroundColor: theme.accentSoft }]}>
-              <Ionicons name="checkmark-circle" size={24} color={theme.accent} />
+            <Card tone="accent" style={styles.success}>
+              <Ionicons name="checkmark-circle" size={22} color={theme.accent} />
               <ThemedText type="smallBold" style={styles.flex}>
                 {t('order.placedTitle')}
               </ThemedText>
-            </View>
+            </Card>
           ) : null}
 
-          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.background }]}>
+          <Card style={styles.section}>
+            <ThemedText type="smallBold" themeColor="textSecondary">
+              {t('order.trackTitle')}
+            </ThemedText>
             <StatusRow status={data.status} />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <Row label={t('order.placedAt')} value={formatDate(data.placed_at)} />
@@ -112,10 +159,12 @@ export default function OrderDetailScreen() {
             ) : null}
             <Row label={t('order.payment')} value={t(`order.pay.${data.payment_method}`)} />
             <Row label={t('order.paymentStatus')} value={t(`order.payStatus.${data.payment_status}`)} />
-          </View>
+          </Card>
 
-          <ThemedText style={styles.sectionTitle}>{t('order.itemsTitle')}</ThemedText>
-          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.background }]}>
+          <ThemedText type="heading" style={styles.sectionTitle}>
+            {t('order.itemsTitle')}
+          </ThemedText>
+          <Card style={styles.section}>
             {data.order_items.map((item) => (
               <View key={item.id} style={styles.itemRow}>
                 <ThemedText type="small" numberOfLines={2} style={styles.flex}>
@@ -139,10 +188,12 @@ export default function OrderDetailScreen() {
             <ThemedText type="small" themeColor="textSecondary">
               {t('order.payAtDelivery', { amount: formatPaise(data.total_paise) })}
             </ThemedText>
-          </View>
+          </Card>
 
-          <ThemedText style={styles.sectionTitle}>{t('order.deliverToTitle')}</ThemedText>
-          <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.background }]}>
+          <ThemedText type="heading" style={styles.sectionTitle}>
+            {t('order.deliverToTitle')}
+          </ThemedText>
+          <Card style={styles.section}>
             <ThemedText type="smallBold">{address?.full_name ?? ''}</ThemedText>
             {address?.phone ? (
               <ThemedText type="small" themeColor="textSecondary">
@@ -159,16 +210,20 @@ export default function OrderDetailScreen() {
                 .filter(Boolean)
                 .join(', ')}
             </ThemedText>
-          </View>
+          </Card>
 
           {data.notes ? (
             <>
-              <ThemedText style={styles.sectionTitle}>{t('checkout.noteTitle')}</ThemedText>
-              <View style={[styles.card, { borderColor: theme.border, backgroundColor: theme.background }]}>
+              <ThemedText type="heading" style={styles.sectionTitle}>
+                {t('checkout.noteTitle')}
+              </ThemedText>
+              <Card style={styles.section}>
                 <ThemedText type="small">{data.notes}</ThemedText>
-              </View>
+              </Card>
             </>
           ) : null}
+
+          <CallShop />
 
           {cancelError ? (
             <ThemedText type="small" style={{ color: theme.danger, textAlign: 'center' }}>
@@ -176,82 +231,112 @@ export default function OrderDetailScreen() {
             </ThemedText>
           ) : null}
 
+          <Button
+            label={t('order.reorder')}
+            icon="repeat"
+            size="lg"
+            fullWidth
+            onPress={onReorder}
+            style={styles.action}
+          />
+
           {canCancel ? (
-            <Pressable
-              onPress={onCancel}
-              disabled={cancelOrder.isPending}
-              accessibilityRole="button"
-              accessibilityState={{ busy: cancelOrder.isPending }}
-              accessibilityLabel={t('order.cancel')}
-              style={({ pressed }) => [
-                styles.cancel,
-                { borderColor: theme.danger },
-                cancelOrder.isPending && styles.disabled,
-                pressed && styles.pressed,
-              ]}>
-              <Ionicons name="close-circle-outline" size={20} color={theme.danger} />
-              <ThemedText type="smallBold" style={{ color: theme.danger }}>
-                {cancelOrder.isPending ? t('common.pleaseWait') : t('order.cancel')}
-              </ThemedText>
-            </Pressable>
+            <Button
+              label={cancelOrder.isPending ? t('common.pleaseWait') : t('order.cancel')}
+              icon="close-circle-outline"
+              variant="outline"
+              size="lg"
+              fullWidth
+              busy={cancelOrder.isPending}
+              onPress={() => void onCancel()}
+              style={styles.action}
+            />
           ) : null}
 
-          <Pressable
+          <Button
+            label={t('order.shopAgain')}
+            variant="ghost"
+            fullWidth
             onPress={() => router.push('/')}
-            accessibilityRole="button"
-            accessibilityLabel={t('order.shopAgain')}
-            style={styles.shopAgain}>
-            <ThemedText type="smallBold" style={{ color: theme.accent }}>
-              {t('order.shopAgain')}
-            </ThemedText>
-          </Pressable>
+          />
         </ScrollView>
       )}
     </View>
   );
 }
 
-/** The three steps a customer actually cares about, in plain words. */
+/** The four stops a customer actually cares about, each with its own icon. */
+const TRACK_STEPS: {
+  statuses: OrderStatus[];
+  labelKey: string;
+  icon: keyof typeof Ionicons.glyphMap;
+}[] = [
+  { statuses: ['placed', 'confirmed'], labelKey: 'order.step.placed', icon: 'receipt-outline' },
+  { statuses: ['packing'], labelKey: 'order.step.packed', icon: 'bag-handle-outline' },
+  { statuses: ['out_for_delivery'], labelKey: 'order.step.onTheWay', icon: 'bicycle-outline' },
+  { statuses: ['delivered'], labelKey: 'order.step.delivered', icon: 'home-outline' },
+];
+
 function StatusRow({ status }: { status: OrderStatus }) {
   const { t } = useTranslation();
   const theme = useTheme();
+  const style = orderStatusStyle(theme, status);
 
-  const steps: { key: OrderStatus; labelKey: string }[] = [
-    { key: 'placed', labelKey: 'orders.status.placed' },
-    { key: 'out_for_delivery', labelKey: 'orders.status.out_for_delivery' },
-    { key: 'delivered', labelKey: 'orders.status.delivered' },
-  ];
-
-  const terminal = status === 'cancelled';
-  const currentIndex = steps.findIndex((step) => step.key === status);
-
-  if (terminal) {
+  if (status === 'cancelled') {
     return (
-      <ThemedText type="smallBold" style={{ color: theme.danger }}>
-        {t(`orders.status.${status}`)}
-      </ThemedText>
+      <View style={styles.steps}>
+        <ThemedText type="smallBold" style={{ color: theme.dangerInk }}>
+          {t('orders.status.cancelled')}
+        </ThemedText>
+      </View>
     );
   }
 
+  const current = TRACK_STEPS.findIndex((step) => step.statuses.includes(status));
+
   return (
-    <View style={styles.steps}>
-      {steps.map((step, index) => {
-        const done = index <= currentIndex;
+    <View
+      style={styles.steps}
+      accessibilityRole="progressbar"
+      accessibilityLabel={t(`orders.status.${status}`)}>
+      {TRACK_STEPS.map((step, index) => {
+        const done = index <= current;
+        const isCurrent = index === current;
         return (
-          <View key={step.key} style={styles.step}>
-            <View
-              style={[
-                styles.dot,
-                { borderColor: done ? theme.accent : theme.border, backgroundColor: done ? theme.accent : 'transparent' },
-              ]}
-            />
-            <ThemedText type="small" style={styles.stepLabel} themeColor={done ? 'text' : 'textSecondary'}>
-              {t(step.labelKey)}
-            </ThemedText>
-            {index < steps.length - 1 ? (
-              <View style={[styles.connector, { backgroundColor: index < currentIndex ? theme.accent : theme.border }]} />
+          <Fragment key={step.labelKey}>
+            <View style={styles.step}>
+              <View
+                style={[
+                  styles.stepIcon,
+                  {
+                    backgroundColor: done ? style.color : theme.backgroundElement,
+                    borderColor: done ? style.color : theme.border,
+                    borderWidth: isCurrent ? 3 : 1,
+                  },
+                ]}>
+                <Ionicons
+                  name={step.icon}
+                  size={15}
+                  color={done ? theme.background : theme.textSecondary}
+                />
+              </View>
+              <ThemedText
+                type="caption"
+                themeColor={done ? 'text' : 'textSecondary'}
+                style={styles.stepLabel}
+                numberOfLines={2}>
+                {t(step.labelKey)}
+              </ThemedText>
+            </View>
+            {index < TRACK_STEPS.length - 1 ? (
+              <View
+                style={[
+                  styles.line,
+                  { backgroundColor: index < current ? style.color : theme.border },
+                ]}
+              />
             ) : null}
-          </View>
+          </Fragment>
         );
       })}
     </View>
@@ -280,49 +365,39 @@ function formatDate(value: string | null): string {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  flex: { flex: 1 },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    paddingHorizontal: Spacing.three,
+    paddingHorizontal: Spacing.two,
     paddingVertical: Spacing.two,
   },
-  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  header: { fontSize: 24, lineHeight: 30, fontWeight: '700' },
   content: { paddingHorizontal: Spacing.three, gap: Spacing.two },
   success: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.two,
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
   },
-  card: {
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.three,
-    padding: Spacing.three,
-    gap: Spacing.one,
-  },
-  sectionTitle: { marginTop: Spacing.three, fontSize: 16, lineHeight: 22, fontWeight: '700' },
-  itemRow: { flexDirection: 'row', justifyContent: 'space-between', gap: Spacing.two, alignItems: 'flex-start' },
-  flex: { flex: 1 },
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.two },
-  steps: { flexDirection: 'row', justifyContent: 'space-between' },
-  step: { flex: 1, alignItems: 'center', gap: Spacing.one },
-  dot: { width: 14, height: 14, borderRadius: 7, borderWidth: 2 },
-  stepLabel: { textAlign: 'center', fontSize: 12, lineHeight: 16 },
-  connector: { position: 'absolute', top: 6, left: '50%', width: '100%', height: 2 },
-  cancel: {
+  section: { gap: Spacing.one },
+  sectionTitle: { marginTop: Spacing.three },
+  itemRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+    alignItems: 'flex-start',
+  },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.two },
+  steps: { flexDirection: 'row', alignItems: 'flex-start' },
+  step: { flex: 1, alignItems: 'center', gap: Spacing.one },
+  stepIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: Radii.pill,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: Spacing.two,
-    minHeight: 52,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Spacing.two,
-    marginTop: Spacing.two,
   },
-  shopAgain: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  disabled: { opacity: 0.5 },
-  pressed: { opacity: 0.7 },
+  stepLabel: { textAlign: 'center' },
+  line: { width: 18, height: 3, borderRadius: 2, marginTop: 16 },
+  action: { marginTop: Spacing.two },
 });

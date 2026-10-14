@@ -37,23 +37,23 @@ select test_result.eq(
 
 -- -----------------------------------------------------------------------------
 -- Addresses.
---   Asha's home     -> pincode 571915, inside the shop's zone, fee 1500
---   Asha's office   -> pincode 572111, inside a zone, fee 3500
+--   Asha's home     -> pincode 572130, Kunigal Town zone, fee 1500 (real PIN)
+--   Asha's office   -> pincode 572111, the far zone, fee 3500
 --   Asha's village  -> pincode 999999, the shop does not deliver there
---   Ravi's home     -> pincode 571915, belongs to another customer
+--   Ravi's home     -> pincode 572130, belongs to another customer
 -- -----------------------------------------------------------------------------
 
 insert into public.addresses
   (id, user_id, label, full_name, phone, line1, city, pincode, is_default)
 values
   ('50000000-0000-4000-8000-000000000001', '11111111-1111-1111-1111-111111111111',
-   'Home', 'Asha', '+919800000001', '12, Gandhi Road', 'Kunigal', '571915', true),
+   'Home', 'Asha', '+919800000001', '12, Gandhi Road', 'Kunigal', '572130', true),
   ('50000000-0000-4000-8000-000000000002', '11111111-1111-1111-1111-111111111111',
    'Office', 'Asha', '+919800000001', '3rd Floor, Tech Park', 'Kunigal', '572111', false),
   ('50000000-0000-4000-8000-000000000003', '11111111-1111-1111-1111-111111111111',
    'Village', 'Asha', '+919800000001', 'Near the temple', 'Narasapura', '999999', false),
   ('50000000-0000-4000-8000-000000000004', '22222222-2222-2222-2222-222222222222',
-   'Home', 'Ravi', '+919800000002', '45, Nehru Nagar', 'Kunigal', '571915', true)
+   'Home', 'Ravi', '+919800000002', '45, Nehru Nagar', 'Kunigal', '572130', true)
 on conflict (id) do nothing;
 
 -- -----------------------------------------------------------------------------

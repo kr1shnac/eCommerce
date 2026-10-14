@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import { selectCartCount, useCartStore } from '@/store/cart-store';
+import { useLanguageStore } from '@/store/language-store';
+import { localizedName } from '@/lib/localized';
 import { supabase } from '@/lib/supabase';
 import type { Product, UnavailableItem } from '@/types/database';
 
@@ -54,6 +56,9 @@ export function useCart(): UseCart {
   const items = useCartStore((state) => state.items);
   const hasHydrated = useCartStore((state) => state.hasHydrated);
   const setQuantity = useCartStore((state) => state.setQuantity);
+  // The adjustment message names a product, so the language is part of the cache
+  // key: switching language must re-run this memo, not keep the English name.
+  const language = useLanguageStore((state) => state.language);
   // Sorted, so the query key is a stable string instead of a new array on
   // every render (which would refetch forever).
   const idsKey = useMemo(() => Object.keys(items).sort().join(','), [items]);
@@ -101,7 +106,7 @@ export function useCart(): UseCart {
       if (usable < quantity) {
         nextAdjustments.push({
           productId,
-          name: product?.name_en ?? '',
+          name: product ? localizedName(product, language) : '',
           unit: product?.unit ?? null,
           from: quantity,
           to: usable,
@@ -114,7 +119,7 @@ export function useCart(): UseCart {
     }
 
     return { lines: nextLines, adjustments: nextAdjustments, subtotalPaise: subtotal };
-  }, [items, byId]);
+  }, [items, byId, language]);
 
   const applyAdjustments = () => {
     for (const adjustment of adjustments) setQuantity(adjustment.productId, adjustment.to);
@@ -128,7 +133,10 @@ export function useCart(): UseCart {
       setQuantity(item.product_id, item.available);
       applied.push({
         productId: item.product_id,
-        name: item.name_en ?? '',
+        name: localizedName(
+          { name_en: item.name_en ?? '', name_kn: item.name_kn ?? null },
+          language,
+        ),
         unit: item.unit ?? null,
         from,
         to: item.available,

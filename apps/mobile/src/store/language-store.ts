@@ -10,7 +10,7 @@ import i18n, {
 
 type LanguageState = {
   language: Language;
-  /** False until we have checked the device + saved preference. */
+  /** False until we have read the saved preference. */
   isReady: boolean;
   setLanguage: (language: Language) => Promise<void>;
   hydrate: () => Promise<void>;

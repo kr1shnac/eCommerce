@@ -6,6 +6,554 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-14 — The UI/UX overhaul: a design system, light + dark, and data so every face looks alive
+
+*(first session of the day)*
+
+### What changed and why
+
+The brief was blunt: the app worked but looked "basic". This session rebuilt the
+**look** without touching the architecture (Expo + Supabase + RLS stay exactly as
+they were), and then loaded enough **fake data** that the customer, rider and
+owner faces can all be seen *working* instead of showing empty states. Three
+things drove every decision: a small town where **one in three adults cannot
+comfortably read**, a real **light/dark** need, and a shop that should feel warm
+rather than corporate.
+
+**A real design system, not a coat of paint.**
+- `apps/mobile/src/constants/theme.ts` — rewritten as the single source of truth:
+  a **light** palette (cream page `#FFFBF3`, white cards, leaf-green `#0F7B3E`,
+  marigold `#E8890C`, ink `#221B12`) and a **dark** palette (charcoal `#14110C`,
+  cards `#1E1A13`, green `#4ED08A`, marigold `#F4B24A`). Added `Type`, `Radii`
+  and `Elevation` scales so screens stop hard-coding numbers.
+- Contrast audit (WCAG AA, done by hand against every real pair) found three
+  **soft-tint failures** — a bright fill used as text on its own pale tint. Fixed
+  by adding honest `*Ink` tokens meant only for text: `secondaryInk #9A5A00`,
+  `successInk #0F6B3A`, `warningInk #8A5200`, `dangerInk #9E2B20` (dark themes use
+  the bright tone as ink). **The rule, now written in DESIGN.md: a bright colour
+  is only ever a solid fill; `*Ink` is for text on a `*Soft` background.**
+  Marigold is never used as text on cream — it only reaches 2.55:1.
+- `DESIGN.md` (new) documents the palette with its contrast table, the type and
+  spacing scales, the light/dark rules, the accessibility floor, and the
+  performance rules. It is the reference the next screen is built against.
+
+**Modern, but the *right* modern.** Chose a **Material Design 3 (Material You)
+foundation** — tonal surfaces, big rounded shapes, clear elevation — combined
+with an **Indian quick-commerce layout** (sticky basket bar, category rails, a
+two-column product grid, one-tap Add). Rejected glassmorphism/blur and
+neo-brutalism: both read as "tech demo" and both fight low-literacy readability.
+Green means *you can act*; marigold means *offer*.
+
+**Light and dark, the customer's choice.**
+- `apps/mobile/src/store/theme-store.ts` (new) — a persisted Zustand store for
+  **System / Light / Dark**, default **System**, saved on the device with
+  AsyncStorage, and `isReady` so the first paint is never the wrong theme.
+- `apps/mobile/src/hooks/use-theme.ts` — now exports `useResolvedScheme()` (what
+  System currently *is*) and `useTheme()` (the palette to draw with).
+- `apps/mobile/src/app/_layout.tsx` — builds the navigation theme from the
+  palette, holds the splash until `authReady && themeReady`, and keeps the
+  `Stack.Protected` role gate untouched.
+- `apps/mobile/src/components/ui/theme-switch.tsx` (new) — a three-way control in
+  Account and a one-tap `ThemeToggle` for the Home header.
+
+**New primitives so screens share one language.**
+- `apps/mobile/src/components/ui/` (new): `button.tsx` (variant/size/busy), 
+  `card.tsx` (`flat`/tone), `badge.tsx`, `section-header.tsx`, `icon-button.tsx`,
+  `theme-switch.tsx`. Redrawn: `product-card.tsx`, `category-chip.tsx`,
+  `quantity-stepper.tsx`, `add-to-cart.tsx`, `state-message.tsx`,
+  `offline-banner.tsx`, `language-switch.tsx`, `call-shop.tsx`, `themed-text.tsx`.
+
+**Every screen rebuilt on the new system.**
+- Customer: `(tabs)/index.tsx` (Home — brand bar + theme toggle, search, rails,
+  2-col grid, **sticky basket bar** showing "N items · ₹X → View basket"),
+  `(tabs)/cart.tsx`, `(tabs)/orders.tsx` (status badges + All/Active/Done
+  filters + Reorder), `order/[id].tsx` (badge header + tracker + Card sections),
+  `(tabs)/account.tsx` (profile card, Appearance, Language, Call shop),
+  `checkout.tsx`, `login.tsx`, `address.tsx`.
+- Staff: `rider/index.tsx` (three stat tiles: waiting / mine / done today, status
+  badges, Call + one "next step" button), `admin/index.tsx` (Live / Waiting /
+  Delivered tiles, rider assignment chips, status badges), `admin/team.tsx`
+  (per-person role segmented control).
+- Tab bars restyled: `(tabs)/_layout.tsx`, `admin/_layout.tsx`.
+
+**Fake data, so the faces are judged full.**
+- `supabase/demo.sql` (new, dev-only, re-runnable) — creates **8 orders** across
+  every status (2 waiting, 1 confirmed, 1 packing, 1 out for delivery, 2
+  delivered, 1 cancelled) with 24 real line items, assigns some to the **first
+  `delivery` profile**, and gives the customer a Kunigal address (PIN **572130**)
+  only if they had none. Totals are computed by Postgres from the real product
+  prices — nothing is typed in by hand (rule 9.1).
+- Demo orders are identifiable on purpose: `order_number` is `KNG-D0001…` and
+  `idempotency_key` is `demo-order-N`, so the file can delete its own last run
+  and never touch a real order.
+- `supabase/seed.sql` — per-product `emoji` (migration
+  `20261014000001_product_emoji.sql`), zone-1 PIN corrected to Kunigal's real
+  `572130`, and ~15 Kannada names fixed. `products.emoji` added to
+  `apps/mobile/src/types/database.ts`.
+
+**Dead code removed.** `apps/mobile/src/components/placeholder-screen.tsx` and
+`themed-view.tsx` were unreferenced after the rebuild (nothing imported them),
+and the empty `components/product/` directory is gone.
+
+### Verified, and how
+
+- `npm run typecheck` — **clean**, zero errors, both apps.
+- `npm run lint` — **clean, zero warnings** (a fresh
+  `react-hooks/exhaustive-deps` warning in `(tabs)/orders.tsx` was found and
+  fixed by memoising the derived `all` list).
+- `npm run check:i18n` — **278 keys in both languages**, parity OK, every used
+  key exists.
+- `npm run test:db` — **276 assertions, 0 failed** (was 259). The 17 new ones are
+  `supabase/tests/12_demo_data_test.sql`, which runs `demo.sql` against the
+  throwaway PostgreSQL 16 the harness boots and asserts: 8 orders / 24 lines;
+  2 waiting, 3 in progress, 2 delivered, 1 cancelled; every
+  `total = subtotal + fee − discount`; every order's subtotal equals the sum of
+  its line totals; every order snapshots the 572130 address; the fee is the zone
+  fee; the loader **reused** the existing address rather than inventing one; and
+  — the one that matters most — **`orders_guard_insert` and
+  `order_items_guard_insert` are both enabled again afterwards**, and the guard
+  still forces a customer's born-delivered order back to `placed`.
+- `npx expo export --platform web` — bundles cleanly, **17 routes**.
+
+**Not verified:** nothing was exercised against the user's real Supabase. This
+sandbox cannot resolve `iuynzrqqiokkdoscncyj.supabase.co`, so the live sign-in,
+Realtime and Storage paths are unchanged-but-unrechecked from here; everything
+database-shaped was verified against real PostgreSQL via the test harness, which
+is the closest honest substitute.
+
+### Decisions, with reasons (so they are not relitigated)
+
+- **`demo.sql` briefly disables two guard triggers.** `orders_guard_insert` and
+  `order_items_guard_insert` fire for anyone who looks like a `customer`, and the
+  SQL Editor has no signed-in user — so every demo order would be forced back to
+  `placed`/`pending` with no lines allowed on a delivered order. The disables and
+  the inserts sit in one `begin … exception … end` sub-block, so the triggers are
+  restored even if a statement fails. This is the only place in the project that
+  turns a guard off, and a test now proves the triggers come back **on**.
+- **`order_number` = `KNG-D0001…`.** A deliberate marker, not the sequence's own
+  format, so demo rows are obvious in the table editor and safe to delete.
+- **Emoji, not photos.** One in three adults here cannot comfortably read a
+  product name; a picture is the accessible label. Real photos still win when
+  present (`image_url`), the category icon is the last fallback.
+- **Theme default is System**, persisted per device, because most people already
+  have their phone the way they like it; the explicit switch is there for the
+  ones who do not.
+- **`*Ink` tokens instead of "just use the bright colour".** A bright brand colour
+  reads beautifully as a fill and fails as text on its own tint; naming that
+  distinction in tokens makes the failure impossible to reintroduce by accident.
+
+### Bugs found while building this
+
+1. `demo.sql` needed an explicit `::public.payment_status` cast — a `case`
+   expression is `text`, and Postgres will not silently narrow it to an enum.
+2. The idempotency key check requires **8–200 characters**; the first draft's
+   `'demo-1'` was too short, so keys are now `'demo-order-N'`.
+3. It was not enough to disable `orders_guard_insert`: `order_items_guard_insert`
+   also had to come off, or the delivered/cancelled orders could have no lines.
+4. The "the guard still bites" check could not insert as a signed-in customer —
+   migration `20261002000008_place_order.sql` **drops** the direct-insert policy,
+   so `place_order()` is the only door (RLS refuses before the trigger is
+   reached). The test now runs as the table owner, exactly like
+   `03_cancel_and_guards_test.sql`.
+
+### Open gaps
+
+- **Noto Sans Kannada is not bundled yet.** The UI still renders Kannada in the
+  platform font. `@expo-google-fonts/noto-sans-kannada` is reachable and
+  `expo-font` is already a dependency; loading it in the root layout is the next
+  small piece of work. Kannada *looks* correct today but is not identical across
+  Android and iOS.
+- **The `apps/admin` Next.js panel is still the old skeleton.** AGENTS.md calls it
+  optional (a desk tool for bulk catalogue edits), so it was left alone; it does
+  not yet share this design system.
+- **Catalogue not expanded.** Still 34 products (one per emoji tile is enough to
+  look full); the earlier plan to grow it to ~48 was dropped as unnecessary, and
+  `01_baseline_rls_test.sql`'s 35-product count is therefore unchanged.
+- Not built, in the intended order: push notifications → Razorpay → live rider
+  tracking/maps. All still deliberate.
+
+---
+
+## 2026-10-13 — Phase 2 customer polish, and Kannada that sounds like Kunigal
+
+*(third session of the same day)*
+
+### What changed and why
+
+Two things: finish the customer-facing polish the roadmap called Phase 2, and
+make the Kannada feel like it was written **in** Kunigal rather than translated
+**into** it. The brief was explicit — "it should feel like it's our app, our kind
+of thing" — so this session treated the language as a product decision, not a
+translation pass.
+
+**Kannada as Kannada (the headline change).**
+- `apps/mobile/src/i18n/locales/kn.json` — fully re-authored. All 251 keys now
+  have genuine Kannada: spoken plain old-Mysuru Kannada, respectful `ನೀವು`, the
+  town's own loanwords kept (`ಆರ್ಡರ್`, `ಬಿಲ್`, `ಡೆಲಿವರಿ`, `ರೈಡರ್`) and the real
+  shop words kept (`ಸಾಮಾನು`, `ಬುಟ್ಟಿ`, `ಸಂತೆ`), instead of Sanskritised calques
+  nobody says out loud. Examples of the voice: Home tab is **ಅಂಗಡಿ** ("the shop"),
+  the cart is **ಬುಟ್ಟಿ** ("the basket"), delivered is **ಮನೆ ಸೇರಿದೆ** ("it reached
+  home"), placed is **ಆರ್ಡರ್ ಆಗಿದೆ** ("the order is done").
+- `apps/mobile/src/i18n/locales/en.json` — one customer-facing leak fixed:
+  `home.errorHint` no longer tells a customer to check their "Supabase setup"; it
+  says "check your internet connection and try again". (The developer-only
+  `home.setupTitle` / `setupHint` keep their technical text — they only ever show
+  on a misconfigured dev build.) New keys added for the Phase 2 screens:
+  `home.searchPlaceholder`, `home.clearSearch`, `home.noResults`,
+  `home.closedTitle`, `home.closedHint`, `order.reorder`, `order.step.*`,
+  `support.call` (240 → 251 keys).
+
+**Why a whole document for a language.** `KUNIGAL.md` (new) is the source of
+truth for the voice. It records the town from the public record — literacy ≈ 69%
+(women 64%), livelihoods (ragi, coconut, **sericulture**, **beedi rolling**, the
+horse stud farm), the weekly **ಸಂತೆ**, PIN 572130 — and turns each fact into a
+design rule, then gives the glossary of chosen words **with the reason for each**
+and a checklist for writing the next string. The point is that the *next* person
+argues about wording against facts and reasons, not taste.
+
+**Phase 2 customer polish.**
+- `apps/mobile/src/app/(tabs)/index.tsx` — Home rewritten: search box (filters
+  name + category in memory over the active catalogue, fetched once with
+  `useProducts(null)`), a translate-able store-closed notice, and a "delivering
+  to" pill that names the customer's own default address area + pincode.
+- `apps/mobile/src/app/order/[id].tsx` — 4-step icon order tracker with a spoken
+  Kannada status under each step, a Reorder button, and Call-the-shop.
+- `apps/mobile/src/app/(tabs)/orders.tsx` — Reorder on each order card.
+- `apps/mobile/src/components/call-shop.tsx` (new) — reads
+  `store_settings.support_phone` and opens `tel:`; placed on the order screen and
+  the Account screen.
+- `apps/mobile/src/store/cart-store.ts` — `replaceAll(items)` for Reorder;
+  `selectCartCount` for the badge.
+- `apps/mobile/src/app/(tabs)/_layout.tsx` — cart tab badge (`tabBarBadge`).
+- `apps/mobile/src/components/product-card.tsx`, `(tabs)/cart.tsx` — product
+  images moved from RN `<Image>` to `expo-image`.
+- `apps/mobile/src/hooks/use-orders.ts` — `useAddresses({ enabled })` so the
+  address query can be held back until needed.
+
+**Kannada is now the default, not a setting.** `apps/mobile/src/i18n/index.ts` had
+`DEFAULT_LANGUAGE = 'en'` and started in Kannada only when the *phone* was set to
+Kannada. In Kunigal most phones are left on the manufacturer's English default
+while the person holding the phone reads Kannada, so the app opened in English for
+exactly the people it exists for. `DEFAULT_LANGUAGE` is now `'kn'`, a fresh
+install starts in Kannada, and English is one tap away in Account and remembered.
+The device-locale check was removed, and `expo-localization` (now unused) is left
+in `package.json` but imports nothing.
+
+### A pre-existing bug found, and fixed
+
+`supabase/tests/02_place_order_test.sql` had a **time-of-day-dependent** failure
+that predates this session and was invisible all day. The "flag says open, clock
+says closed" test built its closed window as `[now+30m, now+90m]`. Between 22:30
+and 23:30 IST that window runs through midnight, so `open_time > close_time` and
+the `store_settings_open_before_close` CHECK rejected the UPDATE — the test erred
+instead of asserting. This run happened at 22:57 IST, so it surfaced now. The test
+comment even claimed midnight was "handled by the overnight branch in
+`place_order`", but the CHECK forbids an overnight window, so the test contradicted
+itself.
+
+Fix: the window is now chosen from the **opposite half of the day** (an early
+morning window when it is afternoon/evening now, and vice versa), so it is always
+same-day, always `open < close`, and always excludes "now" — at any hour. Verified
+by running the suite at 22:57 IST, the exact window that failed before.
+
+### Docs brought back to the truth
+
+- `ROADMAP.md` — §3.1 and §10 no longer claim `kn.json` is "mostly English
+  placeholders" (it is now genuinely Kannada); §3.5's offline claim corrected (the
+  banner is built, the *persisted* catalogue is not); §3.6 marks Call-the-shop and
+  the tracker built; §4.1 table updated; Phase 2 marked mostly done. Added a new
+  **§14 gap audit** — launch blockers, claimed-but-unbuilt features, deliberately
+  deferred features, accessibility gaps, and housekeeping, each with a reason.
+- `AGENTS.md` — Rule 2 now points at `KUNIGAL.md` as the authority on Kannada
+  voice, and the folder map lists it.
+
+### Decisions and their reasons
+
+- **The Kannada leads, the English follows.** Where the two diverged, the Kannada
+  was written to the situation and the English was nudged to match — not the other
+  way round. The customer base reads Kannada; the English is the fallback.
+- **Kannada is the default language, and that is a judgement call.** The device
+  locale was deliberately ignored: a factory-English phone in Kunigal usually
+  belongs to a Kannada reader, so honouring the locale would show English to the
+  wrong people. The cost is that a genuine English reader (perhaps the owner's
+  helper, or a tester) sees Kannada until they tap English once. Reversing the
+  decision is one constant: `DEFAULT_LANGUAGE` in `src/i18n/index.ts`.
+- **Loanwords stay.** `ಆರ್ಡರ್`/`ಬಿಲ್`/`ಡೆಲಿವರಿ`/`ರೈಡರ್` are what Kunigal says out
+  loud; "purifying" them into formal substitutes would make the app sound like a
+  government form, which is exactly what the brief said to avoid.
+- **Reorder re-reads live prices.** `replaceAll` stores only `{productId,
+  quantity}`; the cart then re-reads current prices and stock. A reorder is a
+  fresh order, never a replay of an old price — rule 9.1.
+- **Search is client-side over one fetched catalogue.** One shop, tens of
+  products: fetching all active products once and filtering in memory is faster
+  and works on a weak connection, versus a server round-trip per keystroke.
+
+### Verified — and how
+
+- `npm run typecheck` — 0 errors, both apps.
+- `npm run lint` — 0 errors, 0 warnings, both apps (includes `check:i18n`).
+- `npm run check:i18n` — **251 keys in both languages**, 177 used literals, 6
+  dynamic families; parity holds; the new keys exist in both files.
+- `npm run test:db` — **251 passed / 0 failed** against real PostgreSQL 16,
+  including the repaired clock test, run at 22:57 IST (the previously failing
+  window).
+
+### Open gaps (honest)
+
+- **Still nothing has run on a device or emulator.** The Kannada now *reads*
+  right on disk and passes the checker, but it has not been seen rendered on a
+  phone. Same for search, reorder and the tracker. This remains the single most
+  important next verification.
+- **The Kannada voice has not been reviewed by a Kunigal local.** It is written
+  in plain old-Mysuru Kannada by the build; a native read-through is needed before
+  launch (`KUNIGAL.md` §8). Wording may change with no code change, since every
+  string is a key.
+- **No voice / text-to-speech**, with literacy ≈ 69% the biggest unfilled
+  Kunigal-specific gap (`ROADMAP.md` §14.4). Not scheduled yet.
+- The gap audit in `ROADMAP.md` §14 records the rest: missing
+  `android.package`/`ios.bundleIdentifier`, no crash reporting, no address
+  edit/delete, no admin "today" money totals, no in-app product edit, no product
+  detail screen.
+
+---
+
+*(second session of the same day)*
+
+### What changed and why
+
+Phase 1 shipped the rider and owner screens, but they only refreshed on a
+20-second poll, so a rider could sit looking at a stale list while an order
+waited. Phase 3 replaces that with a websocket (Supabase Realtime), which works
+in Expo Go and needs no native module.
+
+- `supabase/migrations/20261013000002_realtime_orders.sql` — adds `public.orders`
+  to the `supabase_realtime` publication. Both the publication creation and the
+  `add table` are guarded by existence checks, because on a real Supabase project
+  the publication is platform-created and already exists, while in the throwaway
+  PostgreSQL the DB tests use it does not. `order_items` was deliberately **not**
+  added: the lines are written with the order by `place_order()` and never change
+  afterwards, so one stream on `orders` is enough and it is one fewer thing to
+  keep an eye on.
+- `supabase/tests/10_realtime_publication_test.sql` — 4 assertions: the
+  publication exists, `orders` is published, `orders` still has RLS enabled, and
+  `orders` has a primary key (a replica identity Realtime needs).
+- `apps/mobile/src/hooks/use-realtime-orders.tsx` — `RealtimeOrdersProvider` (one
+  channel per signed-in user, torn down on sign-out) that invalidates the shared
+  `['orders', ...]` query prefix on any change, plus `useOrderEventListener` for
+  screens that want the raw event.
+- `apps/mobile/src/app/_layout.tsx` — the provider is mounted inside
+  `QueryClientProvider`, around the root navigator.
+- `apps/mobile/src/app/rider/index.tsx` — on an `INSERT` for an unassigned
+  `placed` order, `Vibration.vibrate(400)` and a dismissible banner for 20s.
+- `apps/mobile/src/i18n/locales/{en,kn}.json` — new `rider.newOrderAlert` key in
+  both languages, and the placeholder corrections below (238 → 240 keys).
+
+### Two pre-existing i18n bugs, found on the way
+
+Wiring the new key surfaced a bug that predates this session, and it was worth
+stopping for because it is invisible in every gate and visible to every customer.
+
+- **Placeholders were not being swapped at all.** Every locale value uses
+  single braces — `"{count} items"`, `"Hello {name}"`, `"{amount}"` — but
+  i18next's default delimiters are `{{ }}`. With the default, `t('rider.greeting',
+  { name })` renders the literal text `Hello {name}`. This was proved directly
+  against the installed `i18next@26.4.2` and was already present at `HEAD`, so it
+  was not introduced by the rider work. Fix: `src/i18n/index.ts` now declares
+  `interpolation: { prefix: '{', suffix: '}' }`, which makes all ~20
+  placeholder-bearing keys work as written and keeps the files readable.
+- **`orders.moreItems` was mangled** — `"more item{count,s}"`, a broken ICU
+  plural, and the caller also prepended the count, so Kannada would have
+  double-counted (`+ 2 ಇನ್ನೂ 3 ವಸ್ತು`). Replaced with a proper i18next plural
+  (`orders.moreItems_one` / `orders.moreItems_other`) chosen by `count`, with the
+  caller no longer prepending the number — which also fixes word order, since
+  Kannada wants the number *after* "more".
+- `common.off` used `{{percent}}` (the one key that did work) while everything
+  else used `{percent}`; it is now consistent. It is also **unused** — the
+  product-card discount badge renders `"{off}%"` directly, so this key was dead.
+  Left in place (now correct) rather than deleted, as a Phase 2 badge is likely to
+  want it.
+- `scripts/check-i18n.mjs` gained a fifth check: every placeholder must be
+  single-brace word form. It also now accepts a plural base key (`orders.moreItems`)
+  when `_one` and `_other` both exist. Negative-tested: reintroducing
+  `{{percent}}` and `{count,s}` makes the checker exit 1 with both named.
+
+### Decisions and their reasons
+
+- **An event is a doorbell, not data.** The channel is used only to
+  `invalidateQueries({ queryKey: ['orders'] })`; the screen is then re-rendered
+  from an ordinary, RLS-protected REST read. The event payload is never rendered,
+  so no app bug can leak another customer's row on screen. It also means the data
+  shown is always a fresh read, not a socket frame that arrived out of order.
+- **RLS is left to do the filtering.** Realtime Postgres Changes enforces the
+  subscriber's own policies, and supabase-js sends the signed-in user's JWT via
+  the Realtime client's `accessToken` callback (verified in the installed
+  `@supabase/supabase-js@2.117.2`), so a customer hears only their own orders and
+  a signed-out socket hears nothing. The app relaxes nothing here.
+- **The poll stays, slower.** The roadmap said Phase 3 *replaces* the 20s poll.
+  It was moved to a 60-second backstop instead of being deleted: a websocket can
+  die silently on patchy rural 4G, and a slow poll is a cheap way for the list to
+  recover on its own. This is a deliberate deviation from the plan text.
+- **`Vibration`, not a sound and not `expo-haptics`.** Vibrate is built into
+  React Native (no new dependency, still Expo Go), and a sound in a shop or on a
+  bike is worse than a buzz. A real push notification for a closed app is Phase 4.
+- **One channel, not one per screen.** All three faces share the same channel and
+  the same `['orders', ...]` prefix, so a customer watching their order, a rider's
+  pool and the owner's board all update from a single subscription.
+
+### Verified — and how
+
+- `npm run test:db` — **251 passed / 0 failed** against real PostgreSQL 16
+  (was 247; the 4 new realtime assertions pass). `orders` is confirmed present in
+  `pg_publication_tables` for `supabase_realtime`.
+- `npm run typecheck` — 0 errors in both apps.
+- `npm run lint` — 0 errors, 0 warnings in both apps.
+- `npm run check:i18n` — 240 keys in both languages, 169 used literals, 6 dynamic
+  families; parity holds. The new placeholder check was negative-tested (see
+  above), so it genuinely fails on a malformed placeholder rather than passing
+  vacuously.
+
+### Open gaps (honest)
+
+- **Nothing has been run on a device or emulator.** This session, like the last,
+  is type-checked, linted and tested at the database and unit level only. The
+  websocket path — sign in, place an order from a second account, watch the rider
+  screen update and buzz — is **unverified in practice**. That is the first thing
+  to try in the next session.
+- The 20-second → 60-second poll change is a real behaviour change if Realtime
+  turns out to be blocked on a given network; the fallback then feels slower.
+- Realtime RLS enforcement is relied upon from documented behaviour and the
+  installed client's token wiring; it is not something the local PostgreSQL tests
+  can exercise, since the test DB has no Realtime server.
+- The placeholder fix is proved at the library level (a direct i18next call), not
+  on screen. Worth eyeballing once on a device: the cart line `"{count} items"`,
+  `rider.greeting` and the admin summary chips are the easiest places to see
+  whether interpolation now visibly works.
+
+---
+
+## 2026-10-13 — One app, three faces: in-app rider and shop-owner roles; Phase 1 rider assignment
+
+### The question, and the answer
+
+Set out to judge whether Expo + React Native + TypeScript + Supabase fit a
+Blinkit/Zepto-style quick-commerce app for one shop in Kunigal, and then to build
+the missing parts so the owner, the rider and the customer are all served from
+the same app. The reasoning and the phase plan are written up in `ROADMAP.md`.
+
+Decision: **keep the stack**, and **put every role inside one app**.
+
+- Kotlin-only was rejected — it is Android-only, and the customer app must also
+  reach iPhone.
+- Flutter / KMP / a second native app cost more to build and maintain than a team
+  of this size gains.
+- A separate rider app and a rider web page were rejected in favour of one Expo
+  app with three role-based faces, routed after sign-in by `profiles.role`. The
+  web panel `apps/admin` is demoted to an optional desk tool for bulk catalogue
+  work.
+- The principle, repeated throughout: **the app decides what to *show*; Postgres
+  decides what is *allowed*.** RLS plus the guard triggers stay the authority.
+
+### Routing: how the faces are separated
+
+`apps/mobile/src/app/_layout.tsx` wraps the root `Stack` in `Stack.Protected`
+guards evaluated from `useProfile()`: `rider/` only when `role === 'delivery'`,
+`admin/` only when `role === 'admin'`, and `(tabs)/` for a guest, a customer, or
+the owner (who keeps a "customer view"). Real path segments were used instead of
+route groups because two groups cannot both resolve to `/`. While a signed-in
+person's role is still loading, the layout shows a spinner rather than flashing
+the shop and then jumping.
+
+### New files
+
+- `ROADMAP.md` — the plan: village-first UX, the three faces, phases 0–6, i18n,
+  performance, security, definition of done.
+- `supabase/migrations/20261013000001_rider_assignment.sql` — `orders.assigned_to`
+  / `assigned_at` (kept consistent by a CHECK and a `set_assigned_at` trigger),
+  the waiting/assigned indexes, and a rewritten `guard_order_update` giving riders
+  forward-only, own-order control and the owner full control.
+- `supabase/tests/09_rider_assignment_test.sql` — ~35 assertions proving the
+  claim/ownership/reassign rules.
+- `apps/mobile/src/hooks/use-profile.ts` — `useProfile`, `useTeam`, `useSetRole`.
+- `apps/mobile/src/hooks/use-staff-orders.ts` — rider/owner order queries and the
+  claim / advance / assign mutations.
+- `apps/mobile/src/lib/order-view.ts` — reads the snapshot address and formats
+  times once, for both staff faces.
+- `apps/mobile/src/app/rider/index.tsx` — waiting pool, my deliveries, today count.
+- `apps/mobile/src/app/admin/{_layout,index,team}.tsx` — the shop board with rider
+  assignment, and the team role list.
+- `scripts/check-i18n.mjs` — key-parity and key-usage guard (see below).
+
+### Changed files
+
+- `apps/mobile/src/i18n/locales/en.json`, `kn.json` — rewritten; parity restored,
+  missing literals added, wrong status keys fixed, Kannada genuinely translated.
+- `apps/mobile/src/types/database.ts` — `Order.assigned_to`/`assigned_at`, plus a
+  `Table<>` helper and `order_items -> orders` relationship (see bugs below).
+- `apps/mobile/src/hooks/use-orders.ts` — the typed client let the `as any`
+  escapes be deleted from `insert` and both `rpc` calls.
+- `apps/mobile/src/hooks/use-cart.ts` — adjustment names now go through
+  `localizedName` with the language as a cache key (was reading `name_en`).
+- `apps/mobile/src/app/(tabs)/cart.tsx` — the mirror-into-state effect removed.
+- `supabase/tests/03_cancel_and_guards_test.sql` — rider block now claims and
+  advances instead of editing by hand.
+- `apps/admin/src/app/(app)/{categories,products,settings}/page.tsx` and
+  `layout.tsx`, `apps/admin/src/components/ui.tsx` — lint fixes and typed rows.
+- `package.json` — added `check:i18n` and folded it into `lint`.
+- `AGENTS.md` §3/§6/§7 and `README.md` §4/§6/§7 — now match the code.
+- **Deleted** `apps/admin/src/app/rider/` — a 3-line stub that contradicted the
+  decision that deliveries happen in the app.
+
+### Verified
+
+- `npm run typecheck` — 0 errors, both apps.
+- `npm run lint` — **0 errors and 0 warnings**, both apps (it started at 15 errors
+  + 7 warnings), followed by the i18n check.
+- `npm run check:i18n` — 238 keys in both languages, 168 used literals and 6
+  dynamic families all resolve.
+- `npm run test:db` — **247 passed / 0 failed** against a throwaway PostgreSQL 16
+  (was 215 before this session's new rider tests).
+- The i18n checker was given a **negative test on purpose**: deleting
+  `orders.status.confirmed` from `en.json` made it fail with exactly the two
+  expected errors; the file was restored and it passed again.
+
+### Not verified — say so plainly
+
+- **Nothing was run on a device or emulator this session.** No Expo dev server,
+  emulator or phone was available here, so the rider and admin screens are
+  type-checked and linted but were never rendered against a live Supabase. Smoke
+  test them on a phone before trusting them.
+- Realtime and push notifications do not exist yet (Phases 2–3). The staff lists
+  currently poll every 20 s via TanStack Query `refetchInterval`.
+
+### Bugs found and fixed
+
+- **Kannada was missing text, and two status keys were wrong.** The locale files
+  were rewritten, and `scripts/check-i18n.mjs` (wired into `npm run lint`) now
+  fails the build if en/kn drift, if code uses a key that does not exist, or if a
+  dynamic family (`orders.status.*`, `order.pay.*`, `order.payStatus.*`,
+  `auth.error.*`, `checkout.error.*`) is missing a value its enum allows. It also
+  flags a Kannada value identical to its English one.
+- **The typed Supabase client refused every write.** `Database`'s tables lacked
+  the `Relationships` field supabase-js requires, so `.update({...})` resolved its
+  argument to `never` and the new staff hooks would not compile. Fixed in
+  `types/database.ts`; the embedded `select('*, order_items(*)')` is typed too.
+- **The admin web panel did not lint.** Real row types and an effect that awaits
+  before setting state (the new `react-hooks/set-state-in-effect` rule), typed
+  `cn()`, a dead `/orders` link (404) and the `/rider` stub removed.
+- **The cart mirrored adjustments into `useState` from an effect** only to smooth
+  a re-render; it tripped `set-state-in-effect`. Removed — `cart.adjustments` is
+  read directly against the same dismissal signature.
+
+### Open gaps / next
+
+- Phase 2 next: a Supabase Realtime feed plus in-app order alerts for the 5–6
+  riders. Works in Expo Go.
+- Push notifications and Razorpay need an EAS development build, not Expo Go.
+- No map on the rider screen yet (Phase 6); address + Call is the intended UX
+  until then.
+
+---
+
 ## 2026-10-03 — Fixed 02_place_order_test.sql; rebuilt the permissions test set
 
 ### The bug that was reported

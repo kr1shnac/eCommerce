@@ -102,7 +102,7 @@ do $$
 declare
   v_result jsonb;
 begin
-  -- Address 2 is pincode 572111, the Hunsur zone, fee 3500.
+  -- Address 2 is pincode 572111, the far zone, fee 3500.
   v_result := public.place_order(
     '[{"product_id":"20000000-0000-4000-8000-000000000002","quantity":5}]',
     '00000000-0000-4000-8000-000000000001',
@@ -112,7 +112,7 @@ begin
 
   perform test_result.ok('other zone: ok', v_result ->> 'ok' = 'true', v_result::text);
   perform test_result.eq('other zone: 5 x 2600', (v_result ->> 'subtotal_paise')::bigint, 13000);
-  perform test_result.eq('other zone: Hunsur fee is 3500', (v_result ->> 'delivery_fee_paise')::bigint, 3500);
+  perform test_result.eq('other zone: far-zone fee is 3500', (v_result ->> 'delivery_fee_paise')::bigint, 3500);
 end;
 $$;
 
@@ -340,14 +340,28 @@ end;
 $$;
 
 -- skipped subtler clock test the flag says open, but the clock says otherwise.
--- A window that starts half an hour from now, so "now" is outside it. (The
--- open_time < close_time CHECK rule means an empty window is not allowed, and
--- going via midnight is handled by the overnight branch in place_order.)
+-- A window that does NOT contain "now", so "now" is outside it. The
+-- open_time < close_time CHECK rule forbids a window that runs through
+-- midnight, so the window is chosen from the *opposite* half of the day:
+-- if it is afternoon/evening now, use an early-morning window, and vice
+-- versa. That way the window is always same-day, always open < close, and
+-- always excludes now, whatever time the test is run. (An earlier version
+-- built the window from now()+30m..now()+90m; between 22:30 and 23:30 IST
+-- that wrapped past midnight and tripped the CHECK constraint, so the
+-- suite only passed at certain times of day.)
 reset role;
 update public.store_settings
    set is_open = true,
-       open_time = ((now() at time zone 'Asia/Kolkata')::time + interval '30 minutes')::time,
-       close_time = ((now() at time zone 'Asia/Kolkata')::time + interval '90 minutes')::time
+       open_time = case
+         when (now() at time zone 'Asia/Kolkata')::time >= time '12:00'
+           then time '06:00'
+         else time '18:00'
+       end,
+       close_time = case
+         when (now() at time zone 'Asia/Kolkata')::time >= time '12:00'
+           then time '06:30'
+         else time '18:30'
+       end
  where store_id = '00000000-0000-4000-8000-000000000001';
 set role authenticated;
 

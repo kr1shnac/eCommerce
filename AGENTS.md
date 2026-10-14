@@ -47,9 +47,25 @@ once, at display time, and only via `formatPaise`.
 - Never read `row.name_en` directly in a component. Use
   `localizedName(row)` from `src/lib/localized.ts`, which follows the language
   currently chosen in the app.
+- Placeholders are **single-brace and word-only**: `"{count} items"`,
+  `"{amount}"`, `"{name}"`. `src/i18n/index.ts` declares
+  `interpolation: { prefix: '{', suffix: '}' }` because i18next's own default is
+  `{{...}}` — with the default, every placeholder is shown to the customer
+  exactly as written. Plural keys use `_one` / `_other`
+  (`orders.moreItems_one` / `orders.moreItems_other`) and are chosen by passing
+  `count`. `scripts/check-i18n.mjs` rejects any other brace form.
 
 Both `en.json` and `kn.json` must have identical key sets. When you add a key,
 add it to both or the app shows a raw key like `home.newThing` to the customer.
+
+Kannada is **not** a word-for-word translation of the English. It is written in
+the voice of the shop's own helper in Kunigal, so it feels native rather than
+translated. **`KUNIGAL.md` is the source of truth for that voice** — it documents
+the town (literacy, livelihoods, how people speak) and holds the glossary of
+chosen words with the reason for each. Read it before writing or changing any
+customer-visible string; if the wording is argued about, `KUNIGAL.md` decides.
+The English is held to the same warmth, so it reads like a kind shop too — the
+two languages are written side by side, not translated one from the other.
 
 ## 3. Folder structure
 
@@ -57,6 +73,8 @@ add it to both or the app shows a raw key like `home.newThing` to the customer.
 .
 ├── AGENTS.md                  ← you are here
 ├── CHANGELOG.md               ← running build log, append after each session
+├── KUNIGAL.md                 ← who we build for + the Kannada voice/style guide
+├── DESIGN.md                  ← palette, contrast, type/spacing, light+dark rules
 ├── README.md                  ← setup + run commands
 ├── package.json               ← npm workspaces root, "dev" runs both apps
 ├── apps/
@@ -67,8 +85,10 @@ add it to both or the app shows a raw key like `home.newThing` to the customer.
 │   │   ├── .env.example       ← committed template
 │   │   └── src/
 │   │       ├── app/           ← ROUTES ONLY (Expo Router)
-│   │       │   ├── _layout.tsx        root: QueryClient, theme, i18n hydration
-│   │       │   └── (tabs)/            the 4 tab screens
+│   │       │   ├── _layout.tsx        root: providers + the role gate
+│   │       │   ├── (tabs)/            customer face: the 4 tab screens
+│   │       │   ├── rider/             delivery face (profiles.role = delivery)
+│   │       │   └── admin/            shop-owner face (profiles.role = admin)
 │   │       ├── components/    ← reusable UI (product-card, chips, ...)
 │   │       ├── constants/     ← theme colours, spacing
 │   │       ├── hooks/         ← TanStack Query hooks (use-catalog.ts)
@@ -79,7 +99,9 @@ add it to both or the app shows a raw key like `home.newThing` to the customer.
 │   └── admin/                 ← Next.js shop panel
 └── supabase/
     ├── migrations/            ← numbered .sql, applied in filename order
-    └── seed.sql               ← 1 store, 8 categories, 34 products
+    ├── seed.sql               ← 1 store, 8 categories, 34 products
+    ├── demo.sql               ← dev-only: 8 orders so all three faces look alive
+    └── tests/                 ← run.sh boots a throwaway PostgreSQL and runs these
 ```
 
 ### Mobile conventions
@@ -97,6 +119,12 @@ add it to both or the app shows a raw key like `home.newThing` to the customer.
   colours; add a token to `src/constants/theme.ts` (light **and** dark).
 - Add dependencies with `npx expo install <pkg>`, never `npm install`, so the
   version matches the Expo SDK.
+- Everything is designed in **light and dark**. Colours come from `useTheme()`
+  and the tokens in `src/constants/theme.ts` — never a hard-coded hex. Text on a
+  `*Soft` background uses the matching `*Ink` token, not the bright brand colour
+  (see `DESIGN.md`). `DESIGN.md` is the design source of truth, the way
+  `KUNIGAL.md` is for the language; read it before building or restyling a
+  screen.
 - `ios/` and `android/` folders are generated. Never create or edit them.
 
 ### Database conventions
@@ -112,6 +140,14 @@ add it to both or the app shows a raw key like `home.newThing` to the customer.
 - Orders snapshot customer-visible facts (`delivery_address`, product name and
   price) so later edits never rewrite history.
 - After changing a table, update `apps/mobile/src/types/database.ts` by hand.
+- `supabase/seed.sql` fills the shelves; `supabase/demo.sql` fills the **orders**
+  (8 across every status, some assigned to a rider) so all three faces can be
+  looked at without tapping through the app by hand. `demo.sql` is
+  **development only** — never run it on production. It is safe to re-run: it
+  deletes its own orders first (they are marked `order_number KNG-D%` /
+  `idempotency_key demo-order-%`). It briefly disables two guard triggers within
+  a single sub-block that restores them even on failure; it is the only place in
+  the project that turns a guard off, and test 12 proves they come back on.
 
 ## 4. Security rules (non-negotiable)
 
@@ -167,23 +203,50 @@ npm run admin                     # Next.js on http://localhost:3000
 npm run dev                       # both at once
 
 npm run typecheck                 # tsc --noEmit in both apps
-npm run lint                      # eslint in both apps
+npm run lint                      # eslint in both apps, then the i18n key check
+npm run check:i18n                # en/kn key parity + every key used in code exists
 npm run test:db                   # all database tests against real PostgreSQL
 ```
 
 After changing `.env`, restart with `npm run mobile -- -c` (the `-c` clears the
 Metro cache, because env vars are inlined at bundle time).
 
-## 7. Current state (as of the first working build)
+## 7. Current state
 
-- Done: monorepo, Supabase schema + RLS + seed, catalogue Home screen,
-  English/Kannada switcher, money helpers, admin panel skeleton.
-- Placeholder screens: Cart, Orders, Account (Account has the language switcher).
-- Not built: auth screens, cart, checkout, Razorpay, notifications, maps,
-  product images, delivery tracking.
+As of this build, the app is a working end-to-end flow on one shop:
 
-Next logical steps, in order: auth → addresses → cart → checkout → Razorpay →
-admin panel CRUD.
+- **Done**: monorepo; Supabase schema + RLS + guard triggers + seed; the shop
+  catalogue (Home); phone one-time-code sign-in; addresses; cart; checkout with
+  `place_order()`; order history and order detail with `cancel_order()`; both
+  languages everywhere; money helpers; the admin panel skeleton.
+- **The UI is a design system now.** Light **and** dark themes (System / Light /
+  Dark, persisted on the device), a palette with honest contrast (`*Ink` tokens
+  for text on `*Soft`), shared primitives in `src/components/ui/`, and every
+  customer and staff screen rebuilt on it. `DESIGN.md` is the source of truth.
+  `supabase/demo.sql` loads dev-only orders so all three faces look alive.
+- **Three faces, one app.** After sign-in the root `_layout.tsx` routes by
+  `profiles.role` through `Stack.Protected`: `(tabs)/` for customers and guests,
+  `rider/` for `delivery`, `admin/` for the shop owner. The app only decides what
+  to *show*; RLS and the guard triggers decide what is *allowed* (ROADMAP §2).
+- **Rider assignment is live.** A rider self-claims a waiting order; the owner
+  can assign, reassign or unassign. Backed by
+  `supabase/migrations/20261013000001_rider_assignment.sql` and proved by
+  `supabase/tests/09_rider_assignment_test.sql`.
+- **Realtime is live.** A signed-in user's socket hears order changes over
+  Supabase Realtime; the app invalidates its order queries, so the rider pool,
+  the owner's board and the customer's order screen update without a refresh. A
+  new unclaimed order buzzes the rider's phone and shows a banner. Backed by
+  `supabase/migrations/20261013000002_realtime_orders.sql` and proved by
+  `supabase/tests/10_realtime_publication_test.sql`. A slow 60-second poll stays
+  only as a backstop for a dropped socket on patchy rural 4G.
+- **`apps/admin` is optional.** It is now only a desk tool for bulk catalogue
+  edits. Orders, deliveries and day-to-day shopkeeping happen in the app.
+- **Not built yet**, in the intended order: customer polish (order tracker,
+  reorder, search, cart badge) → push notifications → Razorpay → live rider
+  tracking/maps. Everything so far runs in Expo Go; push notifications and
+  Razorpay need an EAS development build.
+
+`ROADMAP.md` is the detailed phase-by-phase plan; read it alongside this file.
 
 ## 8. Keep the build log honest
 
@@ -262,6 +325,10 @@ English **and** Kannada, always. No hardcoded strings in a `.tsx` file.
 - Keys are grouped by screen (`home.*`, `cart.*`, `orders.*`, `account.*`).
 - Assert key parity in CI or as part of the lint step; a missing Kannada key
   shows a raw key string to a real customer.
+- Placeholders are single-brace (`{count}`), never `{{count}}`, and a plural is
+  `key_one` / `key_other`, chosen by passing `count`. `scripts/check-i18n.mjs`
+  fails on any other brace form, because an un-interpolated placeholder is shown
+  to the customer verbatim (`"{count} items"`, `"more item{count,s}"`).
 
 ### 9.6 No secrets in the app or the repo
 

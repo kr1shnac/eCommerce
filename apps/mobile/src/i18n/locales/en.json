@@ -3,14 +3,20 @@
     "retry": "Retry",
     "loading": "Loading…",
     "comingSoon": "Coming soon",
-    "off": "{{percent}}% off",
+    "off": "{percent}% off",
     "language": "Language",
     "english": "English",
     "kannada": "Kannada",
     "offline": "You are offline. Some things may be slow.",
     "pleaseWait": "Please wait…",
     "back": "Go back",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "call": "Call",
+    "refresh": "Refresh",
+    "appearance": "Appearance",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark"
   },
   "tabs": {
     "home": "Home",
@@ -21,16 +27,28 @@
   "home": {
     "title": "Kunigal Grocery",
     "subtitle": "Groceries & essentials in 10 minutes",
+    "greetMorning": "Good morning",
+    "greetAfternoon": "Good afternoon",
+    "greetEvening": "Good evening",
+    "ask": "What do you need today?",
     "deliveringTo": "Delivering to Kunigal",
+    "deliveryIn": "in ~{minutes} min",
     "allCategories": "All",
     "categoriesTitle": "Shop by category",
+    "dealsTitle": "Market deals",
+    "dealsBadge": "Save more",
     "productsTitle": "Popular items",
     "errorTitle": "Could not load the catalogue",
-    "errorHint": "Check your internet connection and your Supabase setup.",
+    "errorHint": "Check your internet connection and try again.",
     "setupTitle": "Supabase is not connected yet",
     "setupHint": "Add EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY to apps/mobile/.env, then restart with: npm run start -c",
     "empty": "No products in this category yet.",
-    "outOfStock": "Out of stock"
+    "outOfStock": "Out of stock",
+    "searchPlaceholder": "Search rice, milk, oil…",
+    "clearSearch": "Clear search",
+    "noResults": "No items match your search",
+    "closedTitle": "The shop is closed right now",
+    "closedHint": "You can look around, and order when it opens."
   },
   "cart": {
     "title": "Cart",
@@ -53,7 +71,15 @@
     "itemCount": "{count} items",
     "deliveryAtCheckout": "Delivery fee shown at checkout",
     "belowMinimum": "Add {amount} more to reach minimum order",
-    "checkout": "Checkout"
+    "subtotal": "Subtotal",
+    "emptyTitle": "Your cart is empty",
+    "emptyHint": "Add items from Home to place an order.",
+    "errorTitle": "Could not load your cart",
+    "errorHint": "Check your connection and try again.",
+    "checkout": "Checkout",
+    "viewBasket": "View basket",
+    "basketSummary": "{count} items · {amount}",
+    "emptyAction": "Start shopping"
   },
   "orders": {
     "title": "My orders",
@@ -64,22 +90,26 @@
     "emptyHint": "Your placed orders will show up here",
     "errorTitle": "Could not load orders",
     "errorHint": "Check your connection and try again",
-    "moreItems": "more item{count,s}",
+    "moreItems_one": "+ {count} more item",
+    "moreItems_other": "+ {count} more items",
+    "noItems": "No items",
     "status": {
       "placed": "Placed",
-      "accepted": "Accepted",
-      "packed": "Packed",
+      "confirmed": "Confirmed",
+      "packing": "Packing",
       "out_for_delivery": "Out for delivery",
       "delivered": "Delivered",
-      "cancelled": "Cancelled",
-      "failed": "Failed"
+      "cancelled": "Cancelled"
     },
     "cancelError": {
       "not_logged_in": "Please sign in.",
       "order_not_found": "This order could not be found.",
       "cannot_cancel": "This order can no longer be cancelled.",
       "unknown": "Could not cancel the order. Try again."
-    }
+    },
+    "filterAll": "All",
+    "filterActive": "In progress",
+    "filterDone": "Completed"
   },
   "account": {
     "title": "Account",
@@ -138,7 +168,10 @@
     "addNew": "Add a new address",
     "defaultBadge": "Default",
     "areaName": "{name}",
-    "labelFallback": "Address"
+    "labelFallback": "Address",
+    "labelHome": "Home",
+    "labelWork": "Work",
+    "labelOther": "Other"
   },
   "checkout": {
     "title": "Checkout",
@@ -160,6 +193,8 @@
     "storeClosed": "The shop is closed right now.",
     "belowMinimum": "Minimum order not met. Add {amount} more.",
     "feeUnknown": "Could not work out the delivery fee. Try again.",
+    "notAvailable": "To be calculated",
+    "freeDeliveryHint": "Free delivery on orders above {amount}",
     "cartChanged": "Your cart has changed — please review it.",
     "unavailableTitle": "Shop unavailable",
     "unavailableHint": "Could not load the shop details. Try again.",
@@ -186,18 +221,106 @@
     "estimatedAt": "Estimated delivery",
     "payment": "Payment",
     "paymentStatus": "Payment status",
+    "errorTitle": "Could not load this order",
+    "errorHint": "Check your connection and try again.",
     "pay": {
-      "cod": "Cash on delivery"
+      "cod": "Cash on delivery",
+      "online": "Paid online"
     },
     "payStatus": {
       "pending": "Pending",
       "paid": "Paid",
+      "failed": "Failed",
       "refunded": "Refunded"
     },
     "payAtDelivery": "Pay {amount} in cash at delivery",
     "deliverToTitle": "Deliver to",
     "near": "Near",
     "cancel": "Cancel order",
-    "shopAgain": "Shop again"
+    "shopAgain": "Shop again",
+    "reorder": "Reorder",
+    "step": {
+      "placed": "Placed",
+      "packed": "Packed",
+      "onTheWay": "On the way",
+      "delivered": "Delivered"
+    },
+    "trackTitle": "Delivery status"
+  },
+  "support": {
+    "call": "Call the shop"
+  },
+  "action": {
+    "confirm": "Accept order",
+    "pack": "Start packing",
+    "out": "Out for delivery",
+    "deliver": "Mark delivered"
+  },
+  "rider": {
+    "title": "Deliveries",
+    "greeting": "Hello {name}",
+    "waitingTitle": "Waiting for a rider",
+    "waitingEmpty": "No orders are waiting",
+    "waitingEmptyHint": "New orders appear here on their own.",
+    "mineTitle": "My deliveries",
+    "mineEmpty": "Nothing on your plate",
+    "mineEmptyHint": "Accept an order from the waiting list above.",
+    "doneTitle": "Delivered today",
+    "doneCount": "{count} delivered today",
+    "doneEmpty": "Nothing delivered yet today",
+    "claim": "Accept",
+    "taken": "Taken",
+    "claimError": "Could not accept this order. It may have just been taken — refresh.",
+    "advanceError": "Could not update this order. Try again.",
+    "cashToCollect": "Cash to collect",
+    "deliverTo": "Deliver to",
+    "callCustomer": "Call customer",
+    "items": "{count} items",
+    "pickupFrom": "Pick up from the shop",
+    "errorTitle": "Could not load deliveries",
+    "errorHint": "Check your connection and try again.",
+    "refreshHint": "Pull down to refresh",
+    "newOrderAlert": "A new order just came in",
+    "statWaiting": "Waiting",
+    "statMine": "Mine",
+    "statDone": "Today"
+  },
+  "admin": {
+    "title": "Shop",
+    "board": "Orders",
+    "team": "Team",
+    "boardTitle": "Live orders",
+    "boardEmpty": "No orders yet",
+    "boardEmptyHint": "Orders show up here as they come in.",
+    "boardError": "Could not load orders",
+    "boardErrorHint": "Check your connection and try again.",
+    "waitingTooLong": "Waiting {minutes} min",
+    "noRider": "No rider",
+    "assign": "Assign a rider",
+    "change": "Change rider",
+    "unassign": "Remove rider",
+    "assignError": "Could not assign the rider. Try again.",
+    "riderLabel": "Rider",
+    "customerView": "Customer view",
+    "teamTitle": "Team",
+    "teamEmpty": "No people yet",
+    "teamEmptyHint": "Anyone who signs in with their phone appears here.",
+    "teamError": "Could not load the team",
+    "teamErrorHint": "Check your connection and try again.",
+    "roleError": "Could not change the role. Only the shop owner can.",
+    "you": "You",
+    "role": {
+      "customer": "Customer",
+      "delivery": "Rider",
+      "admin": "Shop owner"
+    },
+    "summary": {
+      "live": "{count} live",
+      "waiting": "{count} waiting",
+      "today": "{count} delivered today"
+    },
+    "statLive": "Live",
+    "statWaiting": "Waiting",
+    "statDone": "Delivered"
   }
 }
