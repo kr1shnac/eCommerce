@@ -331,6 +331,101 @@ select test_result.eq(
   100::bigint
 );
 
+-- =============================================================================
+-- 10. The codes are the OWNER's to write, and nobody else's.
+--
+-- apps/mobile/src/app/admin/coupons.tsx writes `coupons` directly (add, change,
+-- switch off, delete), so the one policy has to allow all four for an admin and
+-- refuse all four for everyone else. §2 already proves a customer cannot read the
+-- codes; this proves they cannot write them either.
+-- =============================================================================
+
+set role authenticated;
+select test_result.sign_in('11111111-1111-1111-1111-111111111111');   -- Asha, customer
+
+select test_result.refused(
+  'a customer cannot add a code',
+  $$
+  insert into public.coupons (store_id, code, kind, value)
+  values ('00000000-0000-4000-8000-000000000001', 'SNEAKY', 'percent', 50)
+  $$,
+  '42501'
+);
+
+-- An UPDATE/DELETE aimed at a row the caller cannot see does not raise: RLS makes
+-- the row invisible and the statement changes nothing (see 00_auth_stub.sql).
+select test_result.touches(
+  'a customer cannot change a code (0 rows touched)',
+  $$update public.coupons set value = 99 where code = 'SAVE10'$$,
+  0
+);
+
+select test_result.touches(
+  'a customer cannot delete a code (0 rows touched)',
+  $$delete from public.coupons where code = 'SAVE10'$$,
+  0
+);
+
+reset role;
+select test_result.eq(
+  'the customer changed nothing',
+  (select value::text from public.coupons where code = 'SAVE10'),
+  '10'
+);
+
+-- =============================================================================
+-- 11. The owner can add, switch off and delete a code — the coupon screen's taps.
+-- =============================================================================
+
+set role authenticated;
+select test_result.sign_in('33333333-3333-3333-3333-333333333333');   -- shop owner
+
+select test_result.ok(
+  'the owner can read the shop''s codes',
+  (select count(*) from public.coupons
+    where store_id = '00000000-0000-4000-8000-000000000001') = 2
+);
+
+select test_result.touches(
+  'the owner can add a code',
+  $$
+  insert into public.coupons (store_id, code, kind, value, min_order_paise, is_active,
+                              description_en, description_kn)
+  values ('00000000-0000-4000-8000-000000000001', 'OWNERTEST', 'percent', 15, 19900, true,
+          'A test code', 'ಒಂದು ಪರೀಕ್ಷಾ ಕೋಡ್')
+  $$,
+  1
+);
+
+select test_result.touches(
+  'the owner can switch a code off',
+  $$update public.coupons set is_active = false where code = 'OWNERTEST'$$,
+  1
+);
+
+reset role;
+select test_result.ok(
+  'the code really is off',
+  (select not is_active from public.coupons where code = 'OWNERTEST')
+);
+
+set role authenticated;
+select test_result.sign_in('33333333-3333-3333-3333-333333333333');
+
+select test_result.touches(
+  'the owner can delete a code',
+  $$delete from public.coupons where code = 'OWNERTEST'$$,
+  1
+);
+
+reset role;
+select test_result.eq(
+  'the shop is back to its two seeded codes',
+  (select count(*)::text from public.coupons
+    where store_id = '00000000-0000-4000-8000-000000000001'),
+  '2'
+);
+
 -- Leave the coupons as the seed left them.
 update public.coupons set used_count = 0, usage_limit = null
   where store_id = '00000000-0000-4000-8000-000000000001';

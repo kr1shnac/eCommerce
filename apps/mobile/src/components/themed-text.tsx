@@ -1,7 +1,9 @@
-import { StyleSheet, Text, type TextProps } from 'react-native';
+import { StyleSheet, Text, type TextProps, type TextStyle } from 'react-native';
 
+import { kannadaFontForWeight } from '@/constants/fonts';
 import { Type, type ThemeColor } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useLanguageStore } from '@/store/language-store';
 
 export type ThemedTextType =
   | 'default'
@@ -25,12 +27,46 @@ export type ThemedTextProps = TextProps & {
 };
 
 /**
+ * The weight each `type` paints with. Kept here (next to the styles it mirrors)
+ * so the Kannada face can be chosen to match: each Noto Sans Kannada weight is a
+ * separate file, so the family has to follow the type rather than a `fontWeight`.
+ */
+const TYPE_WEIGHT: Record<ThemedTextType, TextStyle['fontWeight']> = {
+  default: '400',
+  title: '700',
+  display: '800',
+  heading: '700',
+  subtitle: '400',
+  bodyStrong: '600',
+  small: '400',
+  smallBold: '700',
+  caption: '600',
+  price: '800',
+  priceLarge: '800',
+  link: '400',
+  linkPrimary: '400',
+  code: '400',
+};
+
+/**
  * Every piece of text in the app. Colour comes from the theme (never a hex), and
  * size comes from the `Type` scale so Kannada's taller line heights are applied
  * everywhere at once. See `constants/theme.ts`.
+ *
+ * In Kannada the bundled Noto Sans Kannada face replaces the system font, matched
+ * to the `type`'s weight. Latin text keeps the system face, and `code`
+ * (identifiers such as an order number) stays monospaced in both languages.
  */
 export function ThemedText({ style, type = 'default', themeColor, ...rest }: ThemedTextProps) {
   const theme = useTheme();
+  const language = useLanguageStore((state) => state.language);
+
+  // Applied LAST so the family always matches its own weight: setting a
+  // `fontWeight` on a single-face font makes Android fake-bold it.
+  const kannada =
+    language === 'kn' && type !== 'code'
+      ? { fontFamily: kannadaFontForWeight(TYPE_WEIGHT[type]), fontWeight: 'normal' as const }
+      : null;
 
   return (
     <Text
@@ -43,7 +79,6 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'bodyStrong' && styles.bodyStrong,
         type === 'small' && styles.small,
         type === 'smallBold' && styles.smallBold,
-        type === 'subtitle' && styles.subtitle,
         type === 'caption' && styles.caption,
         type === 'price' && styles.price,
         type === 'priceLarge' && styles.priceLarge,
@@ -51,6 +86,7 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
         type === 'linkPrimary' && styles.linkPrimary,
         type === 'code' && styles.code,
         style,
+        kannada,
       ]}
       {...rest}
     />
@@ -58,19 +94,37 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
 }
 
 const styles = StyleSheet.create({
-  default: { ...Type.body },
-  display: { ...Type.display },
-  title: { ...Type.title },
-  heading: { ...Type.heading },
+  default: {},
+  title: {
+    ...Type.title,
+  },
+  display: {
+    ...Type.display,
+  },
+  heading: {
+    ...Type.heading,
+  },
   subtitle: {
     ...Type.body,
   },
-  bodyStrong: { ...Type.bodyStrong },
-  small: { ...Type.small },
-  smallBold: { ...Type.smallStrong },
-  caption: { ...Type.caption },
-  price: { ...Type.price },
-  priceLarge: { ...Type.priceLarge },
+  bodyStrong: {
+    ...Type.bodyStrong,
+  },
+  small: {
+    ...Type.small,
+  },
+  smallBold: {
+    ...Type.smallStrong,
+  },
+  caption: {
+    ...Type.caption,
+  },
+  price: {
+    ...Type.price,
+  },
+  priceLarge: {
+    ...Type.priceLarge,
+  },
   link: {
     ...Type.body,
     textDecorationLine: 'underline',

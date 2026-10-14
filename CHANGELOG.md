@@ -6,6 +6,347 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-14 — Connecting the admin panel to a hosted Supabase project
+
+*(fifth session of the day; the four entries below are the design-system pass,
+the customer-depth pass, the Kannada/coupons/photos pass, and the widened demo
+data)*
+
+### What changed and why
+
+The admin panel's `.env` was still on the **local** Supabase defaults
+(`http://localhost:54321` / `anon`), and the code only read
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` — the name Supabase now shows as
+`…_PUBLISHABLE_KEY`. The panel was therefore never usable against a hosted
+project, and following the current dashboard quickstart would have set a
+variable the code did not read.
+
+- **`apps/admin/src/lib/supabase/env.ts` (new)** — the single place the admin
+  reads its Supabase settings, mirroring `apps/mobile/src/lib/supabase.ts`: it
+  accepts `NEXT_PUBLIC_SUPABASE_ANON_KEY`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
+  or `NEXT_PUBLIC_SUPABASE_KEY`, and warns (naming the variables, never the
+  values) when unconfigured.
+- `apps/admin/src/lib/supabase/{client,server,middleware}.ts` now import from
+  `env.ts` instead of reading `process.env` inline.
+- `apps/admin/.env` now points at the project the owner supplied
+  (`ncfjzbptbtvkjvnrwyyq`). Git-ignored, so nothing secret is committed; only the
+  publishable key is present, which is public by design.
+- `apps/admin/.env.example` and `apps/mobile/.env.example` document that both the
+  new `publishable` and the old `anon` spellings work.
+- `README.md` §3 now covers the admin `.env` as well as the mobile one, and
+  explains the anon→publishable rename.
+- Ran `npx skills add supabase/agent-skills`, which installed two skills under
+  `.agents/skills/` (`supabase`, `supabase-postgres-best-practices`).
+
+### Verified, and how
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean; `check:i18n` OK (408 keys).
+- `npm run test:db` — **346/346** against real PostgreSQL 16 (unchanged by this
+  work; run to satisfy rule 9.10).
+- The new project was first probed read-only with its publishable key:
+  `/auth/v1/health` answered and PostgREST returned `PGRST205 "Could not find the
+  table 'public.products'"` — the key was valid and the project was empty.
+- **Schema applied to the hosted project.** All 17 `supabase/migrations/*.sql`
+  were run in filename order as the `postgres` role over `psql` (SSL, direct
+  host, PostgreSQL 17.11), then `supabase/seed.sql`. Confirmed by counting rows
+  on the live database: 1 store, 1 store_settings, 8 categories, 34 products (all
+  34 carry an emoji), 4 delivery zones, 2 coupons; 11/11 `public` tables have RLS
+  on; `place_order`, `cancel_order`, `set_default_address`, `active_offers`,
+  `validate_coupon`, `coupon_discount`, `is_admin` and `is_staff` all exist.
+- **Verified through the public API, not just the DB.** Using the publishable key
+  exactly as the apps do, an anonymous REST read returned 8 categories and a
+  `content-range: 0-33/34` on products (prices as paise integers), while `orders`
+  and `coupons` returned `[]` — RLS holds for anonymous callers.
+- **Storage reached the intended state anyway.** The `product-images` bucket
+  (public, 5 MB, jpeg/png/webp/avif) and all four `storage.objects` policies were
+  created and verified; `storage.objects` already had RLS on.
+
+### Decisions and reasons
+
+- **Keep the old env var name working** rather than rename it: the mobile client
+  already did this, so making the admin match is consistent and means whichever
+  name the dashboard shows just works. No secret ever goes in either app.
+- **Moved `apps/mobile/.env` onto the same project** (`ncfjzbptbtvkjvnrwyyq`).
+  It had been pointing at a different project (`iuynzrqq…`); the owner confirmed
+  the shared project, so both apps now read the same URL and publishable key and
+  a single schema serves both faces. Only the publishable key is present; the
+  file is git-ignored.
+- **Applied the schema by direct `psql`**, not the dashboard SQL editor or
+  `supabase db push`: the owner supplied the database password, and a scripted
+  apply is repeatable and observable. The password was used only inside shell
+  commands and was never written to any file in this repo.
+- **Did not edit the storage migration** (append-only rule, §9.7) even though one
+  line in it cannot run as `postgres` on this project. It was applied as-is minus
+  that redundant line; the gap is recorded below.
+
+### Open gaps
+
+- **`alter table storage.objects enable row level security` cannot be run by the
+  `postgres` role on this project** (the table is owned by `supabase_storage_admin`
+  and `postgres` is not a member of it). RLS is already enabled on
+  `storage.objects` by Supabase, so the line is redundant here; it was stripped
+  when applying migration 11 and the repo file was left untouched. Everything
+  else in that migration (bucket insert, four policies) ran as written.
+- **No migration history table.** `supabase_migrations.schema_migrations` does not
+  exist on the project, so a future `supabase db push` would try to re-apply all
+  17 migrations and fail on the first `create table`. If the CLI is adopted later,
+  seed that table (or use `supabase migration repair`) first.
+- **No user exists yet.** A fresh project has no `auth.users`, so nothing has
+  signed in and `supabase/demo.sql` (which attaches orders/favourites/addresses to
+  an existing profile) has not been run. Sign up once, promote that account with
+  the `update public.profiles set role = 'admin' …` line commented in
+  `supabase/seed.sql`, then run `demo.sql` if sample data is wanted.
+- The connection is proven at the database and REST layers only — no browser or
+  device here, so no end-to-end "sign in and load a screen" check, and no admin
+  credentials were available.
+
+---
+
+## 2026-10-14 — Development sample data, widened
+
+*(fourth session of the day; the three entries below are the morning design-system
+pass, the afternoon customer-depth pass, and the evening Kannada/coupons/photos
+pass)*
+
+### What changed and why
+
+The request was: *add fake data so every screen can be looked at and tried, and so
+it can be taken back out easily.* `supabase/demo.sql` already existed for exactly
+that (dev-only, re-runnable), but it only dressed **orders** — the Home **Saved**
+rail and checkout's address picker were still empty, and no order anywhere showed
+a coupon discount. This session widens the same file rather than adding a second
+one, so there is still a single thing to run and a single thing to delete.
+
+**`supabase/demo.sql`** (rewritten; still development-only, still re-runnable)
+- Now seeds four things instead of one, all for the first customer profile
+  (falling back to the first profile of any role):
+  - **9 orders** (was 8). Every status is still represented; the ninth is a
+    *waiting, unclaimed* order, so the rider pool has three to accept from and
+    there is a live order a rider/owner can actually move during a demo.
+  - **one order carrying a coupon discount** — order 9 uses `KUNIGAL50`. The
+    discount is **not** typed into the file: it is whatever the database's own
+    `public.coupon_discount()` returns for that basket (rule 9.1), and a code
+    under its minimum order simply yields no discount. A new assertion in test 12
+    recomputes it and fails if the file ever disagrees with the database.
+  - **5 favourites** (Banana, Milk, Rice, Biscuits, Tea), so the Home **Saved**
+    rail and the product-detail heart are not empty.
+  - **a second ("Work") address**, so checkout's address picker has a choice. It
+    is only added when the customer has fewer than two addresses, so an existing
+    list is never duplicated.
+- It still fills only orders, favourites and addresses — **not** the catalogue,
+  coupons, zones or settings (those are `seed.sql`), which is what makes it safe
+  to remove: delete the `demo-order-%` orders and the shortlist and nothing about
+  the shop itself changes. That removal SQL is now in the file header and in
+  `README.md`.
+- The trigger dance is unchanged in spirit and **safer in form**: the inserts that
+  need the two guard triggers off now live in a nested `BEGIN … END` block (not a
+  nested `DO`) so it shares the outer block's variables, and it restores the
+  triggers in the same sub-block that turns them off. `demo.sql` is still the only
+  place in the project that disables a guard, and test 12 still proves they come
+  back on.
+
+### Bugs found
+
+- A first cut of the rewrite used a **nested `do $inner$ … end` block to wrap the
+  trigger disable/enable, then read the outer `DECLARE`d variables inside it.** A
+  nested `DO` is a *separate* anonymous block and cannot see them, so the file
+  would not have compiled. Caught by reading it back before running anything; the
+  fix is a nested `BEGIN … END` block, which in PL/pgSQL *does* share the outer
+  scope (and still rolls back the `ALTER TABLE … DISABLE TRIGGER` on exception).
+- `select count(*) into an_integer` relies on an assignment cast; written as
+  `count(*)::integer` to be explicit.
+- The completion `RAISE NOTICE` claimed "2 addresses", which is only true when the
+  customer had none; reworded so it never overstates what happened.
+
+### Verified, and how
+
+- `npm run test:db` — **346/346 assertions pass against real PostgreSQL 16**
+  (was 342). The four new ones are in `supabase/tests/12_demo_data_test.sql`:
+  favourite count, exactly one coupon order, the discount matches
+  `coupon_discount()`, and the coupon order really is discounted. The existing
+  counts were updated to match (9 orders / 29 lines / 9 Kunigal addresses / the
+  rider still reads 3 waiting orders).
+- `supabase/tests/13_favourites_test.sql` now **starts from an empty shelf**
+  (`reset role; delete …` for Asha and Ravi). Its assertions are about counts, and
+  test 12 now seeds favourites just before it; without this the counts would
+  inherit the demo and mean nothing. This is test isolation, not a workaround.
+- `npm run typecheck` and `npm run lint` — unaffected (no app code changed) but
+  run green; `npm run check:i18n` — unchanged (no new keys).
+
+### Decisions, with reasons
+
+- **Extend `demo.sql` rather than add a new file.** One dev-only file is easier to
+  reason about and to delete than two, and the "how to remove it" recipe lives in
+  one place.
+- **Keep emoji, do not seed photos.** Asked and chosen: photo URLs would need the
+  phone online and would point at third-party hosts, and a tomato drawn as a
+  tomato is already the documented design (`DESIGN.md`, `KUNIGAL.md` §2). Real
+  photos are the owner's job through the in-app upload, not the seed's.
+- **A demo order may carry a coupon, but `coupons.used_count` is left alone.** The
+  app never shows `used_count` unless a code has a `usage_limit` (the seeded codes
+  do not), and bumping it would either be non-idempotent or would clobber a dev
+  database's real usage. Not worth the side effect for a number nobody sees.
+- **The demo coupon order is a *waiting* order, not a delivered one.** It lets the
+  whole app be tried: the discount shows on the order, the rider can accept it,
+  the owner can move it, and the customer can watch it change.
+
+### Open gaps
+
+- The data is verified through the database (RLS-scoped reads, the money checks,
+  the triggers), **not on a device** — this environment has no phone/emulator, as
+  in the previous entry. What a signed-in customer actually sees when they open
+  Home and Orders is inferred from the same queries the app runs.
+- The demo still dresses a single customer profile. Auth users cannot be created
+  from SQL, so there is no second shopper's history; the owner board shows one
+  customer's orders (a real shop would see many).
+- Nothing here adds Razorpay, push or maps, which remain the intended next phases.
+
+---
+
+## 2026-10-14 — Phase 2.5: the Kannada face, the owner's codes, and photos from the shelf
+
+*(third session of the day; the entries below are the morning's design-system pass
+and the afternoon's customer-depth pass)*
+
+### What changed and why
+
+This session closed the three customer-depth gaps left open after the afternoon:
+the app now ships its own Kannada typeface, the owner can run coupons from the
+phone, and the owner can photograph the shelf from the phone. Everything still
+runs in Expo Go **except** that the photo flow was never run on a device (see
+*Open gaps* — that is a real caveat, not a formality).
+
+**The Kannada face is now bundled** — `apps/mobile/assets/fonts/` (4 TTFs +
+`OFL.txt`), `apps/mobile/src/constants/fonts.ts`
+- Why: Android and iOS each ship a *different* system Kannada face, so the same
+  screen was shaped differently on two phones — and Kannada is the language the
+  shop actually speaks. Bundling one face makes it look the same everywhere.
+  `DESIGN.md` §4 records this, because it is a design decision.
+- `NotoSansKannada-{Regular,SemiBold,Bold,ExtraBold}.ttf` are loaded by
+  `useFonts` in `apps/mobile/src/app/_layout.tsx` before the first frame; the
+  splash is held until the font (and language and light/dark) are known, so
+  nothing flashes.
+- **Latin keeps the system font.** The family is applied per-language (only when
+  `kn`), in `components/themed-text.tsx` and the tab labels of
+  `(tabs)/_layout.tsx` and `admin/_layout.tsx`. Inputs are not `ThemedText`, so
+  all six `<TextInput>`s (login ×2, checkout ×2, home search, address form, and
+  the two new owner screens) call `kannadaInputFont(language)`.
+- Each `Type` weight maps to its own file (`kannadaFontForWeight`); no caller sets
+  `fontWeight` on the family, which would make Android fake-bold it. `code`
+  (order numbers) is excluded, so identifiers stay monospaced in both languages.
+
+**The owner's coupon screen** — `apps/mobile/src/app/admin/coupons.tsx`,
+`apps/mobile/src/hooks/use-coupons.ts`, `apps/mobile/src/types/database.ts`
+- `coupons` already existed with an admin-only RLS policy
+  (`20261014000004_coupons.sql`), so the screen is direct table CRUD through RLS
+  — **no new migration**. The form is a full-screen `Modal` (list of `Card`s
+  behind it, `Switch` on each card to pause a code, `Alert` to confirm delete).
+- Money is entered as **whole rupees only** (₹50, ₹199 — which is how offers are
+  actually written), so nothing is ever parsed as a float; it multiplies by 100
+  once on save. This is the same "never `parseFloat` money" rule as the rest of
+  the app, sidestepped by the input shape rather than by care.
+- `use-coupons.ts` invalidates `['offers']` so the customer's Offers screen picks
+  up a change without a reload, and exports `COUPON_DUPLICATE_CODE` so the form
+  can say "that code already exists" instead of showing a Postgres code.
+
+**Photos from the shelf** — `apps/mobile/src/app/admin/photos.tsx`,
+`apps/mobile/src/hooks/use-product-photos.ts`, `apps/mobile/app.json`
+- The pipeline **already existed**: the public `product-images` bucket, its four
+  storage policies and `products.image_url` (migration
+  `20261003000001_images_and_history.sql`, tested by `08_product_images_storage_test.sql`),
+  the `expo-image` display, and the web panel's upload in
+  `apps/admin/src/app/(app)/products/page.tsx`. The only real gap was that the
+  owner could not upload **from the phone at the shelf** — which for a
+  counter-run shop is the only place the photo gets taken.
+- `expo-image-picker` added with `npx expo install`; `app.json` gains the plugin
+  with camera + library permission strings.
+- Camera-or-library is chosen through an `Alert` (camera listed first). The
+  picture is cropped square (`allowsEditing`, `aspect [1,1]`, `quality 0.7`),
+  which also re-encodes HEIC to JPEG on iOS; the file goes to
+  `product-images/<storeId>/<productId>-<timestamp>.<ext>` (mime whitelist
+  jpeg/png/webp/avif, 5 MB cap — the bucket refuses anything else), then
+  `products.image_url` is written. Replacing a photo deletes the old object
+  best-effort; clearing a photo nulls `image_url` first, then removes the file,
+  so a broken image can never be shown.
+
+**Doc corrections**
+- `DESIGN.md` §4: a new *Kannada face* bullet, so the font is not relitigated.
+- The afternoon entry's own gap bullet ("no Storage bucket or admin upload yet")
+  was **wrong** and is corrected in place — the bucket, policies and web upload
+  already existed and were already tested. The sentence is left and a correction
+  is appended beneath it, so history is kept but the reader is not misled.
+
+### What was verified and how
+
+- `npm run typecheck` — passed, both apps, zero errors.
+- `npm run lint` — passed, zero errors and zero warnings.
+- `npm run check:i18n` — **408 keys** in `en.json` and `kn.json` (parity holds),
+  292 used literals, 8 dynamic families. New `admin.coupon*` (~46) and
+  `admin.photo*` (~24) keys are in **both** languages; Kannada differs from English
+  on every key, as the checker requires.
+- `npm run test:db` — all suites pass against real PostgreSQL, **342** assertions
+  (up from 332). The 10 new ones are the coupon write-RLS halves added to
+  `supabase/tests/15_coupons_test.sql`:
+  - §10 — a sign-in customer cannot `insert` a code (`42501`), cannot `update`
+    `SAVE10` (0 rows touched, no raise), cannot `delete` it (0 rows), and after
+    `reset role` the seeded `SAVE10` is still `10`.
+  - §11 — the `admin` owner can read both codes, add `OWNERTEST`, switch it off
+    and delete it, leaving the table back at the two seeded codes.
+- **The app bundles** — `npx expo export --platform android` produced a 4.4 MB
+  Hermes bundle and listed all four `assets/fonts/NotoSansKannada-*.ttf` as
+  assets. This is the check that proves the `require(...)` paths resolve and
+  Metro carries the files, which `tsc` cannot see. (Export dir removed after.)
+
+### Decisions and why
+
+- **Bundle the font, do not fetch it at runtime.** `@expo-google-fonts` fetches
+  on first run; the shop's 4G is patchy and a missing face would fall back to a
+  different system font mid-session. Static files also avoid variable-font support
+  being unreliable on Hermes.
+- **Static weights, not one variable file**, for the same Hermes reason.
+- **No `expo-font` config plugin.** Runtime `useFonts` is enough and keeps one
+  registration path; the plugin would double-register and mislead the next reader.
+- **Kannada only.** English keeps the platform's own typography, which is the
+  better English face; the app is not "one font for everything".
+- **Coupons as direct CRUD, no RPC.** The RLS policy already expresses "admin may
+  do anything"; an RPC would be a second place to keep that true.
+- **Rupee-only coupon inputs.** Matches how offers are written and keeps money
+  integral without a parsing step.
+- **In-app upload rather than telling the owner to use the web panel.** The web
+  panel is a desk tool (`AGENTS.md` §7); the person taking the photo is at the
+  shelf. The mobile path is `storeId/productId-…`, the web path is
+  `timestamp-random.webp` — both are fine, and `storagePathFromUrl` handles only
+  the mobile convention because only the mobile screen deletes files.
+
+### Bugs found
+
+- **The new DB test did not parse at first**: `'the owner can read the shop\'s
+  codes'` — this file uses standard-conforming strings, so a quote is escaped by
+  doubling (`''`), not by backslash. Fixed; the suite then ran green.
+- **`StyleSheet.absoluteFillObject` is not in the RN types here**, so the busy
+  overlay is an explicit `position:'absolute'` with `top/right/bottom/left: 0`.
+- **No `accentInk` token exists** (dark `onAccent` is *dark*, so it is invisible
+  on `theme.overlay`). The busy spinner therefore sits on a `theme.card` chip with
+  `theme.accent`, rather than on the dim layer directly.
+
+### Open gaps
+
+- **The in-app photo upload was never run on a device or emulator.** It is
+  typechecked, linted and bundled, and it uses the documented
+  `fetch(uri) → blob() → storage.upload` path, but nobody has watched a file land
+  in the bucket from a real phone. Treat it as unverified until someone does.
+- **No real photos exist yet.** `image_url` is still null on every seeded
+  product; the app is still showing emoji. The camera can now fill it in, but that
+  is the owner's job, on their phone.
+- **The Kannada font's optical result is unverified on a device.** The token
+  wiring and the bundle are proved; whether the line heights look right on a real
+  Kannada screen is a human judgement that has not been made here.
+- Unchanged from the afternoon: no push notifications, no Razorpay, no live rider
+  maps; the admin web panel is still only the bulk-catalogue desk tool.
+
+---
+
 ## 2026-10-14 — Phase 2.5: customer depth (product page, favourites, addresses, offers + coupons)
 
 *(second session of the day; the entrance below is the morning's design-system work)*
@@ -129,6 +470,11 @@ string.
 ### Open gaps
 - **Product photos are still emoji.** The `expo-image` slots exist, but there is
   no Storage bucket or admin upload yet; that is a later phase.
+  *(Corrected later the same day: this sentence was wrong. The `product-images`
+  bucket, its four storage policies and `products.image_url` were already built
+  and tested (test 08) in `20261003000001_images_and_history.sql`, and the web
+  panel already uploads. The true gaps were only that no photo files exist yet
+  and that the owner could not upload from the phone — see the session below.)*
 - **No admin UI for coupons.** Codes are created in SQL/seed today; the owner
   cannot add one from the app.
 - **Noto Sans Kannada is still not bundled**, so Kannada uses the device font.

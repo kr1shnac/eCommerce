@@ -100,7 +100,7 @@ two languages are written side by side, not translated one from the other.
 └── supabase/
     ├── migrations/            ← numbered .sql, applied in filename order
     ├── seed.sql               ← 1 store, 8 categories, 34 products
-    ├── demo.sql               ← dev-only: 8 orders so all three faces look alive
+    ├── demo.sql               ← dev-only: orders, favourites, addresses for demos
     └── tests/                 ← run.sh boots a throwaway PostgreSQL and runs these
 ```
 
@@ -141,13 +141,15 @@ two languages are written side by side, not translated one from the other.
   price) so later edits never rewrite history.
 - After changing a table, update `apps/mobile/src/types/database.ts` by hand.
 - `supabase/seed.sql` fills the shelves; `supabase/demo.sql` fills the **orders**
-  (8 across every status, some assigned to a rider) so all three faces can be
-  looked at without tapping through the app by hand. `demo.sql` is
+  (9 across every status, one carrying a coupon discount, some assigned to a
+  rider), plus a shortlist (favourites) and a second address, so all three faces
+  can be looked at without tapping through the app by hand. `demo.sql` is
   **development only** — never run it on production. It is safe to re-run: it
   deletes its own orders first (they are marked `order_number KNG-D%` /
-  `idempotency_key demo-order-%`). It briefly disables two guard triggers within
-  a single sub-block that restores them even on failure; it is the only place in
-  the project that turns a guard off, and test 12 proves they come back on.
+  `idempotency_key demo-order-%`) and rewrites the shortlist. It briefly disables
+  two guard triggers within a single sub-block that restores them even on
+  failure; it is the only place in the project that turns a guard off, and test
+  12 proves they come back on.
 
 ## 4. Security rules (non-negotiable)
 
@@ -223,7 +225,8 @@ As of this build, the app is a working end-to-end flow on one shop:
   Dark, persisted on the device), a palette with honest contrast (`*Ink` tokens
   for text on `*Soft`), shared primitives in `src/components/ui/`, and every
   customer and staff screen rebuilt on it. `DESIGN.md` is the source of truth.
-  `supabase/demo.sql` loads dev-only orders so all three faces look alive.
+  `supabase/demo.sql` loads dev-only orders, favourites and a second address so
+  all three faces look alive.
 - **Three faces, one app.** After sign-in the root `_layout.tsx` routes by
   `profiles.role` through `Stack.Protected`: `(tabs)/` for customers and guests,
   `rider/` for `delivery`, `admin/` for the shop owner. The app only decides what

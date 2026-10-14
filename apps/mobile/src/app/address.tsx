@@ -19,6 +19,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
+import { kannadaInputFont } from '@/constants/fonts';
 import { Radii, Spacing } from '@/constants/theme';
 import {
   useAddAddress,
@@ -30,6 +31,7 @@ import { useDeliveryZones } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedName } from '@/lib/localized';
 import { useAuthStore } from '@/store/auth-store';
+import { currentLanguage } from '@/store/language-store';
 import type { Address } from '@/types/database';
 
 /**
@@ -207,6 +209,7 @@ function AddressForm({ existing, pick }: { existing?: Address; pick: boolean }) 
         accessibilityLabel={t(labelKey)}
         style={[
           styles.input,
+          kannadaInputFont(currentLanguage()),
           {
             color: theme.text,
             backgroundColor: theme.backgroundElement,

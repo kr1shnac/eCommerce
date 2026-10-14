@@ -40,17 +40,31 @@ panel. Do **not** run `npm install` inside `apps/`.
 ## 3. Point the app at your Supabase project
 
 1. Create a project at <https://supabase.com> (or use an existing one).
-2. Open **Project Settings → Data API**.
-3. Copy the **Project URL** and the **anon public** key.
+2. Open **Project Settings → API** (or **Data API**).
+3. Copy the **Project URL** and the **public** key. Supabase now calls it the
+   **publishable** key (`sb_publishable_...`); older projects call it the
+   **anon public** key. Either works — both apps accept both names.
 4. Open `apps/mobile/.env` and paste them in:
 
    ```ini
    EXPO_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
-   EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOi....your-anon-key....
+   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_....your-public-key....
    ```
 
    `apps/mobile/.env` is git-ignored. `apps/mobile/.env.example` is the
    committed template.
+
+5. Open `apps/admin/.env` and paste the same two values with the admin panel's
+   names (also git-ignored; `apps/admin/.env.example` is the template):
+
+   ```ini
+   NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT-REF.supabase.co
+   NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_....your-public-key....
+   ```
+
+> **Never put the `service_role` / `sb_secret_...` key in either app.** Anything
+> named `EXPO_PUBLIC_*` or `NEXT_PUBLIC_*` ships to the user, and a secret key
+> bypasses every Row Level Security policy.
 
 > **Never put the `service_role` key in this file.** Anything in an
 > `EXPO_PUBLIC_` variable is compiled into the shipped app and can be read by
@@ -64,7 +78,7 @@ panel. Do **not** run `npm install` inside `apps/`.
 
 1. Go to **SQL Editor → New query**.
 2. Open every file in `supabase/migrations/` and run them **in filename order**.
-   There are 14 files; the list is simply `ls supabase/migrations` sorted
+   The list is simply `ls supabase/migrations` sorted
    alphabetically:
 
    ```
@@ -82,16 +96,40 @@ panel. Do **not** run `npm install` inside `apps/`.
    20261013000001_rider_assignment.sql
    20261013000002_realtime_orders.sql
    20261014000001_product_emoji.sql
+   20261014000002_favourites.sql
+   20261014000003_address_one_default.sql
+   20261014000004_coupons.sql
    ```
 
-3. Open `supabase/seed.sql`, paste it, **Run**. This adds 1 store, 8 categories
-   and 34 products with English + Kannada names and a per-product `emoji`.
+3. Open `supabase/seed.sql`, paste it, **Run**. This adds 1 store, 8 categories,
+   34 products (English + Kannada names, a per-product `emoji`), 2 coupons, 4
+   delivery zones and the store settings.
 4. **Table Editor** should now show `products` with 34 rows.
 5. *(Optional, development only)* Open `supabase/demo.sql`, paste it, **Run**.
-   It needs your profile to exist, so sign in once in the app first. It creates
-   8 orders across every status, assigns some to a rider, and gives the customer
-   a Kunigal address — enough to make all three faces look alive. **Never run it
-   on a production project.** Safe to re-run; it cleans up its own orders first.
+   **Never run it on a production project.** It needs your profile to exist, so
+   sign in once in the app first. It dresses the first customer profile (falling
+   back to the first profile of any role) so every screen is alive:
+
+   - **9 orders** — one for every status (2 waiting to be accepted, one each of
+     confirmed / packing / out for delivery, 2 delivered, 1 cancelled), with the
+     in-flight ones already assigned to a rider if one exists;
+   - **one order carrying a coupon discount** (KUNIGAL50), so the discount line
+     is visible somewhere — the number comes from the database, not the file;
+   - **5 favourites**, so the Home **Saved** rail is not empty;
+   - **a second (Work) address**, so checkout's address picker has a choice.
+
+   It is safe to re-run: it deletes its own orders first (the ones with
+   `idempotency_key like 'demo-order-%'`) and rewrites the shortlist, so a
+   second run replaces the sample data rather than stacking it.
+
+   **To remove the demo data later** (this keeps the catalogue, coupons, zones
+   and settings):
+
+   ```sql
+   delete from public.orders     where idempotency_key like 'demo-order-%';
+   delete from public.favourites where user_id = '<the demo customer uuid>';
+   -- then delete the extra "Work" address in the app's Addresses screen.
+   ```
 
 ### Option B — Supabase CLI
 

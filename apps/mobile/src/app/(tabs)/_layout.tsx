@@ -3,9 +3,11 @@ import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
+import { KannadaFonts } from '@/constants/fonts';
 import { Elevation } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { selectCartCount, useCartStore } from '@/store/cart-store';
+import { useLanguageStore } from '@/store/language-store';
 
 export default function TabsLayout() {
   const { t } = useTranslation();
@@ -13,6 +15,15 @@ export default function TabsLayout() {
   // The bag's unit count, so a customer can see "there is something in there"
   // from any tab. Capped so a huge number does not stretch the badge.
   const cartCount = useCartStore(selectCartCount);
+  const language = useLanguageStore((state) => state.language);
+
+  // Tab labels are painted by the navigator, not by `ThemedText`, so they need
+  // the Kannada face explicitly. A bundled face must not also carry a
+  // `fontWeight`, so the two languages pick their weight differently.
+  const labelFont =
+    language === 'kn'
+      ? { fontFamily: KannadaFonts.bold, fontWeight: 'normal' as const }
+      : { fontWeight: '700' as const };
 
   return (
     <Tabs
@@ -28,7 +39,7 @@ export default function TabsLayout() {
         },
         // Icons fill in when active, so the current tab is obvious without
         // reading the label (KUNIGAL.md §2).
-        tabBarLabelStyle: { fontSize: 12, fontWeight: '700' },
+        tabBarLabelStyle: { fontSize: 12, ...labelFont },
         tabBarItemStyle: { paddingVertical: 4 },
         sceneStyle: { backgroundColor: theme.background },
       }}>

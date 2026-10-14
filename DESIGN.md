@@ -102,6 +102,14 @@ Both palettes are complete and are chosen at runtime:
 
 - **Type** (`Type`): nothing below 12.5 px. Kannada is taller than Latin, so line
   heights run ~1.5×. A kid-bike rider reads a 22 px total, not a 12 px one.
+- **Kannada face** (`constants/fonts.ts`): Noto Sans Kannada ships with the app
+  (`assets/fonts`, loaded by `expo-font` before the first frame), matched to the
+  `Type` weight by choosing the right `ThemedText type`. Android and iOS each
+  ship a *different* Kannada face, so without this the same screen renders
+  differently on two phones, and the language the shop actually speaks is the one
+  that drifts. Latin keeps the system font; `code` (order numbers) stays
+  monospaced in both languages. Each weight is its own file, so a screen selects a
+  weight by `type`, never by setting `fontWeight` on the family.
 - **Spacing** (`Spacing`): a 4-point scale. 16 is the standard gutter. No magic
   numbers in screens.
 - **Radii** (`Radii`): cards `lg` (20), sheets `xl` (28), chips/buttons `pill`.

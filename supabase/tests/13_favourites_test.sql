@@ -14,6 +14,16 @@
 
 select test_result.begin_suite('13 favourites');
 
+-- demo.sql (run by test 12, just before this) seeds a shortlist for Asha so the
+-- Home "Saved" rail is not empty. These assertions are about counts, so start
+-- from a known, empty shelf rather than inheriting whatever the demo left.
+reset role;
+delete from public.favourites
+ where user_id in (
+   '11111111-1111-1111-1111-111111111111',
+   '22222222-2222-2222-2222-222222222222'
+ );
+
 -- -----------------------------------------------------------------------------
 -- Shape
 -- -----------------------------------------------------------------------------

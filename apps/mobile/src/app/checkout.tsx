@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
+import { kannadaInputFont } from '@/constants/fonts';
 import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCart } from '@/hooks/use-cart';
 import {
@@ -27,6 +28,7 @@ import { makeIdempotencyKey } from '@/lib/idempotency';
 import { localizedName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
 import { isStoreOpen } from '@/lib/store-hours';
+import { currentLanguage } from '@/store/language-store';
 import type { PlaceOrderError as PlaceOrderErrorCode } from '@/types/database';
 
 /**
@@ -409,6 +411,7 @@ export default function CheckoutScreen() {
                 accessibilityLabel={t('checkout.couponTitle')}
                 style={[
                   styles.couponInput,
+                  kannadaInputFont(currentLanguage()),
                   {
                     color: theme.text,
                     borderColor: theme.border,
@@ -461,6 +464,7 @@ export default function CheckoutScreen() {
           accessibilityLabel={t('checkout.noteTitle')}
           style={[
             styles.note,
+            kannadaInputFont(currentLanguage()),
             { color: theme.text, borderColor: theme.border, backgroundColor: theme.card },
           ]}
         />

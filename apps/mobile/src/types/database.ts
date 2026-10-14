@@ -104,6 +104,37 @@ export type Favourite = {
   created_at: string;
 };
 
+export type CouponKind = 'percent' | 'flat';
+
+/**
+ * A discount code the owner runs. RLS hides the whole table from customers —
+ * they reach a code only through `validate_coupon()` / `place_order()`
+ * (migration 20261014000004), so this type is only ever a staff screen's data.
+ *
+ * `value` is a percent (1..100) when `kind = 'percent'`, or paise off when
+ * `kind = 'flat'`. Every money field is an integer in paise (rule 9.1).
+ */
+export type Coupon = {
+  id: string;
+  store_id: string;
+  code: string;
+  kind: CouponKind;
+  value: number;
+  /** 0 means "no cap" (percent) or "not used" (flat). */
+  max_discount_paise: number;
+  min_order_paise: number;
+  is_active: boolean;
+  starts_at: string | null;
+  ends_at: string | null;
+  /** NULL means unlimited uses. */
+  usage_limit: number | null;
+  used_count: number;
+  description_en: string | null;
+  description_kn: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type DeliveryZone = {
   id: string;
   store_id: string;
@@ -301,6 +332,7 @@ type TableRowMap = {
   products: Table<Product>;
   addresses: Table<Address>;
   favourites: Table<Favourite>;
+  coupons: Table<Coupon>;
   delivery_zones: Table<DeliveryZone>;
   store_settings: Table<StoreSettings>;
   orders: Table<Order>;

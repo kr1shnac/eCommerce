@@ -17,10 +17,12 @@ import { OfflineBanner } from '@/components/offline-banner';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { kannadaInputFont } from '@/constants/fonts';
 import { Radii, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
+import { currentLanguage } from '@/store/language-store';
 
 /**
  * Phone number, then a one-time code. Two steps on one screen.
@@ -179,7 +181,7 @@ export default function LoginScreen() {
                   maxLength={10}
                   editable={!busy}
                   accessibilityLabel={t('auth.phoneLabel')}
-                  style={[styles.input, { color: theme.text }]}
+                  style={[styles.input, kannadaInputFont(currentLanguage()), { color: theme.text }]}
                 />
               </View>
             </View>
@@ -201,6 +203,7 @@ export default function LoginScreen() {
                 style={[
                   styles.input,
                   styles.codeInput,
+                  kannadaInputFont(currentLanguage()),
                   { color: theme.text, borderColor: theme.border, backgroundColor: theme.backgroundElement },
                 ]}
               />

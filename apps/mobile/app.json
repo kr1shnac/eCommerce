@@ -27,6 +27,13 @@
       "expo-router",
       "expo-localization",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Kunigal Grocery needs your photos so you can add a picture to a product on the shelf.",
+          "cameraPermission": "Kunigal Grocery needs the camera so you can photograph a product on the shelf."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0E7C4A",

@@ -27,25 +27,25 @@ select test_result.begin_suite('12 demo data');
 -- -----------------------------------------------------------------------------
 
 select test_result.eq(
-  'demo.sql created 8 orders',
+  'demo.sql created 9 orders',
   (select count(*) from public.orders where order_number like 'KNG-D%'),
-  8
+  9
 );
 
 select test_result.eq(
-  'demo.sql made 24 order lines',
+  'demo.sql made 29 order lines',
   (select count(*) from public.order_items i
      join public.orders o on o.id = i.order_id
     where o.order_number like 'KNG-D%'),
-  24
+  29
 );
 
 select test_result.eq(
-  '2 orders are waiting for a rider (unclaimed, placed/confirmed)',
+  '3 orders are waiting for a rider (unclaimed, placed/confirmed)',
   (select count(*) from public.orders
     where order_number like 'KNG-D%' and assigned_to is null
       and status in ('placed', 'confirmed')),
-  2
+  3
 );
 
 select test_result.eq(
@@ -108,14 +108,14 @@ select test_result.eq(
   'every demo order snapshots the Kunigal address',
   (select count(*) from public.orders
     where order_number like 'KNG-D%' and delivery_address ->> 'pincode' = '572130'),
-  8
+  9
 );
 
 select test_result.eq(
   'the demo fee is the zone fee (Rs 15)',
   (select count(*) from public.orders
     where order_number like 'KNG-D%' and delivery_fee_paise = 1500),
-  8
+  9
 );
 
 -- Asha already had an address from the fixtures, so demo.sql must NOT have
@@ -125,6 +125,44 @@ select test_result.eq(
   (select count(*) from public.addresses
     where user_id = '11111111-1111-1111-1111-111111111111'),
   3
+);
+
+-- -----------------------------------------------------------------------------
+-- The shortlist and the coupon order — the two things demo.sql adds beyond the
+-- orders, so the "Saved" rail and the discount line are not empty either.
+-- -----------------------------------------------------------------------------
+
+select test_result.eq(
+  'demo.sql saved 5 favourites for the customer',
+  (select count(*) from public.favourites
+    where user_id = '11111111-1111-1111-1111-111111111111'),
+  5
+);
+
+select test_result.eq(
+  'exactly one demo order carries a coupon',
+  (select count(*) from public.orders
+    where order_number like 'KNG-D%' and coupon_code is not null),
+  1
+);
+
+-- The demo discount is not a number typed into the file: it is whatever the
+-- database's own coupon_discount() says for that basket. If they ever disagree,
+-- the demo is showing a price the shop would not charge (rule 9.1).
+select test_result.eq(
+  'the coupon order''s discount matches coupon_discount()',
+  (select count(*) from public.orders o
+     join public.coupons c on c.code = o.coupon_code and c.store_id = o.store_id
+    where o.order_number like 'KNG-D%'
+      and o.coupon_code is not null
+      and o.discount_paise <> public.coupon_discount(c, o.subtotal_paise)),
+  0
+);
+
+select test_result.ok(
+  'the coupon order really is discounted',
+  (select discount_paise from public.orders
+    where order_number like 'KNG-D%' and coupon_code = 'KUNIGAL50') > 0
 );
 
 -- -----------------------------------------------------------------------------
@@ -183,20 +221,20 @@ set role authenticated;
 select test_result.sign_in('11111111-1111-1111-1111-111111111111');  -- Asha
 
 select test_result.eq(
-  'Asha can read all 8 demo orders through RLS',
+  'Asha can read all 9 demo orders through RLS',
   (select count(*) from public.orders where order_number like 'KNG-D%'),
-  8
+  9
 );
 
 set role authenticated;
 select test_result.sign_in('44444444-4444-4444-4444-444444444444');  -- the rider
 
 select test_result.eq(
-  'the rider can read the 2 waiting demo orders',
+  'the rider can read the 3 waiting demo orders',
   (select count(*) from public.orders
     where order_number like 'KNG-D%' and assigned_to is null
       and status in ('placed', 'confirmed')),
-  2
+  3
 );
 
 reset role;

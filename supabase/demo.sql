@@ -1,32 +1,46 @@
 -- =============================================================================
--- Demo data — only ever run this on a development project, never in production.
+-- demo.sql — development-only sample data (NEVER run this on production)
 -- =============================================================================
--- The seed file fills the shelves (categories + products). It leaves the shop
--- EMPTY of orders, so every screen that is about "what is happening" — the
--- customer's Orders tab, the rider's pool and list, the owner's board — starts
--- blank and looks broken.
+-- Everything a developer needs to SEE the app working, without tapping through a
+-- week of orders by hand. It fills every data-driven screen:
 --
--- This file fills them, so all three faces can be LOOKED AT and judged. It is
--- the answer to "show me the app working" without tapping through twenty orders
--- by hand.
+--   customer  the Home "Saved" rail (favourites) and the "Buy again" rail, the
+--             Orders tab (9 orders, one per status), one order carrying a real
+--             coupon discount, and two delivery addresses for the checkout picker;
+--   rider     a waiting pool to accept from, deliveries in progress, and
+--             delivered-today history;
+--   owner     a busy order board, with several orders already assigned to a rider.
 --
--- HOW TO RUN
---   1. Sign in once in the app (that is what creates your profile row).
---   2. Supabase dashboard -> SQL Editor -> New query -> paste this -> Run.
+-- It does NOT create products, categories, coupons, zones or store settings —
+-- those come from seed.sql. This file touches only orders, favourites and
+-- addresses, so removing it leaves the shop itself untouched.
 --
--- WHO GETS THE DATA
---   * the customer: the first profile in the database, whatever its role
---     (so it works even if the only phone you have signed in is your own), plus
---     a delivery address in Kunigal (PIN 572130) if they had none;
---   * the rider: the first profile whose role is 'delivery', if one exists —
---     orders are only assigned to a rider who is actually there;
---   * the owner: sees every order on the board automatically.
+-- HOW TO RUN (development only)
+--   Option A: Supabase dashboard -> SQL Editor -> New query -> paste this whole
+--             file -> Run.
+--   Option B: psql "$DATABASE_URL" -f supabase/demo.sql
 --
--- It is safe to run more than once: it first deletes the orders it made last
--- time. Demo orders are the ones whose idempotency_key starts with
--- 'demo-order-', which no real order ever uses.
+-- It needs at least one profile, so sign in once in the app first. It dresses the
+-- FIRST customer profile (falling back to the first profile of any role, so it
+-- works even if the only phone you have signed in is your own). If a profile with
+-- role = 'delivery' exists, several orders are assigned to that rider; the owner
+-- sees every order on the board automatically.
 --
--- WHY THE TRIGGERS COME OFF FOR A MOMENT
+-- SAFE TO RE-RUN
+--   It first deletes the orders it made last time. Demo orders are the ones whose
+--   idempotency_key starts with 'demo-order-', which no real order ever uses. It
+--   also rewrites the demo customer's favourites to a fixed shortlist, so a
+--   second run replaces the sample data instead of stacking it.
+--
+-- HOW TO TAKE IT BACK OUT LATER
+--   delete from public.orders
+--    where idempotency_key like 'demo-order-%';
+--   delete from public.favourites
+--    where user_id = '<the demo customer uuid>';
+--   -- then delete the extra "Work" address in the app's Addresses screen.
+--   Nothing above touches the catalogue, the coupons, the zones or the settings.
+--
+-- WHY THE GUARD TRIGGERS COME OFF FOR A MOMENT
 --   `orders_guard_insert` exists so a CUSTOMER cannot invent an order that is
 --   born delivered, or already paid; `order_items_guard_insert` is its twin for
 --   the lines ("this order can no longer be changed"). The SQL Editor has no
@@ -37,25 +51,29 @@
 --   they are restored when the block unwinds. Nothing outside this file ever
 --   disables a guard trigger.
 --
--- MONEY: every total below is computed by Postgres from the real product prices
--- (rule 9.1), never typed in by hand. The CHECK constraint
+-- MONEY: every subtotal and total below is computed by Postgres from the real
+-- product prices, and the coupon discount from the real `coupon_discount()`
+-- function (rule 9.1), never typed in by hand. The CHECK constraint
 -- (total = subtotal + fee - discount) is what guarantees it stays honest.
 -- =============================================================================
 
 do $$
 declare
-  v_store     uuid := '00000000-0000-4000-8000-000000000001';
-  v_customer  uuid;
-  v_rider     uuid;
-  v_address   uuid;
-  v_addr      public.addresses;
-  v_snapshot  jsonb;
-  v_order     uuid;
-  v_subtotal  integer;
-  v_total     integer;
-  v_placed_at timestamptz;
-  v_delivered timestamptz;
-  v_spec      record;
+  v_store       uuid := '00000000-0000-4000-8000-000000000001';
+  v_customer    uuid;
+  v_rider       uuid;
+  v_address     uuid;
+  v_addr_count  integer;
+  v_addr        public.addresses;
+  v_snapshot    jsonb;
+  v_order       uuid;
+  v_subtotal    integer;
+  v_total       integer;
+  v_discount    integer;
+  v_coupon_code text;
+  v_placed_at   timestamptz;
+  v_delivered   timestamptz;
+  v_spec        record;
 begin
   -- ---------------------------------------------------------------------------
   -- Who are we dressing the shop for?
@@ -84,30 +102,43 @@ begin
 
   if v_rider is null then
     raise notice
-      'demo.sql: no rider found, so every order will be left unclaimed. To see the '
-      'rider face: sign in on a second phone, promote that account to Rider from '
-      'the owner''s Team screen, then run this file again.';
+      'demo.sql: no rider yet — the demo orders will be left unassigned. Make a '
+      'second account, set its profile role to ''delivery'', then run this again.';
   end if;
 
   -- ---------------------------------------------------------------------------
-  -- An address to deliver to, in the town's real PIN (572130).
+  -- Addresses. Make sure the customer has somewhere in Kunigal to deliver to,
+  -- and a second address so the checkout picker has something to pick. Only
+  -- added when the customer has fewer than two addresses of their own, so an
+  -- existing list is never duplicated.
   -- ---------------------------------------------------------------------------
+  select count(*)::integer into v_addr_count
+    from public.addresses
+   where user_id = v_customer;
+
+  if v_addr_count = 0 then
+    insert into public.addresses
+      (user_id, label, full_name, phone, line1, line2, landmark, city, pincode, is_default)
+    values
+      (v_customer, 'Home', 'Ramesh Gowda', '+919845600111',
+       'No. 12, Main Road', 'Near Bus Stand', 'Ganesha Temple', 'Kunigal', '572130', true);
+    v_addr_count := 1;
+  end if;
+
+  if v_addr_count = 1 then
+    insert into public.addresses
+      (user_id, label, full_name, phone, line1, city, pincode, is_default)
+    values
+      (v_customer, 'Work', 'Ramesh Gowda', '+919845600111',
+       'Near the market', 'Kunigal', '572130', false);
+  end if;
+
+  -- The address the orders point at: the default if there is one, else the oldest.
   select id into v_address
     from public.addresses
    where user_id = v_customer
    order by is_default desc, created_at
    limit 1;
-
-  if v_address is null then
-    insert into public.addresses (
-      user_id, label, full_name, phone, line1, line2, landmark, city, pincode, is_default
-    )
-    values (
-      v_customer, 'Home', 'Ramesh Gowda', '+919845600111',
-      'No. 12, Main Road', 'Near Bus Stand', 'Ganesha Temple', 'Kunigal', '572130', true
-    )
-    returning id into v_address;
-  end if;
 
   select * into v_addr from public.addresses where id = v_address;
 
@@ -124,11 +155,29 @@ begin
   );
 
   -- ---------------------------------------------------------------------------
-  -- Start clean: drop whatever demo run came before this one.
+  -- Start clean: drop whatever demo run came before this one, and reset the
+  -- demo customer's shortlist to a known set (so the "Saved" rail is not empty).
   -- ---------------------------------------------------------------------------
   delete from public.orders
    where user_id = v_customer
      and idempotency_key like 'demo-order-%';
+
+  delete from public.favourites where user_id = v_customer;
+
+  -- A spread of the shortlist a real household keeps: a fruit, a daily dairy
+  -- item, a staple, a snack and a drink. Only products on this store's shelf are
+  -- saved, so a favourite can never point at a missing row.
+  insert into public.favourites (user_id, product_id)
+  select v_customer, p.id
+    from public.products p
+   where p.store_id = v_store
+     and p.id in (
+       '20000000-0000-4000-8000-000000000004',  -- Banana
+       '20000000-0000-4000-8000-000000000006',  -- Full Cream Milk
+       '20000000-0000-4000-8000-000000000010',  -- Sona Masoori Rice
+       '20000000-0000-4000-8000-000000000022',  -- Biscuits
+       '20000000-0000-4000-8000-000000000024'   -- Tea Powder
+     );
 
   -- ---------------------------------------------------------------------------
   -- The baskets. One row per (order, product, quantity); a temp table so the
@@ -169,12 +218,19 @@ begin
     (7, '20000000-0000-4000-8000-000000000033', 1),
     -- 8 · cancelled: paneer and butter (the customer changed their mind)
     (8, '20000000-0000-4000-8000-000000000008', 1),
-    (8, '20000000-0000-4000-8000-000000000009', 1);
+    (8, '20000000-0000-4000-8000-000000000009', 1),
+    -- 9 · waiting, and the one carrying a coupon: a big monthly basket that
+    --     clears KUNIGAL50's Rs 499 minimum, so the discount is real.
+    (9, '20000000-0000-4000-8000-000000000010', 1),
+    (9, '20000000-0000-4000-8000-000000000011', 1),
+    (9, '20000000-0000-4000-8000-000000000015', 1),
+    (9, '20000000-0000-4000-8000-000000000016', 1),
+    (9, '20000000-0000-4000-8000-000000000026', 2);
 
   -- ---------------------------------------------------------------------------
   -- Build the orders. Everything that writes to `orders` sits in the inner
-  -- block, which is what guarantees the guard trigger is switched back on even
-  -- if one of the inserts fails.
+  -- BEGIN...END block (a nested block shares this block's variables), which is
+  -- what guarantees the guard trigger is switched back on when it unwinds.
   -- ---------------------------------------------------------------------------
   begin
     alter table public.orders disable trigger orders_guard_insert;
@@ -182,16 +238,17 @@ begin
 
     for v_spec in
       select * from (values
-        -- seq, status,               days, hours, mins, assign, with_time
-        (1, 'placed'::text,           0,    0,    12,    false, false),
-        (2, 'placed'::text,           0,    0,    47,    false, false),
-        (3, 'confirmed'::text,        0,    3,     0,    true,  false),
-        (4, 'packing'::text,          0,    4,    10,    true,  false),
-        (5, 'out_for_delivery'::text, 0,    5,    30,    true,  false),
-        (6, 'delivered'::text,        0,    7,     0,    true,  true),
-        (7, 'delivered'::text,        2,    6,     0,    true,  true),
-        (8, 'cancelled'::text,        4,    2,     0,    false, false)
-      ) as t (seq, status, days_ago, hours_ago, mins_ago, assign, with_time)
+        -- seq | status | days_ago | hours_ago | mins_ago | assign | with_time | coupon
+        (1, 'placed',           0, 1,  5, false, false, null::text),
+        (2, 'placed',           0, 0, 40, false, false, null),
+        (3, 'confirmed',        0, 3,  0, true,  false, null),
+        (4, 'packing',          0, 5,  0, true,  false, null),
+        (5, 'out_for_delivery', 0, 7,  0, true,  false, null),
+        (6, 'delivered',        0, 8,  0, true,  true,  null),
+        (7, 'delivered',        2, 6,  0, true,  true,  null),
+        (8, 'cancelled',        4, 2,  0, false, false, null),
+        (9, 'placed',           0, 0, 20, false, false, 'KUNIGAL50')
+      ) as t (seq, status, days_ago, hours_ago, mins_ago, assign, with_time, coupon)
     loop
       -- What the shop charged for THIS basket, from the shelf prices.
       select coalesce(sum(p.price_paise * di.qty), 0)
@@ -205,27 +262,48 @@ begin
         continue;
       end if;
 
+      -- The discount, when this order uses a code: the SAME function the
+      -- checkout calls, so the demo can never show a number the shop would not
+      -- honour. A code under its minimum order simply gives nothing here.
+      v_discount := 0;
+      v_coupon_code := null;
+      if v_spec.coupon is not null then
+        select c.code,
+               case when v_subtotal >= c.min_order_paise
+                    then public.coupon_discount(c, v_subtotal)
+                    else 0
+               end
+          into v_coupon_code, v_discount
+          from public.coupons c
+         where c.store_id = v_store
+           and c.code = v_spec.coupon
+           and c.is_active;
+        v_discount := coalesce(v_discount, 0);
+      end if;
+
       v_placed_at := now()
         - make_interval(days => v_spec.days_ago, hours => v_spec.hours_ago, mins => v_spec.mins_ago);
       v_delivered := case when v_spec.with_time then v_placed_at + interval '34 minutes' else null end;
-      v_total     := v_subtotal + 1500;  -- PIN 572130 zone fee (Rs 15)
+      v_total     := v_subtotal + 1500 - v_discount;  -- PIN 572130 zone fee (Rs 15)
 
       insert into public.orders (
         order_number, user_id, store_id, address_id, delivery_address,
         status, payment_method, payment_status,
         subtotal_paise, delivery_fee_paise, discount_paise, total_paise,
-        notes, placed_at, delivered_at, assigned_to, assigned_at, idempotency_key
+        notes, placed_at, delivered_at, assigned_to, assigned_at,
+        idempotency_key, coupon_code
       )
       values (
         'KNG-D' || lpad(v_spec.seq::text, 4, '0'),
         v_customer, v_store, v_address, v_snapshot,
         v_spec.status::public.order_status, 'cod',
         (case when v_spec.status = 'delivered' then 'paid' else 'pending' end)::public.payment_status,
-        v_subtotal, 1500, 0, v_total,
+        v_subtotal, 1500, v_discount, v_total,
         null, v_placed_at, v_delivered,
         case when v_spec.assign then v_rider else null end,
         case when v_spec.assign and v_rider is not null then v_placed_at + interval '3 minutes' else null end,
-        'demo-order-' || v_spec.seq
+        'demo-order-' || v_spec.seq,
+        v_coupon_code
       )
       returning id into v_order;
 
@@ -249,8 +327,8 @@ begin
   end;
 
   raise notice
-    'demo.sql: done for customer %. % rider(s) found. 2 orders waiting, 3 on the road, '
-    '1 delivered today, 1 delivered earlier, 1 cancelled, 1 address — across all three faces.',
+    'demo.sql: done for customer %. % rider(s) found. 9 orders (one with a coupon '
+    'discount), a saved shortlist, and a Kunigal address — across all three faces.',
     v_customer,
     (select count(*) from public.profiles where role = 'delivery');
 end $$;

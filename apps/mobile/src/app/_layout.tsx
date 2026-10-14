@@ -1,6 +1,7 @@
 import '@/i18n';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -34,13 +35,30 @@ export default function RootLayout() {
   const isReady = useLanguageStore((state) => state.isReady);
   const themeReady = useThemeStore((state) => state.isReady);
 
+  // The Kannada face is bundled (assets/fonts) so the language looks the same on
+  // every phone. Latin keeps the system font; only `ThemedText` in Kannada
+  // switches. Loading happens once, before the first frame, so no text flashes
+  // in the wrong shape.
+  const [fontsLoaded, fontError] = useFonts({
+    'NotoSansKannada-Regular': require('../../assets/fonts/NotoSansKannada-Regular.ttf'),
+    'NotoSansKannada-SemiBold': require('../../assets/fonts/NotoSansKannada-SemiBold.ttf'),
+    'NotoSansKannada-Bold': require('../../assets/fonts/NotoSansKannada-Bold.ttf'),
+    'NotoSansKannada-ExtraBold': require('../../assets/fonts/NotoSansKannada-ExtraBold.ttf'),
+  });
+  // A font that fails to load is not fatal: the system face still draws Kannada.
+  const fontsReady = fontsLoaded || Boolean(fontError);
+
+  useEffect(() => {
+    if (fontError) console.warn('[fonts] could not load Noto Sans Kannada', fontError);
+  }, [fontError]);
+
   useEffect(() => {
     void hydrate();
   }, [hydrate]);
 
   useEffect(() => {
-    if (isReady) void SplashScreen.hideAsync();
-  }, [isReady]);
+    if (isReady && fontsReady) void SplashScreen.hideAsync();
+  }, [isReady, fontsReady]);
 
   // The navigation container paints behind every screen during a transition.
   // Left on React Navigation's defaults it would flash stark white (light) or
@@ -96,9 +114,10 @@ export default function RootLayout() {
 
   const authReady = useAuthStore((state) => state.isReady);
 
-  // Hold the splash one beat longer until the saved language AND the saved
-  // light/dark choice are both known, so nothing flashes on the first frame.
-  if (!isReady || !authReady || !themeReady) return null;
+  // Hold the splash one beat longer until the saved language, the saved
+  // light/dark choice AND the Kannada font are all known, so nothing flashes on
+  // the first frame.
+  if (!isReady || !authReady || !themeReady || !fontsReady) return null;
 
   return (
     <QueryClientProvider client={queryClient}>

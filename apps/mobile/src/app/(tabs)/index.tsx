@@ -23,6 +23,7 @@ import { ThemedText } from '@/components/themed-text';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/ui/section-header';
+import { kannadaInputFont } from '@/constants/fonts';
 import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCategories, useProducts } from '@/hooks/use-catalog';
 import { useFavourites } from '@/hooks/use-favourites';
@@ -35,6 +36,7 @@ import { isStoreOpen } from '@/lib/store-hours';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import { useCartStore } from '@/store/cart-store';
+import { currentLanguage } from '@/store/language-store';
 import type { Product } from '@/types/database';
 
 /**
@@ -205,7 +207,7 @@ export default function HomeScreen() {
           onChangeText={setTerm}
           placeholder={t('home.searchPlaceholder')}
           placeholderTextColor={theme.textTertiary}
-          style={[styles.searchInput, { color: theme.text }]}
+          style={[styles.searchInput, kannadaInputFont(currentLanguage()), { color: theme.text }]}
           returnKeyType="search"
           autoCorrect={false}
           autoCapitalize="none"
