@@ -79,6 +79,24 @@ creatively; (3) the top bar should be planned properly, like a real app.
   layout of the new app bar, the emoji plate and the photo crop are **read from the
   code, not seen**. Worth a glance on a real 5-inch screen next time.
 
+### Bugs found and fixed
+
+- **`<button>` inside `<button>` in `ProductCard`** (reported from the browser
+  console). `FavouriteButton` sat *inside* the card's own `Pressable`, even though
+  the component's own comment claims the three targets are never nested. On native
+  this mostly hides; on web `react-native-web` renders `Pressable` as a real
+  `<button>`, and React refuses nested buttons (the inner tap is unreliable too).
+  The heart is now a **sibling** of the tap area, absolutely positioned at exactly
+  the same corner. Introduced earlier the same day in `f7e1579`, not by this
+  session's work — found by the owner running the web build.
+- A **scan for the whole class of bug** now exists as a throwaway check: walk every
+  `.tsx`, track `Pressable`/`Touchable` nesting depth, and flag any interactive
+  child (`AddToCart`, `FavouriteButton`, `QuantityStepper`, `Button`, `IconButton`,
+  `CategoryChip`, `LanguageSwitch`, `ThemeSwitch`) found while depth > 0. It
+  reproduces the old finding on the previous commit's `product-card.tsx` and
+  reports **0 findings** across `src/` now. Not committed as a script; if this
+  bites again it belongs in `scripts/` next to `check-i18n.mjs`.
+
 ### Decisions and reasons
 
 - **One source of truth for language, and only one.** Two was the actual defect;

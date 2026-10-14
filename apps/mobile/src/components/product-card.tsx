@@ -92,8 +92,6 @@ export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
             <Badge label={`-${off}%`} tone="secondary" solid style={styles.offBadge} />
           ) : null}
 
-          <FavouriteButton productId={product.id} productName={name} style={styles.heart} />
-
           {isOutOfStock ? (
             <View style={[styles.soldOut, { backgroundColor: theme.overlay }]}>
               <Badge label={t('home.outOfStock')} tone="danger" solid icon="close-circle" />
@@ -121,6 +119,15 @@ export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
           </View>
         </View>
       </Pressable>
+
+      {/*
+        The heart is a SIBLING of the card's tap area, never a child. On web both
+        render as a <button>, and a button inside a button is invalid HTML —
+        React logs "button cannot contain a nested button" and the inner tap is
+        unreliable. Absolutely positioned, so it sits exactly where it did when it
+        was inside the picture box.
+      */}
+      <FavouriteButton productId={product.id} productName={name} style={styles.heart} />
 
       {!isOutOfStock ? (
         <View style={styles.footer}>
