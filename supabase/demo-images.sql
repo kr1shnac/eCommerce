@@ -6,7 +6,7 @@
 --   `product-images` Storage bucket under seed/<slug>.jpg.
 --
 -- WHY IT IS NOT A MIGRATION
---   A migration is structure that every environment must have. These are 27
+--   A migration is structure that every environment must have. These are 28
 --   stock photographs used to make a local/demo shop look furnished; a real
 --   shop photographs its own shelves. Migrations are append-only and numbered;
 --   this file is neither, and it is safe to re-run.
@@ -26,8 +26,9 @@
 --
 --   A product with no picture deliberately keeps image_url NULL: its emoji is
 --   the fallback, and a wrong photograph is worse than a drawn one. That is
---   every product not listed below -- paneer, butter, mustard-oil,
---   chilli-powder, potato-chips, mixture-namkeen and coffee-powder among them.
+--   exactly six products -- paneer, butter, mustard-oil, chilli-powder,
+--   mixture-namkeen and coffee-powder -- whose search results were all the
+--   wrong thing.
 --
 --   Sources and licences are listed at the bottom of this file.
 --
@@ -36,6 +37,8 @@
 --   but the emoji remains the tile for anything without one, so a picture can be
 --   removed at any time and the app still reads.
 -- =============================================================================
+
+
 
 
 update public.products
@@ -93,6 +96,10 @@ update public.products
 update public.products
    set image_url = 'https://ncfjzbptbtvkjvnrwyyq.supabase.co/storage/v1/object/public/product-images/seed/potato.jpg'
  where id = '20000000-0000-4000-8000-000000000003';  -- potato
+
+update public.products
+   set image_url = 'https://ncfjzbptbtvkjvnrwyyq.supabase.co/storage/v1/object/public/product-images/seed/potato-chips.jpg'
+ where id = '20000000-0000-4000-8000-000000000020';  -- potato-chips
 
 update public.products
    set image_url = 'https://ncfjzbptbtvkjvnrwyyq.supabase.co/storage/v1/object/public/product-images/seed/roasted-peanuts.jpg'
@@ -165,6 +172,7 @@ update public.products
 -- iodised-salt           | cc0 1.0      | salt crystals | https://www.flickr.com/photos/136594255@N06/28930758584
 -- onion                  | cc0 1.0      | Ripe Onion White Background | https://www.rawpixel.com/image/5966197/ripe-onion-white-background
 -- potato                 | cc0 1.0      | Free close potatoes white background | https://www.rawpixel.com/image/5902304/photo-image-background-public-domain-nature
+-- potato-chips           | cc0          | Bowl of crispy potato chips served on brown paper, placed on | https://wordpress.org/photos/photo/1706a21704/
 -- roasted-peanuts        | by-sa 3.0    | A photo of roasted peanut | https://commons.wikimedia.org/w/index.php?curid=17908197
 -- rusk                   | by 2.0       | Zwieback (16232191529) | https://commons.wikimedia.org/w/index.php?curid=54313922
 -- soft-drink             | cc0 1.0      | Coke bottle straw tropical beach | https://www.rawpixel.com/image/6113651/photo-image-public-domain-tropical-sky

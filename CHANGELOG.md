@@ -73,7 +73,7 @@ and reading through RLS (not with a service key): 25 orders across every status,
   plate survives purely as the fallback for a product with no picture. The owner
   asked to stop decorating real photographs — a sticker on top of a picture says
   the picture is decoration, and the whole point of the photos is credibility.
-- 27 of the 34 product photos were sourced, centre-cropped, resized to 640×640
+- 28 of the 34 product photos were sourced, centre-cropped, resized to 640×640
   JPEG and uploaded to the existing public `product-images` bucket at
   `seed/<slug>.jpg` **as the owner account** (`product_images_admin_write` needs
   `is_admin()`, so the anon key alone cannot write), then written into
@@ -81,12 +81,12 @@ and reading through RLS (not with a service key): 25 orders across every status,
   what allowed it. `supabase/demo-images.sql` (**new, development only**) is the
   same change as SQL and records the source and licence of every picture; it is
   safe to re-run.
-- **Seven products deliberately keep the emoji**: paneer, butter, mustard-oil,
-  chilli-powder, potato-chips, mixture-namkeen and coffee-powder. Their search
-  candidates were all the wrong thing (a watch for onion was the kind of result
-  that made a title check necessary), and a wrong photograph is worse than a drawn
-  one. Two more — `dishwash-bar` and `toothpaste` — only had marginal candidates
-  (a bath soap, a mockup) and are worth a second look.
+- **Six products deliberately keep the emoji**: paneer, butter, mustard-oil,
+  chilli-powder, mixture-namkeen and coffee-powder. Search candidates for them
+  were all the wrong thing — a chromograph watch for onion was the kind of result
+  that made a title check necessary before uploading anything. A wrong photograph
+  is worse than a drawn one. Two of the 28 are only marginal and worth a second
+  look: `dishwash-bar` (a bath soap) and `toothpaste` (a plain tube mockup).
 - `seed.sql` keeps `image_url` NULL and keeps every emoji: **the emoji is the
   fallback, not dead data.** A picture can always be swapped or removed and the tile
   still reads.
@@ -135,7 +135,7 @@ and reading through RLS (not with a service key): 25 orders across every status,
   one candidate per product from its title — the sandbox could not display the
   downloaded previews to check them. Treat `demo-images.sql` as a **starting point
   the owner should eyeball**, and use the admin panel's photo screen to replace
-  anything that is not the right thing. Seven products whose candidates all looked
+  anything that is not the right thing. The products whose candidates all looked
   wrong were left NULL on purpose, so the emoji shows instead of a misleading
   picture.
 - **Photos live in `demo-images.sql`, not `seed.sql`.** The seed file documents
