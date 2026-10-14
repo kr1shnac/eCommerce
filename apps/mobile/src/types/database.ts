@@ -93,6 +93,17 @@ export type Address = {
   updated_at: string;
 };
 
+/**
+ * A customer's saved product. `(user_id, product_id)` is the primary key, so a
+ * product is either saved or it is not — there is no "saved twice". The app
+ * toggles by inserting and deleting, never by updating a count.
+ */
+export type Favourite = {
+  user_id: string;
+  product_id: string;
+  created_at: string;
+};
+
 export type DeliveryZone = {
   id: string;
   store_id: string;
@@ -181,7 +192,38 @@ export type PlaceOrderError =
   | 'zone_not_served'
   | 'store_closed'
   | 'below_minimum'
-  | 'items_unavailable';
+  | 'items_unavailable'
+  // Coupon refusals. The database decides these, never the app (migration
+  // 20261014000004): the customer only ever sends the code.
+  | 'coupon_not_found'
+  | 'coupon_inactive'
+  | 'coupon_not_started'
+  | 'coupon_expired'
+  | 'coupon_used_up'
+  | 'coupon_min_order';
+
+/** A coupon the checkout screen can show before the order is placed. */
+export type CouponValidationResult =
+  | {
+      ok: true;
+      code: string;
+      discount_paise: number;
+      description_en?: string | null;
+      description_kn?: string | null;
+    }
+  | {
+      ok: false;
+      error: PlaceOrderError | 'empty_code' | 'not_logged_in';
+      min_order_paise?: number;
+    };
+
+/** A live code shown on the Home offers rail. No usage counts, no secrets. */
+export type ActiveOffer = {
+  code: string;
+  description_en: string | null;
+  description_kn: string | null;
+  min_order_paise: number;
+};
 
 /**
  * One line the shop cannot supply. `available` is what is actually on the shelf:
@@ -204,6 +246,8 @@ export type PlaceOrderResult =
       order_number: string;
       subtotal_paise?: number;
       delivery_fee_paise?: number;
+      discount_paise?: number;
+      coupon_code?: string | null;
       total_paise: number;
       /** True when this exact request had already been placed. */
       replayed: boolean;
@@ -212,7 +256,10 @@ export type PlaceOrderResult =
       ok: false;
       error: PlaceOrderError;
       items?: UnavailableItem[];
+      /** Smallest basket the SHOP accepts. */
       min_order_value_paise?: number;
+      /** Smallest basket this COUPON accepts. */
+      min_order_paise?: number;
       subtotal_paise?: number;
     };
 
@@ -253,6 +300,7 @@ type TableRowMap = {
   categories: Table<Category>;
   products: Table<Product>;
   addresses: Table<Address>;
+  favourites: Table<Favourite>;
   delivery_zones: Table<DeliveryZone>;
   store_settings: Table<StoreSettings>;
   orders: Table<Order>;
@@ -284,12 +332,35 @@ export type Database = {
           p_address_id: string;
           p_idempotency_key: string;
           p_note?: string | null;
+          p_coupon_code?: string | null;
         };
         Returns: PlaceOrderResult;
       };
       cancel_order: {
         Args: { p_order_id: string };
         Returns: CancelOrderResult;
+      };
+      /**
+       * Read-only coupon check for the checkout preview. The database computes
+       * the discount; a use is only counted when place_order() writes the order.
+       */
+      validate_coupon: {
+        Args: { p_store_id: string; p_code: string; p_subtotal_paise: number };
+        Returns: CouponValidationResult;
+      };
+      /** Live codes for the Home offers rail. Safe to call signed out. */
+      active_offers: {
+        Args: { p_store_id: string };
+        Returns: ActiveOffer[];
+      };
+      /**
+       * Make one of the caller's OWN addresses the default, clearing the previous
+       * one in the same call. Enforced by a partial unique index, so there can
+       * never be two default addresses (migration 20261014000003).
+       */
+      set_default_address: {
+        Args: { p_address_id: string };
+        Returns: boolean;
       };
     };
     Enums: {

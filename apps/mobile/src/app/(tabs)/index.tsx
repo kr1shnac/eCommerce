@@ -23,13 +23,13 @@ import { ThemedText } from '@/components/themed-text';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/ui/section-header';
-import { ThemeToggle } from '@/components/ui/theme-switch';
 import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCategories, useProducts } from '@/hooks/use-catalog';
-import { useAddresses } from '@/hooks/use-orders';
-import { useDeliveryZones, useStoreSettings } from '@/hooks/use-shop';
+import { useFavourites } from '@/hooks/use-favourites';
+import { useAddresses, useActiveOffers, useOrders } from '@/hooks/use-orders';
+import { useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
-import { localizedName } from '@/lib/localized';
+import { localizedDescription, localizedName } from '@/lib/localized';
 import { discountPercent, formatPaise } from '@/lib/money';
 import { isStoreOpen } from '@/lib/store-hours';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -62,10 +62,17 @@ export default function HomeScreen() {
   const categories = useCategories();
   const products = useProducts(null);
   const settings = useStoreSettings();
+  const store = useStore();
   const zones = useDeliveryZones();
   // Only ask for addresses when somebody is signed in; asking while signed out
   // is a wasted round trip that RLS answers with nothing.
   const addresses = useAddresses({ enabled: Boolean(session) });
+  // Personal shelves. Both are gated on being signed in for the same reason.
+  const favourites = useFavourites();
+  const orders = useOrders({ enabled: Boolean(session) });
+  // The codes on offer right now. Public on purpose: a visitor should see the
+  // deal before deciding to sign in.
+  const offers = useActiveOffers(store.data?.id ?? null);
 
   // Subscribe to the whole basket ONLY to tell FlatList to redraw. Each card
   // subscribes to its own product, so this does not re-render them all.
@@ -111,6 +118,33 @@ export default function HomeScreen() {
     }
     return map;
   }, [categories.data]);
+
+  // The customer's own shortlist, resolved against the catalogue we already
+  // fetched. Only items the shop can actually supply today (in stock).
+  const savedProducts = useMemo(() => {
+    const ids = new Set(favourites.data ?? []);
+    if (ids.size === 0) return [];
+    return (products.data ?? []).filter((product) => ids.has(product.id) && product.stock_qty > 0);
+  }, [favourites.data, products.data]);
+
+  // "Buy again": the distinct products on the customer's most recent orders,
+  // newest first, still on the shelf. Built from the order history rather than a
+  // separate table, so it is always in step with what they actually bought.
+  const buyAgainProducts = useMemo(() => {
+    const byId = new Map((products.data ?? []).map((product) => [product.id, product]));
+    const seen = new Set<string>();
+    const result: Product[] = [];
+    for (const order of orders.data ?? []) {
+      for (const item of order.order_items ?? []) {
+        if (!item.product_id || seen.has(item.product_id)) continue;
+        seen.add(item.product_id);
+        const product = byId.get(item.product_id);
+        if (product && product.stock_qty > 0) result.push(product);
+        if (result.length >= 10) return result;
+      }
+    }
+    return result;
+  }, [orders.data, products.data]);
 
   /** The best couple of true discounts, shown as the "market deals" rail. */
   const deals = useMemo(() => {
@@ -200,6 +234,43 @@ export default function HomeScreen() {
         </Card>
       ) : null}
 
+      {/* Live offers, straight from the database. Shown before the shelves: a
+          code is the reason to fill a basket. Hidden while searching, so it
+          never comes between the customer and what they typed. */}
+      {!isSearching && (offers.data?.length ?? 0) > 0 ? (
+        <>
+          <SectionHeader title={t('home.offersTitle')} style={styles.sectionTitle} />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.offerRail}>
+            {(offers.data ?? []).map((offer) => (
+              <View
+                key={offer.code}
+                style={[
+                  styles.offerCard,
+                  { backgroundColor: theme.successSoft, borderColor: theme.border },
+                ]}>
+                <View style={styles.offerCodeRow}>
+                  <Ionicons name="pricetag" size={16} color={theme.successInk} />
+                  <ThemedText
+                    type="smallBold"
+                    style={[styles.offerCode, { color: theme.successInk }]}>
+                    {offer.code}
+                  </ThemedText>
+                </View>
+                <ThemedText type="caption" style={{ color: theme.successInk }} numberOfLines={2}>
+                  {localizedDescription(offer, i18n.language === 'kn' ? 'kn' : 'en')}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  {t('home.offerMin', { amount: formatPaise(offer.min_order_paise) })}
+                </ThemedText>
+              </View>
+            ))}
+          </ScrollView>
+        </>
+      ) : null}
+
       <SectionHeader title={t('home.categoriesTitle')} style={styles.sectionTitle} />
       <ScrollView
         horizontal
@@ -252,6 +323,22 @@ export default function HomeScreen() {
         </>
       ) : null}
 
+      {!isSearching ? (
+        <ProductRail
+          title={t('home.buyAgainTitle')}
+          products={buyAgainProducts}
+          emojiByCategory={emojiByCategory}
+        />
+      ) : null}
+
+      {!isSearching ? (
+        <ProductRail
+          title={t('home.savedTitle')}
+          products={savedProducts}
+          emojiByCategory={emojiByCategory}
+        />
+      ) : null}
+
       <SectionHeader title={t('home.productsTitle')} style={styles.sectionTitle} />
     </View>
   );
@@ -272,7 +359,6 @@ export default function HomeScreen() {
       <OfflineBanner />
       <View style={[styles.brandBar, { paddingTop: insets.top + Spacing.two }]}>
         <BrandMark />
-        <ThemeToggle />
         <LanguageSwitch variant="toggle" />
       </View>
 
@@ -420,6 +506,40 @@ function zoneAreaName(
   return value?.trim() || zone.area_name_en?.trim() || null;
 }
 
+/** A horizontal shelf of full product cards, used for "Buy again" / "Saved". */
+function ProductRail({
+  title,
+  products,
+  emojiByCategory,
+}: {
+  title: string;
+  products: Product[];
+  emojiByCategory: Map<string, string>;
+}) {
+  if (products.length === 0) return null;
+
+  return (
+    <>
+      <SectionHeader title={title} style={styles.sectionTitle} />
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.rail}>
+        {products.map((product) => (
+          <View key={product.id} style={styles.railCard}>
+            <ProductCard
+              product={product}
+              fallbackEmoji={
+                product.category_id ? emojiByCategory.get(product.category_id) : undefined
+              }
+            />
+          </View>
+        ))}
+      </ScrollView>
+    </>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   flex: { flex: 1 },
@@ -478,6 +598,18 @@ const styles = StyleSheet.create({
   sectionTitle: { marginTop: Spacing.four, marginBottom: Spacing.two },
   chipsRow: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
   dealsRow: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
+  rail: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
+  railCard: { width: 160 },
+  offerRail: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
+  offerCard: {
+    width: 220,
+    gap: Spacing.one,
+    padding: Spacing.two + 2,
+    borderRadius: Radii.md,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  offerCodeRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  offerCode: { letterSpacing: 1.5 },
   deal: {
     width: 156,
     gap: 2,

@@ -184,7 +184,11 @@ Already largely built: Home (catalogue), Cart, Orders, Account.
 | Address-aware "delivering to" pill | Built | 2 |
 | `expo-image` for product photos | Built | 2 |
 | Sign-in with phone OTP | Built | — |
-| Saved addresses list + default + edit/delete | Partial (add + default only) | 2 |
+| Saved addresses list + default + edit/delete | Built | 2.5 |
+| Product detail page (tap a card) | Built | 2.5 |
+| Favourites ("Saved for later" rail) | Built | 2.5 |
+| "Buy again" rail from order history | Built | 2.5 |
+| Offers rail on Home + coupon at checkout | Built | 2.5 |
 | Razorpay (online payment) | **Missing** | 5 |
 | Push notifications ("order out for delivery") | **Missing** | 4 |
 | Live rider position on a map | **Missing** | 6 |
@@ -344,10 +348,31 @@ not "done" because code was written; it is done when it is proven.
 - Cart tab badge: **built** (`selectCartCount`, `tabBarBadge`).
 - Also built while here: "Call the shop", store-closed notice, address-aware
   "delivering to" pill, `expo-image` for product photos.
-- **Still open:** saved-address **management** — list with edit, delete and
-  choose-default. Today an address can be added and one is marked default at
-  creation, but there is no screen to edit or remove one. This is the remaining
-  Phase 2 item (gap audit §14).
+- **Still open:** nothing blocking. Saved-address management is now **built**
+  (see Phase 2.5).
+
+### Phase 2.5 — Customer depth — **DONE (2026-10-14)**
+- **Product detail** (`src/app/product/[id].tsx`): tap any card to open a page
+  with the large image, unit, price/MRP, discount and Add to cart. Kept
+  deliberately short — no DB `description` column, because a thin machine
+  translation would be worse than none (KUNIGAL.md).
+- **Favourites** (`20261014000002_favourites.sql`, `use-favourites.ts`): a
+  `(user_id, product_id)` heart, own-rows RLS, optimistic toggle with rollback.
+  Feeds a "Saved for later" rail on Home.
+- **"Buy again" rail**: derived from the customer's order history at render time,
+  no new table, so it can never drift from what they actually bought.
+- **Address management** (`20261014000003_address_one_default.sql`): list, edit,
+  delete and choose-default. One default per user is enforced by a partial unique
+  index plus `set_default_address(uuid)`, not by the app.
+- **Offers + coupons** (`20261014000004_coupons.sql`): `coupons` table,
+  `coupon_discount()` (the single copy of the arithmetic), `validate_coupon()`
+  for the checkout preview, `active_offers()` for the Home rail, and a 6th
+  `p_coupon_code` argument on `place_order()`. The app sends only the **code**;
+  the discount, floor, cap and minimum all come from Postgres (rule 9.1). Uses
+  are counted once, after the order row is written, with the coupon row locked
+  `for update` — a replayed request never counts twice.
+- Tests: `13_favourites`, `14_address_default`, `15_coupons` (all against real
+  PostgreSQL).
 
 ### Phase 3 — Realtime — **DONE (2026-10-13)**
 - Supabase Realtime subscription: rider waiting list updates live; customer
@@ -490,8 +515,8 @@ a claimed-but-not-built feature, or a launch blocker.
 - **Persisted offline catalogue.** §3.5 used to claim last-known prices render
   offline; corrected. The query cache is in-memory only — needs an async-storage
   persister.
-- **Saved-address management.** Add + default-on-create exist; **no edit, no
-  delete, no choose-default** screen. Phase 2 remainder.
+- **Saved-address management.** Built in Phase 2.5 (list, edit, delete,
+  choose-default; `supabase/migrations/20261014000003_address_one_default.sql`).
 - **Admin "Today" totals.** §4.3 lists an orders count, collected-cash total and
   most-ordered items. The board and team screens exist; **the money/today summary
   does not.** For a cash business the "how much did I collect today" number is
@@ -501,10 +526,9 @@ a claimed-but-not-built feature, or a launch blocker.
   not on the phone the owner actually carries.
 
 ### 14.3 Product features deliberately not built (and where they are planned)
-- **Product detail screen.** There is no per-product page (description, larger
-  image, add-from-detail). Cards add straight to the cart, which is right for a
-  village one-minute order — but a detail screen is expected by Blinkit/Zepto
-  users. Not in any phase yet; would be a small Phase 2.5.
+- **Product detail screen.** Built in Phase 2.5 (`src/app/product/[id].tsx`).
+  Deliberately omits a long description: there is no DB column for one, because a
+  thin machine-translated Kannada paragraph would read worse than none.
 - **Sign-in wall timing.** Browsing is open; sign-in is asked at checkout only —
   as planned (§3.3), listed here so it is not mistaken for a gap.
 - **Razorpay (Phase 5), push notifications (Phase 4), live rider map / background

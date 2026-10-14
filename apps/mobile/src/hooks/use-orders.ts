@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCartStore } from '@/store/cart-store';
 import { supabase } from '@/lib/supabase';
 import type {
+  ActiveOffer,
   Address,
   CancelOrderResult,
+  CouponValidationResult,
   Order,
   OrderItem,
   PlaceOrderError as PlaceOrderErrorCode,
@@ -22,6 +24,8 @@ export class PlaceOrderRejected extends Error {
   readonly code: PlaceOrderErrorCode;
   readonly items: UnavailableItem[];
   readonly minOrderPaise: number | null;
+  /** Smallest basket the applied COUPON accepts, when it is the reason. */
+  readonly couponMinOrderPaise: number | null;
 
   constructor(result: Extract<PlaceOrderResult, { ok: false }>) {
     super(result.error);
@@ -29,6 +33,7 @@ export class PlaceOrderRejected extends Error {
     this.code = result.error;
     this.items = result.items ?? [];
     this.minOrderPaise = result.min_order_value_paise ?? null;
+    this.couponMinOrderPaise = result.min_order_paise ?? null;
   }
 }
 
@@ -120,13 +125,72 @@ export function useAddAddress() {
   });
 }
 
+/**
+ * Change a saved address. Only the fields passed are written, so a phone number
+ * edit cannot accidentally blank the landmark.
+ */
+export function useUpdateAddress() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ id, ...changes }: { id: string } & Partial<NewAddress>) => {
+      const { data, error } = await supabase
+        .from('addresses')
+        .update(changes)
+        .eq('id', id)
+        .select('*')
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: addressKeys.list });
+    },
+  });
+}
+
+export function useDeleteAddress() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('addresses').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: addressKeys.list });
+    },
+  });
+}
+
+/**
+ * Promote an address to the default. Delegated to the database function so the
+ * "clear the old one, set the new one" happens in one transaction — a
+ * client-side two-step would briefly have zero defaults or trip the unique index.
+ */
+export function useSetDefaultAddress() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const { data, error } = await supabase.rpc('set_default_address', { p_address_id: id });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: addressKeys.list });
+    },
+  });
+}
+
 // -----------------------------------------------------------------------------
 // Orders
 // -----------------------------------------------------------------------------
 
-export function useOrders() {
+export function useOrders(options?: { enabled?: boolean }) {
   return useQuery<OrderWithItems[]>({
     queryKey: orderKeys.list,
+    enabled: options?.enabled ?? true,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('orders')
@@ -170,6 +234,7 @@ export function usePlaceOrder() {
       addressId: string;
       note: string | null;
       idempotencyKey: string;
+      couponCode?: string | null;
     }): Promise<Extract<PlaceOrderResult, { ok: true }>> => {
       const items = Object.entries(useCartStore.getState().items).map(([product_id, quantity]) => ({
         product_id,
@@ -182,6 +247,8 @@ export function usePlaceOrder() {
         p_address_id: input.addressId,
         p_idempotency_key: input.idempotencyKey,
         p_note: input.note,
+        // The code only. The discount comes back from the database.
+        p_coupon_code: input.couponCode ?? null,
       });
 
       if (error) throw error;
@@ -215,6 +282,59 @@ export function useCancelOrder() {
       await queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
       // Cancelling puts stock back on the shelf, so the catalogue is stale too.
       await queryClient.invalidateQueries({ queryKey: ['cart-products'] });
+    },
+  });
+}
+
+// -----------------------------------------------------------------------------
+// Coupons
+// -----------------------------------------------------------------------------
+
+export const offerKeys = {
+  list: (storeId: string) => ['offers', storeId] as const,
+};
+
+/**
+ * Ask the database what a code is worth, before placing the order.
+ *
+ * A mutation rather than a query: this runs when the customer taps Apply, not on
+ * every render, and it must never be cached — a code can expire between two
+ * attempts. The database computes the discount, so the number shown here is the
+ * same number place_order() will use (rule 9.1).
+ */
+export function useValidateCoupon() {
+  return useMutation({
+    mutationFn: async (input: {
+      storeId: string;
+      code: string;
+      subtotalPaise: number;
+    }): Promise<CouponValidationResult> => {
+      const { data, error } = await supabase.rpc('validate_coupon', {
+        p_store_id: input.storeId,
+        p_code: input.code,
+        p_subtotal_paise: input.subtotalPaise,
+      });
+      if (error) throw error;
+      if (!data || typeof data !== 'object') throw new Error('bad-validate-coupon-response');
+      return data;
+    },
+  });
+}
+
+/**
+ * The codes on offer right now, for the Home rail. Safe signed out: it exposes
+ * only the marketing wording, never usage counts.
+ */
+export function useActiveOffers(storeId: string | null) {
+  return useQuery<ActiveOffer[]>({
+    queryKey: offerKeys.list(storeId ?? 'none'),
+    enabled: Boolean(storeId),
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('active_offers', {
+        p_store_id: storeId as string,
+      });
+      if (error) throw error;
+      return (data ?? []) as ActiveOffer[];
     },
   });
 }

@@ -48,7 +48,11 @@
     "clearSearch": "ಹುಡುಕಾಟ ಅಳಿಸಿ",
     "noResults": "ನೀವು ಹುಡುಕಿದ ಸಾಮಾನು ಸಿಗಲಿಲ್ಲ",
     "closedTitle": "ಅಂಗಡಿ ಈಗ ಮುಚ್ಚಿದೆ",
-    "closedHint": "ಈಗ ನೋಡಿ, ಅಂಗಡಿ ತೆರೆದಾಗ ಆರ್ಡರ್ ಮಾಡಿ."
+    "closedHint": "ಈಗ ನೋಡಿ, ಅಂಗಡಿ ತೆರೆದಾಗ ಆರ್ಡರ್ ಮಾಡಿ.",
+    "buyAgainTitle": "ಮತ್ತೆ ತೆಗೆದುಕೊಳ್ಳಿ",
+    "savedTitle": "ಇಷ್ಟದ ಸಾಮಾನು",
+    "offersTitle": "ನಿಮಗಾಗಿ ಆಫರ್",
+    "offerMin": "{amount} ಮೇಲಿನ ಆರ್ಡರ್‌ಗೆ"
   },
   "cart": {
     "title": "ಬುಟ್ಟಿ",
@@ -171,7 +175,20 @@
     "labelFallback": "ವಿಳಾಸ",
     "labelHome": "ಮನೆ",
     "labelWork": "ಕೆಲಸದ ಜಾಗ",
-    "labelOther": "ಬೇರೆ"
+    "labelOther": "ಬೇರೆ",
+    "myAddresses": "ನನ್ನ ವಿಳಾಸಗಳು",
+    "editTitle": "ವಿಳಾಸ ಬದಲಿಸಿ",
+    "notFoundTitle": "ವಿಳಾಸ ಸಿಗಲಿಲ್ಲ",
+    "notFoundHint": "ಅದನ್ನು ತೆಗೆದಿರಬಹುದು. ವಿಳಾಸಗಳ ಪಟ್ಟಿಗೆ ಹೋಗಿ ನೋಡಿ.",
+    "edit": "ಬದಲಿಸಿ",
+    "remove": "ತೆಗೆಯಿರಿ",
+    "setDefault": "ಮುಖ್ಯ ವಿಳಾಸ ಮಾಡಿ",
+    "saveChanges": "ಬದಲಾವಣೆ ಉಳಿಸಿ",
+    "updateError": "ಬದಲಾವಣೆ ಉಳಿಯಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+    "deleteTitle": "ಈ ವಿಳಾಸ ತೆಗೆಯುವುದೇ?",
+    "deleteHint": "ಬೇಕಾದಾಗ ಮತ್ತೆ ಸೇರಿಸಬಹುದು.",
+    "deleteAction": "ವಿಳಾಸ ತೆಗೆಯಿರಿ",
+    "defaultError": "ಮುಖ್ಯ ವಿಳಾಸ ಬದಲಾಯಿಸಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
   },
   "checkout": {
     "title": "ಆರ್ಡರ್ ಖಚಿತಪಡಿಸಿ",
@@ -199,6 +216,24 @@
     "unavailableTitle": "ಅಂಗಡಿ ಸಿಗುತ್ತಿಲ್ಲ",
     "unavailableHint": "ಅಂಗಡಿಯ ವಿವರ ಬರಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
     "payOnDelivery": "ಆರ್ಡರ್ ಬಂದ ಮೇಲೆ ನಗದು ಕೊಡಿ.",
+    "couponTitle": "ಕೋಡ್ ಇದೆಯಾ?",
+    "couponPlaceholder": "ಕೋಡ್ ಬರೆಯಿರಿ",
+    "couponApply": "ಹಾಕಿ",
+    "couponRemove": "ಕೋಡ್ ತೆಗೆಯಿರಿ",
+    "couponSaved": "{amount} ಉಳಿತಾಯ ಆಯಿತು",
+    "couponDiscount": "ರಿಯಾಯಿತಿ ({code})",
+    "couponRemoved": "ಬುಟ್ಟಿ ಬದಲಾದ ಕಾರಣ ಕೋಡ್ ತೆಗೆದೆವು. ಬೇಕಾದರೆ ಮತ್ತೆ ಹಾಕಿ.",
+    "couponError": {
+      "coupon_not_found": "ಆ ಕೋಡ್ ಸಿಗಲಿಲ್ಲ.",
+      "coupon_inactive": "ಆ ಕೋಡ್ ಈಗ ಚಾಲ್ತಿಯಲ್ಲಿಲ್ಲ.",
+      "coupon_not_started": "ಆ ಕೋಡ್ ಇನ್ನೂ ಶುರುವಾಗಿಲ್ಲ.",
+      "coupon_expired": "ಆ ಕೋಡ್ ಮುಗಿದಿದೆ.",
+      "coupon_used_up": "ಆ ಕೋಡ್ ಪೂರ್ತಿ ಬಳಕೆಯಾಗಿದೆ.",
+      "coupon_min_order": "ಈ ಕೋಡ್ ಬಳಸಲು ಇನ್ನೂ {amount} ಸೇರಿಸಿ.",
+      "empty_code": "ಮೊದಲು ಕೋಡ್ ಬರೆಯಿರಿ.",
+      "not_logged_in": "ಕೋಡ್ ಬಳಸಲು ಸೈನ್ ಇನ್ ಮಾಡಿ.",
+      "generic": "ಆ ಕೋಡ್ ನೋಡಲಾಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
+    },
     "error": {
       "not_logged_in": "ಆರ್ಡರ್ ಮಾಡಲು ಸೈನ್ ಇನ್ ಮಾಡಿ.",
       "invalid_idempotency_key": "ಈ ಆರ್ಡರ್ ಈಗಾಗಲೇ ಆಗಿದೆ. ಆರ್ಡರ್ ಟ್ಯಾಬ್ ನೋಡಿ.",
@@ -210,6 +245,12 @@
       "store_closed": "ಅಂಗಡಿ ಈಗ ಮುಚ್ಚಿದೆ. ನಂತರ ಪ್ರಯತ್ನಿಸಿ.",
       "below_minimum": "ಕನಿಷ್ಠ ಆರ್ಡರ್ ಆಗಿಲ್ಲ.",
       "items_unavailable": "ಕೆಲವು ಸಾಮಾನು ಸ್ಟಾಕ್‌ನಲ್ಲಿಲ್ಲ.",
+      "coupon_not_found": "ಈ ಆರ್ಡರ್‌ಗೆ ಆ ಕೋಡ್ ಸರಿಯಿಲ್ಲ.",
+      "coupon_inactive": "ಆ ಕೋಡ್ ಈಗ ಚಾಲ್ತಿಯಲ್ಲಿಲ್ಲ.",
+      "coupon_not_started": "ಆ ಕೋಡ್ ಇನ್ನೂ ಶುರುವಾಗಿಲ್ಲ.",
+      "coupon_expired": "ಆ ಕೋಡ್ ಮುಗಿದಿದೆ.",
+      "coupon_used_up": "ಆ ಕೋಡ್ ಪೂರ್ತಿ ಬಳಕೆಯಾಗಿದೆ.",
+      "coupon_min_order": "ನಿಮ್ಮ ಬುಟ್ಟಿ ಈ ಕೋಡ್‌ನ ಕನಿಷ್ಠಕ್ಕಿಂತ ಕಡಿಮೆ ಇದೆ.",
       "unknown": "ಆರ್ಡರ್ ಆಗಲಿಲ್ಲ. ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ."
     }
   },
@@ -249,6 +290,29 @@
   },
   "support": {
     "call": "ಅಂಗಡಿಗೆ ಕರೆ ಮಾಡಿ"
+  },
+  "favourite": {
+    "add": "{name} ಇಷ್ಟದ ಪಟ್ಟಿಗೆ ಸೇರಿಸಿ",
+    "remove": "{name} ಇಷ್ಟದ ಪಟ್ಟಿಯಿಂದ ತೆಗೆಯಿರಿ",
+    "emptyTitle": "ಇನ್ನೂ ಏನೂ ಉಳಿಸಿಲ್ಲ",
+    "emptyHint": "ನೀವು ಉಳಿಸಿದ ಸಾಮಾನು ಇಲ್ಲಿ ಕಾಣುತ್ತದೆ."
+  },
+  "product": {
+    "open": "{name} ತೆರೆಯಿರಿ",
+    "save": "{off}% ಉಳಿತಾಯ",
+    "inStock": "ಸಿಗುತ್ತದೆ",
+    "lowStock": "ಬರೀ {count} ಉಳಿದಿದೆ",
+    "outOfStock": "ಮುಗಿಯಿತು",
+    "outOfStockHint": "ಈ ಸಾಮಾನು ಸ್ವಲ್ಪ ದಿನದಲ್ಲಿ ಮತ್ತೆ ಬರುತ್ತದೆ.",
+    "alsoLike": "ಇವೂ ಬೇಕಾಗಬಹುದು",
+    "errorTitle": "ಈ ಸಾಮಾನು ಬರಲಿಲ್ಲ",
+    "errorHint": "ಸಂಪರ್ಕ ನೋಡಿ, ಮತ್ತೆ ಪ್ರಯತ್ನಿಸಿ.",
+    "notFoundTitle": "ಈ ಸಾಮಾನು ಇಲ್ಲಿ ಇಲ್ಲ",
+    "notFoundHint": "ಅದನ್ನು ಅಂಗಡಿಯಿಂದ ತೆಗೆದಿರಬಹುದು.",
+    "backToShop": "ಅಂಗಡಿಗೆ ಹೋಗಿ",
+    "assuranceCash": "ಬಂದಾಗ ನಗದು",
+    "assuranceFresh": "ಅಂಗಡಿಯಿಂದ ತಾಜಾ",
+    "assuranceFast": "ಬೇಗ ಮನೆಗೆ"
   },
   "action": {
     "confirm": "ಆರ್ಡರ್ ಒಪ್ಪಿಕೊಳ್ಳಿ",

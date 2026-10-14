@@ -14,18 +14,26 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Radii, Spacing } from '@/constants/theme';
-import { useAddAddress } from '@/hooks/use-orders';
+import {
+  useAddAddress,
+  useAddresses,
+  useSetDefaultAddress,
+  useUpdateAddress,
+} from '@/hooks/use-orders';
 import { useDeliveryZones } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedName } from '@/lib/localized';
+import { useAuthStore } from '@/store/auth-store';
+import type { Address } from '@/types/database';
 
 /**
- * Add a delivery address.
+ * Add OR edit a delivery address.
  *
  * The pincode is checked against the shop's delivery zones as the customer
  * types, so somebody in a village the shop does not serve finds out before they
@@ -36,62 +44,134 @@ import { localizedName } from '@/lib/localized';
  * box, because typing a word is exactly the thing this audience should not have
  * to do twice. The chosen label is stored as the customer typed it — it is
  * their own name for their own place, so it is not re-translated later.
+ *
+ * "Make this my default" is a single row, and the actual switch is done by the
+ * database (set_default_address), so two addresses can never both be default
+ * (migration 20261014000003).
  */
 const LABEL_KEYS = ['address.labelHome', 'address.labelWork', 'address.labelOther'] as const;
 
-export default function NewAddressScreen() {
+export default function AddressScreen() {
+  const { t } = useTranslation();
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ pick?: string; id?: string }>();
+
+  const session = useAuthStore((state) => state.session);
+  const addresses = useAddresses({ enabled: Boolean(session) });
+
+  const editing = Boolean(params.id);
+  const existing = params.id ? (addresses.data ?? []).find((row) => row.id === params.id) : undefined;
+
+  const header = (title: string, onBack: () => void) => (
+    <View style={[styles.headerRow, { paddingTop: insets.top + Spacing.two }]}>
+      <IconButton icon="arrow-back" label={t('common.back')} onPress={onBack} />
+      <ThemedText type="subtitle">{title}</ThemedText>
+    </View>
+  );
+
+  const router = useRouter();
+
+  if (editing && addresses.isLoading) {
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
+        <OfflineBanner />
+        {header(t('address.editTitle'), () => router.back())}
+        <LoadingState />
+      </View>
+    );
+  }
+
+  if (editing && !existing) {
+    return (
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
+        <OfflineBanner />
+        {header(t('address.editTitle'), () => router.back())}
+        <StateMessage title={t('address.notFoundTitle')} hint={t('address.notFoundHint')} />
+      </View>
+    );
+  }
+
+  return (
+    <AddressForm
+      key={existing?.id ?? 'new'}
+      existing={existing}
+      pick={params.pick === '1'}
+    />
+  );
+}
+
+function AddressForm({ existing, pick }: { existing?: Address; pick: boolean }) {
   const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ pick?: string }>();
 
   const zones = useDeliveryZones();
   const addAddress = useAddAddress();
+  const updateAddress = useUpdateAddress();
+  const setDefault = useSetDefaultAddress();
 
-  const [label, setLabel] = useState<string>(t('address.labelHome'));
-  const [fullName, setFullName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [line1, setLine1] = useState('');
-  const [line2, setLine2] = useState('');
-  const [landmark, setLandmark] = useState('');
-  const [city, setCity] = useState('Kunigal');
-  const [pincode, setPincode] = useState('');
+  const saving = addAddress.isPending || updateAddress.isPending || setDefault.isPending;
+  const saveError = addAddress.isError || updateAddress.isError || setDefault.isError;
+
+  const [label, setLabel] = useState<string>(existing?.label ?? t('address.labelHome'));
+  const [fullName, setFullName] = useState(existing?.full_name ?? '');
+  const [phone, setPhone] = useState(existing?.phone ?? '');
+  const [line1, setLine1] = useState(existing?.line1 ?? '');
+  const [line2, setLine2] = useState(existing?.line2 ?? '');
+  const [landmark, setLandmark] = useState(existing?.landmark ?? '');
+  const [city, setCity] = useState(existing?.city ?? 'Kunigal');
+  const [pincode, setPincode] = useState(existing?.pincode ?? '');
+  const [isDefault, setIsDefault] = useState(existing?.is_default ?? false);
   const [touched, setTouched] = useState(false);
 
   const pincodeValue = pincode.trim();
-  const zone = zones.data?.find((candidate) => candidate.pincode === pincodeValue);
-  const pincodeLooksReal = /^\d{6}$/.test(pincodeValue);
-  const isServed = zone !== undefined;
-
+  const zone = zones.data?.find((row) => row.pincode === pincodeValue);
   const isValid =
     fullName.trim().length >= 2 &&
     phone.replace(/\D/g, '').length >= 10 &&
     line1.trim().length >= 4 &&
     city.trim().length >= 2 &&
-    pincodeLooksReal &&
-    isServed;
+    pincodeValue.length >= 6;
 
   const onSave = async () => {
     setTouched(true);
-    if (!isValid || addAddress.isPending) return;
+    if (!isValid || saving) return;
+
+    const fields = {
+      label: label.trim() || t('address.labelHome'),
+      full_name: fullName.trim(),
+      phone: phone.trim(),
+      line1: line1.trim(),
+      line2: line2.trim() || null,
+      landmark: landmark.trim() || null,
+      city: city.trim(),
+      pincode: pincodeValue,
+    };
 
     try {
-      const saved = await addAddress.mutateAsync({
-        label: label.trim() || t('address.labelHome'),
-        full_name: fullName.trim(),
-        phone: phone.trim(),
-        line1: line1.trim(),
-        line2: line2.trim() || null,
-        landmark: landmark.trim() || null,
-        city: city.trim(),
-        pincode: pincodeValue,
-      });
+      // The default flag is written by set_default_address(), never as part of
+      // the insert/update, so the one-default index is never tripped by a plain
+      // "save" that happens to carry is_default: true.
+      if (existing) {
+        await updateAddress.mutateAsync({ id: existing.id, ...fields });
+        if (isDefault && !existing.is_default) {
+          await setDefault.mutateAsync(existing.id);
+        }
+        router.back();
+        return;
+      }
+
+      const created = await addAddress.mutateAsync(fields);
+      if (isDefault && created) {
+        await setDefault.mutateAsync(created.id);
+      }
 
       // Send the new address straight back to checkout, already ticked, when
-      // that is who asked for it. Otherwise go back to the cart.
-      if (params.pick === '1') {
-        router.replace({ pathname: '/checkout', params: { addressId: (saved as any)?.id } });
+      // that is who asked for it. Otherwise go back.
+      if (pick && created) {
+        router.replace({ pathname: '/checkout', params: { addressId: created.id } });
       } else {
         router.back();
       }
@@ -123,15 +203,14 @@ export default function NewAddressScreen() {
         keyboardType={options?.keyboardType ?? 'default'}
         maxLength={options?.maxLength}
         autoCapitalize="words"
-        editable={!addAddress.isPending}
+        editable={!saving}
         accessibilityLabel={t(labelKey)}
         style={[
           styles.input,
           {
             color: theme.text,
             backgroundColor: theme.backgroundElement,
-            borderColor:
-              options?.invalid && touched ? theme.danger : theme.border,
+            borderColor: options?.invalid && touched ? theme.danger : theme.border,
           },
         ]}
       />
@@ -145,7 +224,9 @@ export default function NewAddressScreen() {
       <OfflineBanner />
       <View style={[styles.headerRow, { paddingTop: insets.top + Spacing.two }]}>
         <IconButton icon="arrow-back" label={t('common.back')} onPress={() => router.back()} />
-        <ThemedText type="subtitle">{t('address.title')}</ThemedText>
+        <ThemedText type="subtitle">
+          {existing ? t('address.editTitle') : t('address.title')}
+        </ThemedText>
       </View>
 
       <ScrollView
@@ -166,13 +247,12 @@ export default function NewAddressScreen() {
                   accessibilityRole="radio"
                   accessibilityState={{ selected: active }}
                   accessibilityLabel={value}
-                  style={({ pressed }) => [
+                  style={[
                     styles.labelChip,
                     {
                       backgroundColor: active ? theme.accent : theme.backgroundElement,
                       borderColor: active ? theme.accent : theme.border,
                     },
-                    pressed && styles.pressed,
                   ]}>
                   <ThemedText
                     type="smallBold"
@@ -211,22 +291,22 @@ export default function NewAddressScreen() {
               placeholder: 'address.pincodePlaceholder',
               keyboardType: 'number-pad',
               maxLength: 6,
-              invalid: !pincodeLooksReal,
+              invalid: pincodeValue.length < 6,
             })}
           </View>
         </View>
 
-        {pincodeLooksReal ? (
-          isServed ? (
+        {pincodeValue.length >= 6 ? (
+          zone ? (
             <Card tone="accent" style={styles.zoneCard}>
               <Ionicons name="checkmark-circle" size={20} color={theme.accent} />
               <ThemedText type="smallBold" style={[styles.flex, { color: theme.accent }]}>
                 {t('address.servedHere', {
                   area: localizedName({
-                    name_en: zone?.area_name_en ?? '',
-                    name_kn: zone?.area_name_kn ?? null,
+                    name_en: zone.area_name_en ?? '',
+                    name_kn: zone.area_name_kn,
                   }),
-                  eta: zone?.eta_minutes ?? 0,
+                  eta: zone.eta_minutes ?? 0,
                 })}
               </ThemedText>
             </Card>
@@ -240,17 +320,31 @@ export default function NewAddressScreen() {
           )
         ) : null}
 
-        {addAddress.isError ? (
+        <Pressable
+          onPress={() => setIsDefault((value) => !value)}
+          accessibilityRole="checkbox"
+          accessibilityState={{ checked: isDefault }}
+          accessibilityLabel={t('address.setDefault')}
+          style={styles.defaultRow}>
+          <Ionicons
+            name={isDefault ? 'checkbox' : 'square-outline'}
+            size={24}
+            color={isDefault ? theme.accent : theme.textSecondary}
+          />
+          <ThemedText style={styles.flex}>{t('address.setDefault')}</ThemedText>
+        </Pressable>
+
+        {saveError ? (
           <ThemedText type="small" style={{ color: theme.danger, textAlign: 'center' }}>
-            {t('address.saveError')}
+            {existing ? t('address.updateError') : t('address.saveError')}
           </ThemedText>
         ) : null}
 
         <Button
-          label={addAddress.isPending ? t('common.pleaseWait') : t('address.save')}
+          label={saving ? t('common.pleaseWait') : existing ? t('address.saveChanges') : t('address.save')}
           size="lg"
           fullWidth
-          busy={addAddress.isPending}
+          busy={saving}
           disabled={!isValid}
           onPress={() => void onSave()}
           style={styles.saveButton}
@@ -297,6 +391,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   zoneCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  defaultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    minHeight: 44,
+  },
   saveButton: { marginTop: Spacing.two },
-  pressed: { opacity: 0.8 },
 });

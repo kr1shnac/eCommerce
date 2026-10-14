@@ -96,6 +96,9 @@ and why.
 | Landmark | **ಗುರುತು** | "A mark to find the house." |
 | Default address | **ಮುಖ್ಯ ವಿಳಾಸ** | `ಡಿಫಾಲ್ಟ್` is a settings word, not a street word. |
 | Discount | **ರಿಯಾಯಿತಿ** | The word on every shop board. |
+| Offer / deal | **ಆಫರ್** | The word on every banner and in speech. `ವಿಶೇಷ` works as an adjective, but `ಆಫರ್` alone is what a customer says. |
+| Coupon code | **ಕೋಡ್** | "Code" is understood; `ರಿಯಾಯಿತಿ ಕೋಡ್` in full when a sentence needs it. Not `ಕೂಪನ್`, which is catalogue-speak. |
+| You saved | **ಉಳಿತಾಯ ಆಯಿತು** | "A saving happened" — plain, already-done. Not `ನೀವು ಉಳಿಸಿದ್ದೀರಿ`, which sounds like a bank. |
 | Placed (status) | **ಆರ್ಡರ್ ಆಗಿದೆ** | Reads as a sentence, as a chip. |
 | Confirmed | **ಅಂಗಡಿ ಒಪ್ಪಿಕೊಂಡಿದೆ** | "The shop accepted it." Reassures. |
 | Packing | **ಸಿದ್ಧವಾಗುತ್ತಿದೆ** | "It is getting ready." |
@@ -125,10 +128,13 @@ English, and the English should be improved to match where it is weak:
 ## 6. Screen-by-screen intent
 
 - **Home.** "The shop is open, here is what we have, what do you want?"
-  The address pill names the customer's own area, not a generic town.
+  The address pill names the customer's own area, not a generic town. Live offers
+  appear before the shelves — a code is the reason to fill a basket — but never
+  while the customer is searching.
 - **Cart.** "This is your basket, this is the total, continue when ready."
-- **Checkout.** "Where to, how you will pay, any word for the shop, then
-  ಆರ್ಡರ್ ಮಾಡಿ."
+- **Checkout.** "Where to, how you will pay, any code you have, any word for the
+  shop, then ಆರ್ಡರ್ ಮಾಡಿ." The code is the customer's own words; the discount
+  that appears is the shop's, and it says how much was saved.
 - **Orders.** "Where is my bag" first (status in words a person says), then the
   number to read out, then reorder.
 - **Rider.** Brisk and practical, like a work instruction on a bike phone mount.

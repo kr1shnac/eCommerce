@@ -48,7 +48,11 @@
     "clearSearch": "Clear search",
     "noResults": "No items match your search",
     "closedTitle": "The shop is closed right now",
-    "closedHint": "You can look around, and order when it opens."
+    "closedHint": "You can look around, and order when it opens.",
+    "buyAgainTitle": "Buy again",
+    "savedTitle": "Saved for later",
+    "offersTitle": "Offers for you",
+    "offerMin": "on orders above {amount}"
   },
   "cart": {
     "title": "Cart",
@@ -171,7 +175,20 @@
     "labelFallback": "Address",
     "labelHome": "Home",
     "labelWork": "Work",
-    "labelOther": "Other"
+    "labelOther": "Other",
+    "myAddresses": "My addresses",
+    "editTitle": "Edit address",
+    "notFoundTitle": "Address not found",
+    "notFoundHint": "It may have been removed. Go back to your address list.",
+    "edit": "Edit",
+    "remove": "Remove",
+    "setDefault": "Set as default",
+    "saveChanges": "Save changes",
+    "updateError": "Could not save the changes. Please try again.",
+    "deleteTitle": "Remove this address?",
+    "deleteHint": "You can add it again any time.",
+    "deleteAction": "Remove address",
+    "defaultError": "Could not change the default address. Please try again."
   },
   "checkout": {
     "title": "Checkout",
@@ -199,6 +216,24 @@
     "unavailableTitle": "Shop unavailable",
     "unavailableHint": "Could not load the shop details. Try again.",
     "payOnDelivery": "You will pay cash when your order is delivered.",
+    "couponTitle": "Have a code?",
+    "couponPlaceholder": "Enter code",
+    "couponApply": "Apply",
+    "couponRemove": "Remove code",
+    "couponSaved": "You saved {amount}",
+    "couponDiscount": "Discount ({code})",
+    "couponRemoved": "Your basket changed, so the code was removed. Apply it again if you like.",
+    "couponError": {
+      "coupon_not_found": "We could not find that code.",
+      "coupon_inactive": "That code is not active.",
+      "coupon_not_started": "That code is not active yet.",
+      "coupon_expired": "That code has expired.",
+      "coupon_used_up": "That code has been fully used.",
+      "coupon_min_order": "Add {amount} more to use this code.",
+      "empty_code": "Enter a code first.",
+      "not_logged_in": "Please sign in to use a code.",
+      "generic": "Could not check that code. Please try again."
+    },
     "error": {
       "not_logged_in": "Please sign in to place your order.",
       "invalid_idempotency_key": "This order was already submitted. Check your Orders tab.",
@@ -210,6 +245,12 @@
       "store_closed": "The shop is closed right now. Try again later.",
       "below_minimum": "Minimum order not met.",
       "items_unavailable": "Some items are out of stock or unavailable.",
+      "coupon_not_found": "That code was not valid for this order.",
+      "coupon_inactive": "That code is not active.",
+      "coupon_not_started": "That code is not active yet.",
+      "coupon_expired": "That code has expired.",
+      "coupon_used_up": "That code has been fully used.",
+      "coupon_min_order": "Your basket is below this code's minimum.",
       "unknown": "Could not place the order. Please try again."
     }
   },
@@ -249,6 +290,29 @@
   },
   "support": {
     "call": "Call the shop"
+  },
+  "favourite": {
+    "add": "Save {name}",
+    "remove": "Remove {name} from saved",
+    "emptyTitle": "Nothing saved yet",
+    "emptyHint": "Your saved items will show up here."
+  },
+  "product": {
+    "open": "Open {name}",
+    "save": "Save {off}%",
+    "inStock": "In stock",
+    "lowStock": "Only {count} left",
+    "outOfStock": "Out of stock",
+    "outOfStockHint": "This item will be back on the shelf soon.",
+    "alsoLike": "You may also like",
+    "errorTitle": "Could not load this item",
+    "errorHint": "Check your connection and try again.",
+    "notFoundTitle": "This item is no longer here",
+    "notFoundHint": "It may have been taken off the shop's shelf.",
+    "backToShop": "Back to the shop",
+    "assuranceCash": "Cash on delivery",
+    "assuranceFresh": "Fresh from the shop",
+    "assuranceFast": "Reaches you fast"
   },
   "action": {
     "confirm": "Accept order",

@@ -15,7 +15,12 @@ import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCart } from '@/hooks/use-cart';
-import { PlaceOrderRejected, useAddresses, usePlaceOrder } from '@/hooks/use-orders';
+import {
+  PlaceOrderRejected,
+  useAddresses,
+  usePlaceOrder,
+  useValidateCoupon,
+} from '@/hooks/use-orders';
 import { previewFee, useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { makeIdempotencyKey } from '@/lib/idempotency';
@@ -54,12 +59,23 @@ export default function CheckoutScreen() {
   const zones = useDeliveryZones();
   const addresses = useAddresses();
   const placeOrder = usePlaceOrder();
+  const validateCoupon = useValidateCoupon();
 
   const [addressId, setAddressId] = useState<string | null>(params.addressId ?? null);
   const [note, setNote] = useState('');
   const [idempotencyKey] = useState(makeIdempotencyKey);
   const [blockedCode, setBlockedCode] = useState<PlaceOrderErrorCode | null>(null);
   const [now, setNow] = useState(() => new Date());
+
+  // Coupon state. `applied` holds only what the DATABASE said the code is worth,
+  // and the basket size it was checked against. Nothing is recomputed here.
+  const [couponInput, setCouponInput] = useState('');
+  const [applied, setApplied] = useState<{
+    code: string;
+    discountPaise: number;
+    subtotalPaise: number;
+  } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   const list = useMemo(() => addresses.data ?? [], [addresses.data]);
 
@@ -96,7 +112,58 @@ export default function CheckoutScreen() {
   const minOrderPaise = settings.data?.min_order_value_paise ?? 0;
   const freeOverPaise = settings.data?.free_delivery_above_paise ?? null;
 
-  const totalPaise = cart.subtotalPaise + (fee.deliveryFeePaise ?? 0);
+  // A code is tied to the basket it was checked against. If the basket changes,
+  // the code is stale: its minimum may no longer be met or its cap may differ.
+  // Rather than show a discount the database will refuse, treat it as gone and
+  // say so — derived, so no effect and no cascading render (rule 9.1).
+  const couponIsStale = applied !== null && applied.subtotalPaise !== cart.subtotalPaise;
+  const activeCoupon = couponIsStale ? null : applied;
+  const discountPaise = activeCoupon?.discountPaise ?? 0;
+  const totalPaise = cart.subtotalPaise + (fee.deliveryFeePaise ?? 0) - discountPaise;
+  const couponNotice = couponError ?? (couponIsStale ? t('checkout.couponRemoved') : null);
+
+  const couponMessage = (code: string, minPaise: number | null) =>
+    code === 'coupon_min_order'
+      ? t('checkout.couponError.coupon_min_order', { amount: formatPaise(minPaise ?? 0) })
+      : t(`checkout.couponError.${code}`);
+
+  const onApplyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code || !store.data || validateCoupon.isPending) return;
+
+    setCouponError(null);
+    try {
+      const result = await validateCoupon.mutateAsync({
+        storeId: store.data.id,
+        code,
+        subtotalPaise: cart.subtotalPaise,
+      });
+
+      if (!result.ok) {
+        setApplied(null);
+        setCouponError(couponMessage(result.error, result.min_order_paise ?? null));
+        return;
+      }
+
+      setApplied({
+        code: result.code,
+        discountPaise: result.discount_paise,
+        subtotalPaise: cart.subtotalPaise,
+      });
+      setCouponInput('');
+    } catch (error) {
+      // A failed check is an ordinary state, never a crash and never raw text.
+      console.warn('[checkout] could not check the coupon', error);
+      setApplied(null);
+      setCouponError(t('checkout.couponError.generic'));
+    }
+  };
+
+  const onRemoveCoupon = () => {
+    setApplied(null);
+    setCouponError(null);
+    setCouponInput('');
+  };
 
   const reasons: string[] = [];
   if (cart.lineCount === 0) reasons.push(t('checkout.emptyCart'));
@@ -122,6 +189,9 @@ export default function CheckoutScreen() {
         note: note.trim() || null,
         // The SAME key for every retry of this basket.
         idempotencyKey,
+        // Only the CODE. The database recomputes the discount and refuses the
+        // order if the code is no longer valid (rule 9.1).
+        couponCode: activeCoupon?.code ?? null,
       });
 
       router.replace({ pathname: '/order/[id]', params: { id: result.order_id, placed: '1' } });
@@ -132,6 +202,14 @@ export default function CheckoutScreen() {
         if (error.code === 'items_unavailable') {
           cart.applyUnavailable(error.items);
           router.replace('/(tabs)/cart');
+          return;
+        }
+
+        // A coupon the shop refused: drop it and explain, rather than leave a
+        // discount on screen the database will not honour.
+        if (error.code.startsWith('coupon_')) {
+          setApplied(null);
+          setCouponError(couponMessage(error.code, error.couponMinOrderPaise));
           return;
         }
 
@@ -278,6 +356,17 @@ export default function CheckoutScreen() {
             </ThemedText>
           </View>
 
+          {activeCoupon ? (
+            <View style={styles.summaryLine}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('checkout.couponDiscount', { code: activeCoupon.code })}
+              </ThemedText>
+              <ThemedText type="small" style={{ color: theme.successInk }}>
+                {`− ${formatPaise(activeCoupon.discountPaise)}`}
+              </ThemedText>
+            </View>
+          ) : null}
+
           <View style={styles.totalLine}>
             <ThemedText type="bodyStrong">{t('checkout.total')}</ThemedText>
             <ThemedText type="price">{formatPaise(totalPaise)}</ThemedText>
@@ -287,6 +376,62 @@ export default function CheckoutScreen() {
             <ThemedText type="caption" themeColor="textSecondary">
               {t('checkout.freeDeliveryHint', { amount: formatPaise(freeOverPaise) })}
             </ThemedText>
+          ) : null}
+        </Card>
+
+        <ThemedText type="heading" style={styles.sectionTitle}>
+          {t('checkout.couponTitle')}
+        </ThemedText>
+        <Card style={styles.section}>
+          {activeCoupon ? (
+            <View style={styles.couponApplied}>
+              <Ionicons name="pricetag" size={20} color={theme.successInk} />
+              <View style={styles.flexColumn}>
+                <ThemedText type="smallBold" style={{ color: theme.successInk }}>
+                  {activeCoupon.code}
+                </ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  {t('checkout.couponSaved', { amount: formatPaise(activeCoupon.discountPaise) })}
+                </ThemedText>
+              </View>
+              <IconButton icon="close" label={t('checkout.couponRemove')} onPress={onRemoveCoupon} />
+            </View>
+          ) : (
+            <View style={styles.couponRow}>
+              <TextInput
+                value={couponInput}
+                onChangeText={(text) => setCouponInput(text.toUpperCase().slice(0, 20))}
+                placeholder={t('checkout.couponPlaceholder')}
+                placeholderTextColor={theme.textSecondary}
+                autoCapitalize="characters"
+                autoCorrect={false}
+                editable={!validateCoupon.isPending && !placeOrder.isPending}
+                accessibilityLabel={t('checkout.couponTitle')}
+                style={[
+                  styles.couponInput,
+                  {
+                    color: theme.text,
+                    borderColor: theme.border,
+                    backgroundColor: theme.backgroundElement,
+                  },
+                ]}
+              />
+              <Button
+                label={t('checkout.couponApply')}
+                busy={validateCoupon.isPending}
+                disabled={couponInput.trim().length === 0 || !store.isSuccess}
+                onPress={() => void onApplyCoupon()}
+              />
+            </View>
+          )}
+
+          {couponNotice ? (
+            <View style={styles.errorRow}>
+              <Ionicons name="alert-circle-outline" size={15} color={theme.danger} />
+              <ThemedText type="caption" style={[styles.flex, { color: theme.danger }]}>
+                {couponNotice}
+              </ThemedText>
+            </View>
           ) : null}
         </Card>
 
@@ -434,6 +579,17 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   cod: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  couponApplied: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  couponRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  couponInput: {
+    flex: 1,
+    minHeight: 48,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radii.lg,
+    paddingHorizontal: Spacing.three,
+    fontSize: 15,
+    letterSpacing: 1,
+  },
   note: {
     minHeight: 88,
     borderWidth: StyleSheet.hairlineWidth,

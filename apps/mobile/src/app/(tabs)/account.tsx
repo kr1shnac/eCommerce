@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CallShop } from '@/components/call-shop';
@@ -86,6 +86,18 @@ export default function AccountScreen() {
           )}
         </View>
 
+        {session ? (
+          <Pressable
+            onPress={() => router.push('/addresses')}
+            accessibilityRole="button"
+            accessibilityLabel={t('address.myAddresses')}
+            style={styles.navRow}>
+            <Ionicons name="location-outline" size={22} color={theme.accent} />
+            <ThemedText style={styles.flex}>{t('address.myAddresses')}</ThemedText>
+            <Ionicons name="chevron-forward" size={20} color={theme.textTertiary} />
+          </Pressable>
+        ) : null}
+
         <SectionHeader title={t('common.appearance')} style={styles.sectionHeader} />
         <Card style={styles.settingCard}>
           <ThemeSwitch />
@@ -128,5 +140,11 @@ const styles = StyleSheet.create({
   actionSlot: { marginTop: Spacing.one },
   sectionHeader: { marginTop: Spacing.three },
   settingCard: { gap: Spacing.two },
+  navRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    minHeight: 44,
+  },
   callSlot: { marginTop: Spacing.three },
 });

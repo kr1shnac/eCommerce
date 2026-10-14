@@ -6,6 +6,138 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-14 — Phase 2.5: customer depth (product page, favourites, addresses, offers + coupons)
+
+*(second session of the day; the entrance below is the morning's design-system work)*
+
+### What changed and why
+
+Phase 2.5 was the "make the customer face feel complete" pass: five small
+features, each built so the **database stays the authority** and both languages
+ship together. No new native module, so everything still runs in Expo Go.
+
+**Product detail** (`apps/mobile/src/app/product/[id].tsx`)
+- Tap any card to open a page with the large image, unit, price/MRP, discount
+  and Add to cart; a heart sits in the corner. `useProduct` + `catalogKeys.product`
+  added to `use-catalog.ts`; `product-card.tsx` rewritten so the card opens the
+  page and the Add pill stays its own tap target.
+- Deliberately **no long description**: there is no DB `description` column,
+  because a thin machine-translated Kannada paragraph would read worse than none
+  (KUNIGAL.md is the voice authority).
+
+**Favourites** (`20261014000002_favourites.sql`, `use-favourites.ts`,
+`components/favourite-button.tsx`)
+- A `(user_id, product_id)` heart, own-rows RLS — the same shape as `addresses`.
+  `useToggleFavourite` is optimistic and rolls back cleanly on error. The ids
+  feed a **"Saved for later"** rail on Home.
+
+**"Buy again" rail** (`(tabs)/index.tsx`)
+- Built from the customer's own order history at render time, newest first,
+  still-on-the-shelf only. **No new table**, so it can never drift from what they
+  actually bought.
+
+**Address management** (`20261014000003_address_one_default.sql`, `addresses.tsx`,
+`address.tsx`)
+- List, edit, delete and choose-default. "One default per user" is enforced by a
+  **partial unique index** plus `set_default_address(uuid)` (security-invoker,
+  ownership checked before clearing the old default) — not by the app. Deleting
+  the default promotes another address.
+
+**Offers + coupons** (`20261014000004_coupons.sql`, seed coupons, checkout UI)
+- `coupons` table (codes matched case-insensitively, money in paise, descriptions
+  in both languages). Three verbs, each one source of truth:
+  - `coupon_discount(coupon, subtotal)` — the **only** copy of the arithmetic:
+    percent floored, capped by `max_discount_paise`, never more than the subtotal;
+    flat = its value.
+  - `validate_coupon(store, code, subtotal)` — read-only preview for checkout,
+    returning `{ok, code, discount_paise, descriptions}` or a typed refusal
+    (`coupon_not_found`, `coupon_inactive`, `coupon_not_started`,
+    `coupon_expired`, `coupon_used_up`, `coupon_min_order`, `empty_code`,
+    `not_logged_in`).
+  - `active_offers(store)` — marketing-safe live codes for the Home rail, granted
+    to `anon` too, so a visitor sees the deal before signing in.
+- RLS: admin-only policy on `coupons`; customers reach codes **only** through the
+  functions, never by selecting the table.
+- `place_order` re-created with a 6th `p_coupon_code text default null` (the old
+  5-arg signature is dropped first so PostgREST cannot pick the wrong overload).
+  The app sends **only the code**; the discount is recomputed in the database. Use
+  is counted once, **after** the order row is written, with the coupon row locked
+  `for update`, so a replayed request never counts twice. `orders.coupon_code` is
+  added, and `guard_order_update()` now freezes it for riders and cancelling
+  customers.
+- Checkout: `useValidateCoupon`, apply/remove UI, and the discount shown in the
+  totals. A code is bound to the basket it was checked against — if the basket
+  changes the code is treated as **stale** and dropped with a translated note.
+  That is **derived state, not an effect** (see the lint note below). Home gets an
+  offers rail driven by `active_offers`.
+
+**i18n.** New `favourite.*`, `product.*`, `address.*` management, `home.buyAgainTitle`,
+`home.savedTitle`, `home.offersTitle`, `home.offerMin`, and the whole
+`checkout.coupon*` family were added to **both** `en.json` and `kn.json`.
+`localizedDescription()` joins `localizedName()` / `localizedItemName` so a coupon's
+`description_en`/`description_kn` follows the language switch like every other DB
+string.
+
+### Verified, and how
+- `npm run typecheck` — both apps, exit 0.
+- `npm run lint` — eslint in both apps, **0 problems**.
+- `npm run check:i18n` — **336 keys in both languages**, 232 used literals, 7
+  dynamic families; no missing plural or brace form.
+- `npm run test:db` — throwaway PostgreSQL 16, **332 assertions, 0 failures**,
+  including three new files:
+  - `13_favourites_test.sql` — own-rows RLS (a second user cannot see or delete
+    another's heart), PK prevents duplicates.
+  - `14_address_default_test.sql` — the partial unique index refuses a second
+    default; `set_default_address` moves it; deleting the default leaves exactly
+    one.
+  - `15_coupons_test.sql` — the floor, the cap, the minimum, the case-insensitive
+    match; a signed-out visitor cannot validate; a customer cannot `select` the
+    codes; an order placed with a code stores it and the discount; **replaying the
+    same idempotency key does not count a second use**; an unknown or used-up code
+    writes no order; a flat coupon never discounts more than the basket.
+
+### Decisions and their reasons
+- **Coupon arithmetic lives in one SQL function.** The checkout preview and the
+  order total call the same code, so the number shown can never disagree with the
+  number charged (rule 9.1).
+- **A coupon is a code + a store, not a client-supplied discount.** `orders`
+  stores the code and the resolved paise; neither is accepted from the app.
+- **Stale coupon is derived, not an effect.** The first version cleared an
+  applied code in a `useEffect`, which the repo's `react-hooks` config rejects
+  ("setState synchronously within an effect"). The fix stores the subtotal the
+  code was checked at and computes staleness during render — no cascading render,
+  and no dependence on effect ordering.
+- **Buy again is derived** from order history rather than a new table, so there is
+  nothing to keep in sync.
+- **One default address is a database rule** (partial unique index + function),
+  not a convention the app must remember.
+
+### Bugs found (and fixed) while building this
+- The re-created `place_order` in the coupons migration had **simplified** the
+  `items_unavailable` payload to `product_id` + `reason`. The existing
+  `02_place_order_test.sql` asserts the richer payload (`name_en`, `name_kn`,
+  `unit`, `requested`, `available`); restored the exact shape.
+- The re-created `guard_order_update()` was first written from memory and **broke
+  rider assignment** (test 09). Replaced with a verbatim copy of the definition
+  from `20261013000001_rider_assignment.sql`, adding only the two `coupon_code`
+  freeze lines. Lesson: never re-derive a long guard by hand; copy it and diff.
+- Test 15: two idempotency keys did not match, so the "replay" case created a real
+  second order and exhausted stock; and a boolean was passed to
+  `test_result.eq` (only `text`/`bigint` overloads exist) — switched to
+  `test_result.ok`.
+
+### Open gaps
+- **Product photos are still emoji.** The `expo-image` slots exist, but there is
+  no Storage bucket or admin upload yet; that is a later phase.
+- **No admin UI for coupons.** Codes are created in SQL/seed today; the owner
+  cannot add one from the app.
+- **Noto Sans Kannada is still not bundled**, so Kannada uses the device font.
+- `apps/admin` remains an optional bulk-edit skeleton.
+- Nothing in this session was run on a physical device; verification is
+  typecheck + lint + i18n + 332 database assertions against real PostgreSQL.
+
+---
+
 ## 2026-10-14 — The UI/UX overhaul: a design system, light + dark, and data so every face looks alive
 
 *(first session of the day)*

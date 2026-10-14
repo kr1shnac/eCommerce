@@ -77,6 +77,43 @@ on conflict (id) do update set
   is_open                   = excluded.is_open;
 
 -- -----------------------------------------------------------------------------
+-- Coupons: two codes anybody can use today. The wording is what shows on the
+-- Home offers rail and at checkout, in both languages. Money is paise.
+--
+--   KUNIGAL50 — Rs 50 off a basket of Rs 499 or more.
+--   SAVE10    — 10% off a basket of Rs 199 or more, capped at Rs 40.
+-- -----------------------------------------------------------------------------
+insert into public.coupons (
+  id, store_id, code, kind, value, max_discount_paise, min_order_paise,
+  is_active, description_en, description_kn
+)
+values
+  (
+    '60000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000001',
+    'KUNIGAL50', 'flat', 5000, 0, 49900, true,
+    'Rs 50 off on baskets over Rs 499',
+    '₹499 ಮೇಲಿನ ಬುಟ್ಟಿಗೆ ₹50 ರಿಯಾಯಿತಿ'
+  ),
+  (
+    '60000000-0000-4000-8000-000000000002',
+    '00000000-0000-4000-8000-000000000001',
+    'SAVE10', 'percent', 10, 4000, 19900, true,
+    '10% off over Rs 199 (up to Rs 40)',
+    '₹199 ಮೇಲಿನ ಬುಟ್ಟಿಗೆ 10% ರಿಯಾಯಿತಿ (ಗರಿಷ್ಠ ₹40)'
+  )
+on conflict (id) do update set
+  code               = excluded.code,
+  kind               = excluded.kind,
+  value              = excluded.value,
+  max_discount_paise = excluded.max_discount_paise,
+  min_order_paise    = excluded.min_order_paise,
+  is_active          = excluded.is_active,
+  description_en     = excluded.description_en,
+  description_kn     = excluded.description_kn;
+
+
+-- -----------------------------------------------------------------------------
 -- Delivery zones
 --
 -- 572130 is Kunigal's REAL postcode (KUNIGAL.md §1) and is the zone the town
