@@ -21,7 +21,8 @@
     "check:speech": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-speech.mjs",
     "check:packs": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-packs.mjs",
     "check:storage": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-storage.mjs",
-    "lint": "npm run lint --workspaces --if-present && npm run check:i18n && npm run check:view && npm run check:persist && npm run check:speech && npm run check:packs && npm run check:auth-doors && npm run check:storage",
+    "check:tracking": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-tracking.mjs",
+    "lint": "npm run lint --workspaces --if-present && npm run check:i18n && npm run check:view && npm run check:persist && npm run check:speech && npm run check:packs && npm run check:auth-doors && npm run check:storage && npm run check:tracking",
     "check:i18n": "node scripts/check-i18n.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"

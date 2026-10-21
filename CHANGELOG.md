@@ -8,6 +8,104 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-21 — Feature parity against Blinkit/Zepto, and the tracking rules (T3)
+
+**What was asked.** Reverse-engineer Blinkit or Zepto, find what this app is
+missing, and build it — with rider tracking ("has he picked it up?", the map, the
+route) named specifically.
+
+**Decision: no decompilation, and why.** The `rea` toolkit
+(`github.com/morluto/rea`) was reviewed. It is a genuine binary/APK analysis
+tool, and it was **not** used, for three reasons recorded in `FEATURE-PARITY.md`
+§0: its own disclaimer requires authorisation to examine the target and this shop
+has none; binary RE answers *how* a feature is implemented, not *which* features
+exist; and every gap found below was legible from the product and the codebase
+without a disassembler. What *was* borrowed is its evidence discipline — every
+claim in the new file is tagged `[CODE]`, `[PUBLIC]` or `[INFERENCE]`.
+
+**New file: `FEATURE-PARITY.md`.** The gap register. It frames Blinkit/Zepto as
+four loops (the promise, the live order, the reorder, the correction), finds that
+this app has loops 1 and 3 and only a third of loop 2, and lists nine features
+that should be *refused* with reasons (membership, wallet, referral, search
+filters, product ratings, map-as-default, rider earnings, second photo write
+path, and re-litigating the map vendor).
+
+Findings worth naming, all `[CODE]`-verified:
+
+- **No location anywhere.** A grep for `lat`/`lng` across `supabase/migrations/`
+  and `apps/mobile/src/` returns only the ISO language code `lng:` in
+  `i18n/index.ts`. Tracking is not "partly built" — the data does not exist.
+- **`out_for_delivery` is doing two jobs.** `TRACK_STEPS` in `order/[id].tsx:346`
+  has four stops and no "picked up", so a rider assigned while the bag is still on
+  the counter shows the customer "Out for delivery". That is the exact complaint
+  the user raised.
+- **No customer side to the correction loop.** `refund_due_paise` is computed for
+  the owner's books (`shop_day_totals()`) and is never shown to a customer.
+- **Partial fulfilment does not exist.** An unavailable item can only fail the
+  whole order. Argued in §3.4 as the most underrated gap: failing a ₹450 order
+  over ₹35 of curd is how a customer learns the app is unreliable.
+
+**Built: register T3 — `src/lib/tracking-rules.ts` + `npm run check:tracking`.**
+The pure throttle/staleness/ETA logic that `SCALE-AND-TRACKING.md` §6.4–6.6
+specified but nobody had written. No native imports, no `Date.now()` (the caller
+passes `nowMs`), no formatting (i18n owns that), so it is testable under Node in
+the same style as `pack.ts` and `speech-rules.ts`.
+
+The rules, and the reasons they are shaped this way:
+
+- **Privacy is checked first, before cost or movement.** A rider with no active
+  delivery is never recorded, even with a perfect fix and ten minutes elapsed.
+  The test asserts the *reason*, not just the boolean, so a future edit cannot
+  swap one refusal for another and stay green.
+- **Displacement, not derived speed.** The first draft computed metres-per-second
+  and compared it to a `MOVING_SPEED_MPS` threshold. It was wrong in a way that
+  is easy to miss: a rider at 6 km/h through a market street covers 50 m in 30 s,
+  deriving to 1.7 m/s — below the threshold — so the dot would silently drop to
+  the 2.5-minute clock exactly when the customer is most anxious. Now the code
+  asks "did it move 15 m?", which is unambiguous. `MOVING_SPEED_MPS` was removed
+  rather than left as a documented-but-unused constant.
+- **A stale dot is never drawn.** Older than 10 minutes, future-dated (clock
+  skew), or worse than 150 m accuracy → not showable, and the screen falls back
+  to the status ladder and the call button. A greyed-out dot is still a dot the
+  customer will walk to the road for.
+- **ETA errs toward being beaten.** 5.5 m/s (≈20 km/h), floored at 3 minutes,
+  `null` beyond 45. A beaten ETA reads as good service; a missed one reads as a
+  broken promise.
+- **`0,0` is rejected.** It is "Null Island", and it is what a location library
+  returns after it has failed but been asked for something — a rider in the
+  Atlantic.
+
+**Verified, and how.**
+
+- `npm run check:tracking` — **59 assertions, all pass**, including a 10-fix
+  jitter loop proving a parked bike produces one heartbeat in 200 s, not ten.
+- **The check was proved to fail.** Deleting the staleness comparison made it
+  report `FAIL 10 minutes and 1 ms old is NOT showable`; deleting the privacy
+  guard made it report three failures including `an idle rider is never
+  recorded`. Both restored and green again.
+- `npm run typecheck` **0**, `npm run lint` **0** (now seven checks; `lint`
+  chains `check:tracking`).
+- `npm run test:db` was **not** re-run for this change: it touches no SQL, no
+  policy and no table. It must be re-run at T4, which does.
+
+**Bug found in the new test, honestly.** The first jitter test never advanced
+`lastRecordedAtMs` after a write, so the throttle correctly emitted heartbeats
+and the test blamed the rule for the test's own bug. Fixed by making the loop
+keep state the way the caller does.
+
+**Not verified.** Nothing here has run on a phone. Whether Android/iOS deliver
+fixes at this cadence, and what a real battery does over a shift, are device
+questions (`PRODUCTION.md` C4). T3 is logic only.
+
+**Next, and what blocks it.** T4 (`rider_positions` + `record_my_position()` +
+narrow read view + `picked_up_at`) needs no phone, no API key and no client
+decision, and is the next buildable step. T5 onward need a device and the rider
+consent wording signed off per `KUNIGAL.md`.
+
+---
+
+---
+
 ## 2026-10-21 — `npm run mobile` crashed: the Node prerender had no `window`
 
 **The bug, exactly as the user hit it.** `npm run mobile` printed the QR code and

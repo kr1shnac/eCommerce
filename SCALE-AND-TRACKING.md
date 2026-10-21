@@ -430,7 +430,7 @@ that make it honest.
 | T0 | UX-1, UX-2, UX-5 (look + skeleton) | typecheck, lint, visual check on device |
 | T1 | PERF-1…PERF-4 (perceived speed) | cold-start timing on device |
 | T2 | SCALE-1 (Realtime filters) + SCALE-4 (plan/limits noted) | DB tests + Realtime log check |
-| T3 | `src/lib/tracking-rules.ts` + `check:tracking` (pure logic, no native) | lint, check:tracking |
+| T3 | `src/lib/tracking-rules.ts` + `check:tracking` (pure logic, no native) | lint, check:tracking — **DONE 2026-10-21**, see `CHANGELOG.md` |
 | T4 | `rider_positions` table + `record_my_position()` + narrow read view + migration + **test with forbidden cases** | `npm run test:db` |
 | T5 | Rider consent screen (both languages) + write throttle wired to the rule module | device test |
 | T6 | Customer text-first tracking block on `order/[id].tsx` (age + distance + ETA) | device test |

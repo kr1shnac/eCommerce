@@ -226,6 +226,7 @@ npm run check:persist             # only public shop data is written to the devi
 npm run check:speech              # the Kannada speech rules and spoken-price formatter
 npm run check:packs               # pack sizes, and the arithmetic that must never round money
 npm run check:storage             # only one module may touch AsyncStorage (the expo-start crash)
+npm run check:tracking            # the rider throttle, staleness and ETA rules
 npm run check:my-name               # one phone, several adults
 npm run test:db                   # all database tests against real PostgreSQL
 ```
