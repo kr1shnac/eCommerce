@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createClient } from '@supabase/supabase-js';
 
+import { deviceStorage } from '@/lib/storage';
 import type { Database } from '@/types/database';
 
 /**
@@ -59,11 +59,15 @@ export const supabase = createClient<Database>(
        * killed: the customer had to sign in again on every cold start. The
        * language and the cart survived a restart; the login did not.
        *
-       * AsyncStorage is the same device store the cart (`src/store/cart-store.ts`)
-       * and the theme choice (`src/store/theme-store.ts`) already persist to, so
-       * this adds no new dependency and no new place where data lives.
-       */
-      storage: AsyncStorage,
+        * AsyncStorage is the same device store the cart (`src/store/cart-store.ts`)
+        * and the theme choice (`src/store/theme-store.ts`) already persist to, so
+        * this adds no new dependency and no new place where data lives.
+        *
+        * It comes from `@/lib/storage` rather than straight from the package,
+        * because the package's web build touches `window` and `expo start`
+        * prerenders this file in Node — see that module for the crash it caused.
+        */
+      storage: deviceStorage,
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: false,

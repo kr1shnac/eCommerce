@@ -8,6 +8,75 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-21 — `npm run mobile` crashed: the Node prerender had no `window`
+
+**The bug, exactly as the user hit it.** `npm run mobile` printed the QR code and
+then died with `ReferenceError: window is not defined` and exit code 7. The stack
+named the culprit precisely:
+
+```
+at Object.getItem (…/router-server/node/render.js.bundle?platform=web…)
+at SupabaseAuthClient.__loadSession
+at createClient
+```
+
+`app.json` sets `"web": { "output": "static" }`, so `expo start` **prerenders the
+app under Node** to produce the web build. Node has no `window`, and
+`@react-native-async-storage/async-storage`'s web build calls
+`window.localStorage` directly. `src/lib/supabase.ts` handed the package straight
+to `createClient({ auth: { storage: AsyncStorage } })`, so the prerender threw
+before a phone could ever connect.
+
+**The phone app was never broken.** Only the desktop dev server, because it
+insists on building a target this shop does not ship. The Android bundle had
+already exported cleanly (6 MB Hermes, exit 0).
+
+**The fix.** New `apps/mobile/src/lib/storage.ts` is now the **only** module that
+touches the storage package. On a device it returns the real `AsyncStorage`; in a
+runtime with no `window` it returns a shape-compatible in-memory object (values
+live for the process, and are written nowhere). The guard is on `typeof window`,
+deliberately **not** `__DEV__`: the failure is about the runtime, not the build
+type, so a release web build in Node would hit exactly the same crash.
+
+Five modules were routed through it — `lib/supabase.ts`,
+`lib/query-persistence.ts`, `store/theme-store.ts`, `store/cart-store.ts`,
+`i18n/index.ts`. Each was importing the package directly and each would have
+crashed the prerender on its own.
+
+**Verified, and how.**
+- `npx expo export --platform web` (the exact operation that was crashing):
+  **exit 0**, every route built, no `window` error. Previously fatal.
+- `npm run mobile` run for 60 s: reaches "Waiting on http://localhost:8081",
+  **zero** `ReferenceError`, process stays alive. Previously exited in seconds.
+- `npm run check:session` still passes, **including** "without the adapter the
+  same session is lost" — so the real adapter still does its job and was not
+  neutered by the guard.
+- `npm run typecheck` 0, `npm run lint` 0, `npm run test:db` **538/538**.
+
+**New guard: `npm run check:storage`** (wired into `lint`), so this cannot come
+back. It asserts: only `lib/storage.ts` imports the package; the five consumers
+use `deviceStorage`; the guard is on `typeof window` and not `__DEV__` (comments
+stripped first, or the file's own explanation of that choice would trip it); and
+the Node fallback has the same shape as the real store. **The check was proved to
+fail**: reintroducing the direct import into `cart-store.ts` made it report that
+file by name, and restoring it made it pass again.
+
+**Not verified.** No phone was involved — this session fixed a *dev-server* crash,
+not something a user ever saw. Whether the real device store still persists the
+session and the cart remains a device-run question (register C2/C4), though
+`check:session` covers the module's behaviour.
+
+**One side effect worth knowing.** On web, storage is now in-memory rather than
+`localStorage`, because `expo start`'s Node prerender takes that path. The web
+target was never a shipped platform for this shop (the admin panel covers
+desktop), so nothing customer-facing depends on it; if web is ever made a real
+target, `hasDeviceStorage()` will return true in the browser and the real
+`localStorage` path resumes with no change needed.
+
+---
+
+---
+
 ## 2026-10-21 — Register M11 finished: the stale-doc sweep
 
 **What M11 actually was.** The register carried "doc contradictions (OTA, images,

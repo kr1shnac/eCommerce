@@ -1,7 +1,8 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createAsyncStoragePersister } from '@tanstack/query-async-storage-persister';
 import type { Query } from '@tanstack/react-query';
 import { QueryClient } from '@tanstack/react-query';
+
+import { deviceStorage } from '@/lib/storage';
 
 /**
  * The catalogue survives closing the app (register M1).
@@ -88,7 +89,9 @@ export const queryClient = new QueryClient({
 });
 
 export const persister = createAsyncStoragePersister({
-  storage: AsyncStorage,
+  // Goes through `@/lib/storage` so a Node prerender (which has no `window`)
+  // does not crash the dev server — see that module.
+  storage: deviceStorage,
   // Namespaced so it cannot collide with the auth session, which
   // `src/lib/supabase.ts` also keeps in AsyncStorage under `sb-…-auth-token`.
   key: 'kunigal-query-cache',

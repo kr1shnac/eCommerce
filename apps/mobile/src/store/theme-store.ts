@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { deviceStorage } from '@/lib/storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -43,7 +43,7 @@ export const useThemeStore = create<ThemeState>()(
     }),
     {
       name: 'kunigal.theme',
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => deviceStorage),
       partialize: (state) => ({ preference: state.preference }),
       onRehydrateStorage: () => (state) => {
         state?.setReady(true);

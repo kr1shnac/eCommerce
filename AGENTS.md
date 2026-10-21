@@ -126,6 +126,14 @@ two languages are written side by side, not translated one from the other.
   `KUNIGAL.md` is for the language; read it before building or restyling a
   screen.
 - `ios/` and `android/` folders are generated. Never create or edit them.
+- **Device storage goes through `src/lib/storage.ts`.** It is the only module
+  that may import `@react-native-async-storage/async-storage`, because it is the
+  module that decides — by `typeof window`, not by build type — whether a device
+  store exists. Importing the package directly anywhere else crashes
+  `npm run mobile`: `app.json` sets `"web": { "output": "static" }`, so
+  `expo start` prerenders the app under Node, where the package's web build
+  touches `window` and throws `ReferenceError: window is not defined`. Enforced
+  by `npm run check:storage`.
 
 ### Database conventions
 
@@ -217,6 +225,7 @@ npm run check:view                # the address/time helpers all three faces sha
 npm run check:persist             # only public shop data is written to the device
 npm run check:speech              # the Kannada speech rules and spoken-price formatter
 npm run check:packs               # pack sizes, and the arithmetic that must never round money
+npm run check:storage             # only one module may touch AsyncStorage (the expo-start crash)
 npm run check:my-name               # one phone, several adults
 npm run test:db                   # all database tests against real PostgreSQL
 ```

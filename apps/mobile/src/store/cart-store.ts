@@ -1,4 +1,4 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { deviceStorage } from '@/lib/storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
@@ -83,7 +83,7 @@ export const useCartStore = create<CartState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => deviceStorage),
       // hasHydrated is about this run, not something to restore from disk.
       partialize: (state) => ({ items: state.items }),
       onRehydrateStorage: () => (state) => {

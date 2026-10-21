@@ -1,7 +1,7 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createInstance } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 
+import { deviceStorage } from '@/lib/storage';
 import en from './locales/en.json';
 import kn from './locales/kn.json';
 
@@ -47,7 +47,7 @@ void i18n.use(initReactI18next).init({
 
 export async function loadStoredLanguage(): Promise<Language | null> {
   try {
-    const stored = await AsyncStorage.getItem(LANGUAGE_STORAGE_KEY);
+    const stored = await deviceStorage.getItem(LANGUAGE_STORAGE_KEY);
     return isLanguage(stored) ? stored : null;
   } catch {
     return null;
@@ -56,7 +56,7 @@ export async function loadStoredLanguage(): Promise<Language | null> {
 
 export async function saveLanguage(language: Language): Promise<void> {
   try {
-    await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    await deviceStorage.setItem(LANGUAGE_STORAGE_KEY, language);
   } catch {
     // Persistence is a nice-to-have; never let it break the switch.
   }
