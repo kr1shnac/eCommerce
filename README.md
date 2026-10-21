@@ -228,10 +228,13 @@ npm run dev          # mobile dev server + admin panel on http://localhost:3000
 - Header: the shop's horse mark and wordmark, a **sun/moon** theme toggle and an
   **English / ಕನ್ನಡ** switcher.
 - A row of category chips: **All**, then 8 categories with emoji icons.
-- A two-column grid of product cards. Each card shows a large emoji tile (the
-  shop has no product photos on purpose — a tomato has to *look* like a tomato),
-  the product name, the pack size, and a green price such as **₹18.00** with a
-  struck-through MRP and a discount badge.
+- A two-column grid of product cards. Each card shows a large tile: a real
+  photograph where one has been sourced (28 of the 34 products, loaded by
+  `supabase/demo-images.sql` in development), and the product's own emoji as the
+  fallback where it has not — the emoji is not a stopgap, it is why a tomato
+  still looks like a tomato on a phone whose owner cannot read the name. The card
+  then shows the product name, the pack size, and a green price such as
+  **₹18.00** with a struck-through MRP and a discount badge.
 - Add an item and a **basket bar** rises from the bottom — "3 items · ₹120 →
   View basket" — so paying is always one tap away from the shelf.
 - Pull down to refresh.

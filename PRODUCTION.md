@@ -114,6 +114,12 @@ so the first cash variance he cannot reconcile is the day he stops using the app
 | Crash reporting / analytics | None (`expo-updates`, push, Sentry all absent from `package.json`) |
 | Payments, push, maps | Deliberately not started |
 | Expo SDK | `~57.0.26`. Latest is `58.0.14` `[EXTERNAL]` (npm registry, 2026-10-19) |
+
+> **Snapshot, not current fact.** This table is how the repository stood when
+> Phase 0 landed (2026-10-19). Two rows have since changed: **CI now exists**
+> (`.github/workflows/checks.yml`, register H12) and **Sentry is now in**
+> (`src/lib/crash-reporting.ts`, register H11). "Never built" and "no device run"
+> are, sadly, still true. Read §12 for the current status of any row.
 | Deployable admin panel | `apps/admin` is a skeleton, optional, kept only for bulk catalogue edits |
 
 ---
@@ -930,7 +936,7 @@ From the council chairman, item for item. "Owner" is who can actually move it.
 | M8 | Medium | 6 products have no image; the rest are dev stock photos | 4 | Owner |
 | M9 | Medium | Developer text on the customer's first screen | **3 — hidden in release**, delete before public | Dev |
 | M10 | Medium | Jargon with no glossary; "done" used two ways | 3 | Dev |
-| M11 | Medium | Doc contradictions (OTA, images, order count, "DONE") | **3 — order count fixed**, OTA/images claims still to sweep | Dev |
+| M11 | Medium | Doc contradictions (OTA, images, order count, "DONE") | **3 — done.** Order count fixed; the two stale image claims swept (`README.md` and the `seed.sql` header both said "no product photos on purpose" while `demo-images.sql` loads 28 of them). OTA claims verified absent: no `expo-updates` in the repo, and `PRODUCTION.md` §3's "`expo-updates`, push, Sentry all absent" was true when written — Sentry has since landed, so that one line is now corrected in place. | Dev |
 | M12 | Medium | No iOS build path from this Linux box | 4 | Owner + dev |
 | M13 | Medium | No substitution / out-of-stock path | **0 — done, and already was.** `place_order()` returns per-item `items_unavailable`; cart clamps to `stock_qty`; checkout redirects to a corrected basket | Dev |
 | L1 | Low | No referral / share | 7 | Dev |
@@ -1002,6 +1008,10 @@ doing on a quiet week rather than during a pilot.
    panel is retired (it is already described as optional) and the Shelf tab becomes
    the only shelf tool. **A decision is needed before the first pilot**, because two
    tools that disagree about the same shelf is worse than one.
+   **RESOLVED 2026-10-20 (dev side):** the panel was brought level — its product
+   form now edits `sold_by`/`pack_size`/`pack_unit`, `edit()` loads them (so saving
+   no longer silently wipes a pack) and `resetForm()` clears them. No owner decision
+   remains here; keeping the panel is now the status quo.
 
 ---
 

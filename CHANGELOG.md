@@ -8,6 +8,45 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-21 — Register M11 finished: the stale-doc sweep
+
+**What M11 actually was.** The register carried "doc contradictions (OTA, images,
+order count, 'DONE')" with only the order count fixed. Grepping the docs against
+the code found the rest, and they were real:
+
+- **The images claim, in two places, and it was the opposite of the truth.**
+  `README.md` said product cards show "a large emoji tile (the shop has no product
+  photos on purpose)" and `supabase/seed.sql`'s header said `image_url` is
+  "deliberately NULL — this shop has no product photos". But `supabase/demo-images.sql`
+  has loaded **28 of the 34** product photographs since 2026-10-14. Both sentences
+  have been corrected to say what is true: the seed leaves `image_url` null (correct
+  for a fresh database) and the photographs live in `demo-images.sql`; the emoji is
+  the fallback, and it is still there on purpose.
+- **The OTA claim: checked and found absent, as the register expected.**
+  `expo-updates` appears nowhere in `package.json` or the source; the only mentions
+  are docs correctly saying it is *not* used. Nothing to fix.
+- **§3's status table had silently gone stale.** It listed "CI: None" and
+  "Crash reporting: None (Sentry absent)", both of which landed afterwards (H12,
+  H11). Rather than rewrite a historical snapshot into a false one, the table now
+  carries a note saying it is a **snapshot from 2026-10-19** and naming the two rows
+  that have since changed, pointing at §12 for current status.
+- **§14 item 9 (the web panel) was resolved but still read as open.** It asked for a
+  decision between bringing `apps/admin` level and retiring it; the panel was brought
+  level in the previous session. The item is now marked **RESOLVED (dev side)**.
+
+**Verified.** `npm run typecheck` 0 errors, `npm run lint` 0 errors/0 warnings,
+`npm run check:i18n` pass — after the edits. The M11 register row is now `done`.
+
+**Not verified.** Nothing here touched runtime code, so the database suite was not
+re-run for these doc edits (it was 538/538 at the last run and nothing it covers
+changed). The stale-claim sweep covered `README.md`, `supabase/seed.sql` and
+`PRODUCTION.md` §3/§14; `DESIGN.md` and `KUNIGAL.md` were not swept this pass and
+may still carry pre-2026-10-14 assumptions.
+
+---
+
+---
+
 ## 2026-10-20 — The commits that were claimed but never made (history repair)
 
 **The bug.** The previous session reported "12 commits created and pushed to

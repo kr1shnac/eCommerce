@@ -12,13 +12,17 @@
 --
 -- PRICE RULE: every *_paise value below is an integer. 1800 means Rs 18.00.
 --
--- PICTURES: image_url is deliberately NULL — this shop has no product photos.
--- Instead every product carries an `emoji`, which the app draws on the tile.
--- That is not a stopgap, it is a design decision: one in three adults in
--- Kunigal cannot comfortably read a product name, so a tomato has to look like
--- a tomato (see DESIGN.md, KUNIGAL.md §2). The category's own `icon` is the
--- final fallback. Later, upload real photos to a Storage bucket and paste the
--- public URL into image_url; a real photo always wins over the emoji.
+-- PICTURES: image_url is deliberately NULL here, and this file is still the
+-- source of truth for a *fresh* local database. Instead every product carries an
+-- `emoji`, which the app draws on the tile when there is no photo. The emoji is
+-- not a stopgap, it is a design decision: one in three adults in Kunigal cannot
+-- comfortably read a product name, so a tomato has to look like a tomato (see
+-- DESIGN.md, KUNIGAL.md §2). The category's own `icon` is the final fallback.
+--
+-- The shop's real photographs do NOT live in this file: they were sourced
+-- (CC0/PDM), cropped to 640x640 and are written into `products.image_url` by
+-- `supabase/demo-images.sql`, which records the mapping and the licences
+-- (AGENTS §3). A real photo always wins over the emoji in the card.
 --
 -- KANNADA: these names are the shop's own words, not a dictionary translation.
 -- "ಟೊಮೆಟೊ", "ಟೀ ಪುಡಿ", "ಮೊಸರು" — the words a Kunigal shopkeeper says out loud.
