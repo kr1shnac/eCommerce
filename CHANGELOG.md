@@ -102,6 +102,20 @@ narrow read view + `picked_up_at`) needs no phone, no API key and no client
 decision, and is the next buildable step. T5 onward need a device and the rider
 consent wording signed off per `KUNIGAL.md`.
 
+**CI red for an upstream reason, then fixed.** The first push of this change
+failed `expo-doctor`, and it was **not** caused by this work: the previous commit
+had been green, and Expo published `expo` 57.0.31 and `expo-router` 57.0.29 in the
+days between. `expo install --check` confirmed exactly those two drifts, they were
+bumped to the SDK's expected versions, and only the known-benign Metro-config
+complaint remains (`metro.config.js`'s deliberate `disableHierarchicalLookup`,
+which Expo's monorepo guide requires and the CI filter already exempts).
+
+Re-verified after the bump: `typecheck` 0, `lint` 0, `check:session` pass,
+`check:tracking` pass, `expo export --platform android` exit 0 (1,955 modules),
+`test:db` **538/538**. The bump is a patch release, so nothing in this app's
+behaviour should change — but it is a dependency change, so it was re-gated
+rather than assumed safe.
+
 ---
 
 ---
