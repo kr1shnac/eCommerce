@@ -235,13 +235,18 @@ Writing this down is the point. Without it, every future session relitigates.
 
 ## 5. The build order
 
-Extends `SCALE-AND-TRACKING.md` §8, which stops at T7. Phases T0–T2 are already
-done or unblocked; the ones below are the actual work left.
+Extends `SCALE-AND-TRACKING.md` §8, which stops at T7.
+
+**Status 2026-10-26:** P1 and P2 are **done** (see `CHANGELOG.md` for
+2026-10-21 and 2026-10-26). `SCALE-AND-TRACKING.md` T0, and the parts of T1/T2
+worth building, are done too — including the honest list of what was refused and
+why (§8.1 there). **P3 is the next phase that can be built**, and it cannot be
+*verified* without a phone.
 
 | Phase | Work | Gate | Effort |
 | --- | --- | --- | --- |
-| **P1** | `src/lib/tracking-rules.ts` + `npm run check:tracking` — pure throttle logic, no native code | lint | S |
-| **P2** | `rider_positions` table + `record_my_position()` + narrow read view + `picked_up_at` column + migration + **test proving the forbidden cases** | `npm run test:db` | M |
+| **P1** | `src/lib/tracking-rules.ts` + `npm run check:tracking` — pure throttle logic, no native code | lint — **DONE** | S |
+| **P2** | `rider_positions` table + `record_my_position()` + narrow read view + `picked_up_at` column + migration + **test proving the forbidden cases** | `npm run test:db` — **DONE** (590 assertions) | M |
 | **P3** | Rider: consent screen in Kannada + throttle wired to the rule module + "I have the bag" button | device | M |
 | **P4** | Customer: text-first tracking block (distance, ETA, age) + fifth `TRACK_STEPS` stop | device | M |
 | **P5** | Post-delivery "was everything right?" + translated problem picker → a recorded row | device | S |

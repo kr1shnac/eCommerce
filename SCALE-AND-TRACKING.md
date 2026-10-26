@@ -184,6 +184,12 @@ been measured on a device; this is the reasoning, and §7 says how to prove it.
 
 ### 4.3 Fixes, in order
 
+**Status as of 2026-10-26:** PERF-1 (satisfied by the persister plus T0's
+skeletons, not by `initialData`), PERF-2 (done with T0), PERF-3 (done — shelf
+stale time 1 min → 5 min), PERF-6 (audited, nothing to change). PERF-4 and
+PERF-5 are **deliberately not built**; §8.1 gives the arithmetic and the
+reasons, so they are not re-proposed as free wins.
+
 | # | Fix | Effect | Risk |
 | --- | --- | --- | --- |
 | PERF-1 | **Render persisted shelf immediately, then refresh.** Already partly done; make it explicit with `initialData` from the persister and never block first paint on a network call for public shop data. | Removes the spinner entirely on a warm device; the single biggest perceived-speed win | Low |
@@ -462,9 +468,9 @@ that make it honest.
 
 | Phase | Work | Gate |
 | --- | --- | --- |
-| T0 | UX-1, UX-2, UX-5 (look + skeleton) | typecheck, lint, visual check on device |
-| T1 | PERF-1…PERF-4 (perceived speed) | cold-start timing on device |
-| T2 | SCALE-1 (Realtime filters) + SCALE-4 (plan/limits noted) | DB tests + Realtime log check |
+| T0 | UX-1, UX-2, UX-5 (look + skeleton) | typecheck, lint, visual check on device — **DONE 2026-10-26** (code; device check still owed), see `CHANGELOG.md` |
+| T1 | PERF-1…PERF-4 (perceived speed) | cold-start timing on device — **PARTLY DONE 2026-10-26**: PERF-1 satisfied by the persister + T0's skeletons, PERF-2 done with T0, PERF-3 done; **PERF-4 and PERF-5 deliberately not built** (reasons in §8.1) |
+| T2 | SCALE-1 (Realtime filters) + SCALE-4 (plan/limits noted) | DB tests + Realtime log check — **SCALE-1 DONE 2026-10-26** (customer sockets filtered to their own orders); SCALE-4 noted in §5.2 |
 | T3 | `src/lib/tracking-rules.ts` + `check:tracking` (pure logic, no native) | lint, check:tracking — **DONE 2026-10-21**, see `CHANGELOG.md` |
 | T4 | `rider_positions` table + `record_my_position()` + narrow read view + migration + **test with forbidden cases** | `npm run test:db` — **DONE 2026-10-26**, see `CHANGELOG.md` |
 | T5 | Rider consent screen (both languages) + write throttle wired to the rule module | device test |
@@ -475,6 +481,45 @@ that make it honest.
 passes, `npm run lint` passes, `supabase/tests/` passes against real PostgreSQL,
 and a dated `CHANGELOG.md` entry says what was verified and how. Phase T4 in
 particular is not done until a test *proves* the forbidden cases fail.
+
+### 8.1 Why PERF-4 and PERF-5 were not built
+
+Recorded so they are not re-proposed as obvious wins. Both are in §4.3 and both
+look free on paper.
+
+**PERF-4 — "defer the non-critical queries".** Two problems, and the second is
+the one that matters.
+
+1. *The premise moved.* UX-1 made the Home hero the zone's ETA, so `zones` and
+   `addresses` are now on the critical path: deferring them would make the
+   headline show the shop's standing line and then flip. And `offers` is a rail
+   directly under the hero — deferring it does not remove a round trip, it moves
+   a layout shift to after first paint, which reads as jank.
+2. *Deferring by a frame buys nothing over a rural link.* The Home screen's
+   queries are parallel GETs multiplexed over one HTTP/2 connection. A timer that
+   waits one frame does not shorten the connection, the TLS handshake or the
+   first byte; it only changes which request is written first into a socket that
+   is already busy. The real cost on 2G is *fewer bytes* and *fewer requests*, not
+   their order.
+
+The one query that genuinely fits was already gated: the "buy again" rail uses
+`useOrders({ enabled })`, so a screen can defer it without a layout promise
+(Home does not skeletonise that rail, so nothing jumps).
+
+**PERF-5 — one `shop_bootstrap()` RPC replacing three GETs.** It would save two
+of the five round trips on a cold start, which sounds like 40 % and is not: the
+three are parallel on the same connection, so they overlap, and the saving is the
+marginal cost of two responses rather than two full round trips. Against that it
+adds a security-definer function, a new type, a new test, and a second way to
+read `store`/`settings`/`zones` — a permanent maintenance cost on the two paths
+(Home and checkout) that must always agree. **Not worth it until a real
+device measurement says the parallel burst is the bottleneck.** If it ever is,
+the honest fix is one RPC returning *everything the shelf needs*, not one RPC
+returning three small tables.
+
+**What was measured instead.** Nothing on a device (`PRODUCTION.md` C4), which is
+why §8's T1 gate still reads "cold-start timing on device": the code changes are
+verifiable, the *speed claim* is not. Say so; do not claim it.
 
 ---
 

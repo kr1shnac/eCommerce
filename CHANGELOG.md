@@ -8,6 +8,102 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-26 — The look and the load (T0, and the parts of T1/T2 worth building)
+
+**What was asked.** Continue the plan in its own order after T3/T4: make the
+screens better where they are weakest, and answer the questions about speed,
+refresh rate and simultaneous load with code rather than adjectives.
+
+**T0 — three of the five UI changes from `SCALE-AND-TRACKING.md` §3**
+(commit `2d5b7f3`), the three that need no device and no new data.
+
+- **UX-1 — the hero leads with the promise.** The largest line on Home was the
+  greeting. It is now `home.promise` — "At your door in ~{minutes} min" /
+  "~{minutes} ನಿಮಿಷಗಳಲ್ಲಿ ಮನೆ ಬಾಗಿಲಿಗೆ" — fed by the delivery zone's own ETA,
+  with the greeting demoted to a caption beside the area pill. The ETA badge and
+  the separate "shop is closed" card are **gone**: when the shop is shut the
+  headline says so and `closedHint` becomes the caption. Two blocks announcing a
+  closed shop was one too many, and the hero is the one people read. With no
+  saved address there is no zone, so **no ETA is invented** — the shop's standing
+  line (`home.subtitle`) is shown instead.
+- **UX-2 — the tracking card's title is state-aware.** Live states keep
+  "Delivery status" because the four-stop ladder will move. Terminal states name
+  themselves: "This delivery did not happen", "This order came back to the
+  shop". A failed delivery under a heading that promises tracking was the exact
+  small lie this phase exists to remove, and it is the sentence a worried
+  customer reads first.
+- **UX-5 — skeletons, not a spinner.** New `components/ui/skeleton.tsx` (one grey
+  bone) and `components/screen-skeletons.tsx` (product card, Home grid, chip
+  rail, order screen). **The bone does not animate, on purpose**: on a cheap
+  Android a shimmer that drops frames reads as *slower* than a static block that
+  becomes content in 300 ms. The Home grid keeps the real hero above it — that
+  content needs no network, so skeletonising it would hide information the app
+  already has. Both files say in their header that a skeleton must be changed in
+  the same commit as the screen it shadows.
+- `home.deliveryIn` became unused and was removed from **both** locales, since a
+  key that no screen renders is a key that rots.
+
+**T1 — perceived speed. Two fixes built, two refused with arithmetic.**
+
+- **PERF-3 done.** `use-catalog.ts` gains `SHELF_STALE_MS = 5 min` (was 1 min)
+  for categories, products and a single product. The catalogue is identical for
+  every customer and changes a few times a day, so re-fetching it on every tab
+  switch was pure waste on a rural link. It **cannot** cause a wrong charge:
+  `place_order()` recomputes every line server-side (`AGENTS.md` §9.1), so a stale
+  shelf is only a *displayed* number, and checkout is where it is corrected.
+- **PERF-1 is satisfied** by the existing persister plus T0's skeletons: a warm
+  device paints grey bones from disk, then the saved shelf, then the refresh. It
+  was not re-implemented with `initialData`, because `PersistQueryClientProvider`
+  already hydrates the same cache the query would read.
+- **PERF-6 audited, nothing to change.** Money is a pure string function with
+  hand-rolled Indian grouping; there is no `Intl` in `money.ts` and no money
+  formatting inside a repeated render loop.
+- **PERF-4 (defer non-critical queries) refused.** UX-1 made `zones` and
+  `addresses` critical path — deferring them would make the headline promise flip
+  mid-read. `offers` is a rail directly under the hero, so deferring it converts
+  a round trip into a layout shift. And the queries are parallel GETs multiplexed
+  over one HTTP/2 connection: a timer that waits a frame changes the write order,
+  not the handshake. Full reasoning in `SCALE-AND-TRACKING.md` §8.1.
+- **PERF-5 (one `shop_bootstrap()` RPC) refused.** Two of five round trips are
+  parallel, so the saving is marginal cost, not 40 %. Against it: a new
+  security-definer function, a new type, a new test, and a second read path for
+  `store`/`settings`/`zones` that must forever agree with the first.
+
+**T2 — SCALE-1: the customer's socket is filtered to their own orders.**
+`use-realtime-orders.tsx` subscribes with `filter: user_id=eq.<me>` when
+`profiles.role = 'customer'`, and unfiltered for `delivery`/`admin` because the
+rider screen watches the *unclaimed pool* — a set no single row's `user_id` can
+express. RLS was already the security boundary; this is the cost of it: every
+order change was matched against every subscriber, and with fifty customers
+watching their own lunch a change is now interesting to one socket instead of
+fifty. The filter is **absent, not weaker, for staff**, and a null role (profile
+not loaded, or its fetch failed) subscribes unfiltered rather than not at all —
+a customer with no realtime is worse than one extra RLS check.
+
+**Verified, and how:**
+
+- `npm run typecheck` — 0 errors, both apps.
+- `npm run lint` — exit 0, all eight chained checks.
+- `npx expo export --platform android` — bundles cleanly (the check that catches
+  a module that imports something the Node prerender cannot load); `dist/`
+  deleted afterwards.
+- `npm run test:db` — **590 passed**, unchanged (this session touched no SQL).
+
+**Not verified, and cannot be from here:**
+
+- **How any of it looks.** No device has ever run this app (`PRODUCTION.md` C4),
+  so the hero's new hierarchy, the skeleton shapes matching the real cards, and
+  the Kannada line lengths at 360 dp are all *reasoned*, not *seen*. §8's T0 gate
+  is still "visual check on device" for that reason.
+- **Any speed claim.** PERF-3 is right in principle; "the app feels faster" needs
+  a cold-start measurement on the target phone, and this machine has no Android
+  SDK. The doc says so rather than claiming a win.
+- **The Realtime filter's effect on server load.** It is correct and narrower by
+  construction, but the "fifty sockets instead of one" improvement is unmeasured
+  until there is a hosted project with real connections (`PRODUCTION.md` C1/C6).
+
+---
+
 ## 2026-10-26 — Rider tracking, phase T4: the position, and the honest pickup
 
 **What was asked.** Continue the tracking build in the order agreed: T4 — the
