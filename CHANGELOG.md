@@ -6,6 +6,133 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-26 — Rider position, end to end (P3/P4), and Blinkit/Zepto measured
+
+**What was asked.** Two things in one session: finish the location work that T4
+had only put in the database, and install the `reverse-engineer-anything` skill
+and use it to take Blinkit and Zepto apart — features, minute details, theme —
+then list the gap and discuss before building.
+
+### P3/P4 — the rider's phone writes, the customer's screen reads
+
+Uncommitted before this entry; all of it is in this commit.
+
+- `src/lib/location.ts` — the **only** module that may mention `expo-location`,
+  loaded by dynamic `import()` behind `typeof window`. Same rule as
+  `src/lib/storage.ts`, for the same reason (`app.json` sets
+  `"web": { "output": "static" }`, so `expo start` prerenders under Node). New
+  `scripts/check-location.mjs` enforces it and is wired into `npm run lint`.
+- `src/lib/location-consent.ts`, `components/location-consent-card.tsx` — the
+  rider agrees once; the answer is persisted and shown on the rider screen.
+- `src/hooks/use-rider-position-writer.ts` — watch → `shouldRecordPosition()`
+  → `record_my_position()`. Foreground only, one final fix when the app goes to
+  the background, then the subscription stops.
+- `src/hooks/use-rider-position.ts` — a 30 s poll of `order_rider_position`,
+  because `rider_positions` has no read policy and therefore no Realtime path.
+- `app/rider/index.tsx` — consent card, writer, and a **Pick up** button
+  (`usePickUpOrder()` in `use-staff-orders.ts`) that sets `picked_up_at`.
+- `app/order/[id].tsx` — a fifth `TRACK_STEPS` stop ("Picked up") shown only once
+  `picked_up_at` is set, and `RiderPositionBlock`: age + distance + ETA, **no
+  map and no dot** (`SCALE-AND-TRACKING.md` §6.2).
+- i18n: `rider.pickUp`, `rider.location*` (4 keys), `order.step.pickedUp`,
+  `order.positionUpdated`, `order.positionNotAvailable`,
+  `order.distanceMeters`, `order.distanceKilometers`, `order.eta`,
+  `order.arrived` — in **both** `en.json` and `kn.json`.
+
+**Four real bugs found by the gates, not by luck:**
+
+1. `pickUp.variables?.orderId` — mutation variables are `string`, not an object.
+   Typecheck caught it.
+2. **Reading `isForeground.current` during render** (`use-rider-position-writer`).
+   This was not cosmetic: a ref read in render does not re-run the start/stop
+   effect, so the GPS watcher could have kept running after the app went to the
+   background — the exact privacy promise the consent screen makes. Foreground
+   is now a ref **and** state: the ref for the `AppState` listener to compare
+   synchronously, the state for `shouldTrack` to derive from.
+3. **`Date.now()` called during render** in `RiderPositionBlock`. Replaced with a
+   lazy `clockNow()` initial value plus a 30 s tick, so the "updated N s ago"
+   sentence keeps counting without the component rendering differently on every
+   pass.
+4. Two unused imports the lint treats as warnings; removed rather than silenced.
+
+**Verified, and how.** `npm run typecheck` clean; `npm run lint` clean across all
+nine chained checks (`check:i18n`, `view`, `persist`, `speech`, `packs`,
+`auth-doors`, `storage`, `location`, `tracking`) with **zero warnings**;
+`npm run test:db` **590/590 assertions** against real PostgreSQL;
+`npx expo export --platform android` **builds** (6.1 MB Hermes bundle). The export
+also confirmed the four Noto Sans Kannada faces ship, which corrected a claim I
+had drafted for the teardown.
+
+**Not verified — say it plainly.** No permission prompt has been seen, no
+position has been written from a real phone, and none of the new Kannada strings
+has been read by a Kunigal speaker. `expo-location` means Expo Go can no longer
+exercise P3/P4 at all: **these screens need an EAS development build**
+(`PRODUCTION.md` C4). The new consent and tracking Kannada is first draft and
+joins the `M7` sign-off list. One more small hole, recorded rather than hidden:
+the iOS permission strings in `app.json` are **English only** — iOS reads them
+from `InfoPlist.strings`, which Expo does not localise for us, so a Kannada-first
+rider meets an English system dialog. Fixing it means a config plugin or a
+`native/` override, which belongs with the EAS build work, not here.
+
+### The competitor teardown — `COMPETITOR-TEARDOWN.md`
+
+Installed `reverse-engineer-anything` from `morluto/rea` (SKILL.md + all seven
+`references/`). Its **MCP server was not run**: it needs Node ≥ 22.23.4 (this box
+is 22.22.0) and an `opencode` registration that does not exist. What was used is
+the skill's method — evidence tags, "what this cannot see" stated first, no claim
+without a source.
+
+Evidence was captured with a 60-line Chrome DevTools Protocol client (`cdp.js`,
+no dependencies, Node's global `WebSocket`) at 412×915 DPR 3, phone UA:
+computed styles of real elements, full stylesheet token extraction, and
+`Network.getResponseBody` on the JSON each page fetched itself.
+
+What it found, in one line each:
+
+- Blinkit: **222 CSS custom properties** (15 ten-step ramps), **Okra** in five
+  loaded weights, line height **1.15×** at every level, marketing headlines
+  tracked **−2 px**, 12 px gutters, product name 13/600 with a 30 px clamp-2
+  block, ADD 66×32 outlined `#318616` on a `#F7FFF9` wash, and **no `<h1>`–`<h4>`
+  anywhere**.
+- Zepto: the type scale **published as 24 tokens** with letter-spacing on every
+  step (negative large, **positive** small), regular weight **450** not 400,
+  radii 4/8/10/12, and the signature ADD button — `box-shadow: 1px 1px 0 0`
+  pink, no blur, absolutely positioned over the image corner.
+- Both put the delivery promise **on the product card** as a badge, not once in a
+  hero.
+- The most useful single finding: Blinkit's `/v1/consumerweb/eta` returns the
+  promise as a function of **(store × order shape)** — large order 12 min vs 8,
+  **cash on delivery 10 vs 8**, prescription medicine 30 — and carries the badge
+  colour, tint, font size and weight as **server-side design tokens**. Ours is one
+  number per zone.
+- Their own feature flags list 38 features; the ones that matter to us are named
+  in §4 of the file, including `app_refresh_data.background_to_foreground_refresh
+  { distance_in_meters: 300, duration_in_seconds: 420 }` — a precise,
+  copyable rule for when to refetch on resume.
+
+`COMPETITOR-TEARDOWN.md` ends with **10 "do it" rows, 7 "after launch" rows, and
+8 refusals with reasons**, plus five decisions that need the owner: unify the
+typeface (possibly free — OFL may already cover a Latin cut), how far to tighten
+the card without contradicting `KUNIGAL.md`, whether to publish an ETA that is a
+function instead of a number, who supplies pack facts (brand, net quantity,
+manufacturer, country of origin), and what the top 16 px of the screen should be.
+
+**The honest limit of that file.** I have no vision on this model: PNGs were
+captured but I did not interpret them, so every claim is DOM/CSS/JSON text
+evidence. Cart, checkout, live tracking and order history are behind phone-OTP
+login; I did not log in and did not try to. Those screens are marked `[UNKNOWN]`
+rather than described from memory.
+
+### Still open after this session
+
+`PRODUCTION.md` C1, C4, C6, C7, FSSAI/GST/Legal Metrology, `M7` (no Kannada
+sign-off), `M8` (6 products without photos), `M12` (no iOS build path from
+Linux), `H13` (no backup runbook). New: the five decisions in
+`COMPETITOR-TEARDOWN.md` §8, and the new migrations still have never been
+applied to the hosted project — only to the throwaway test database.
+
+---
+
 ---
 
 ## 2026-10-26 — The look and the load (T0, and the parts of T1/T2 worth building)
