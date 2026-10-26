@@ -78,6 +78,33 @@ export type RiderDirectoryEntry = {
   phone: string | null;
 };
 
+/**
+ * The assigned rider's current position, for a customer's own out-for-delivery
+ * order (migration 20261026000001). Read from the `order_rider_position` view.
+ *
+ * The view returns NO ROW at all rather than a flagged row when the fix is
+ * stale, too imprecise, or the order is no longer out for delivery — so a
+ * consumer of this type can treat a row as showable.
+ *
+ * `age_seconds`, `distance_m` and `eta_minutes` are computed in Postgres. They
+ * are not sent by the app, and a phone with a wrong clock cannot fake them.
+ * `distance_m` and `eta_minutes` are null until the delivery address has
+ * coordinates.
+ */
+export type OrderRiderPosition = {
+  order_id: string;
+  rider_id: string;
+  lat: number;
+  lng: number;
+  recorded_at: string;
+  /** Seconds since the server received this fix. */
+  age_seconds: number;
+  /** Metres from the rider to the delivery door. Null without door coordinates. */
+  distance_m: number | null;
+  /** Minutes to the door at 5.5 m/s, floored at 3, null beyond 45. */
+  eta_minutes: number | null;
+};
+
 export type Category = {
   id: string;
   store_id: string;
@@ -142,6 +169,15 @@ export type Address = {
   city: string;
   state: string;
   pincode: string;
+  /**
+   * Where the door actually is, for the rider position view's distance and ETA.
+   * NULL until the address screen captures it — and while it is NULL no ETA is
+   * shown at all, rather than one invented from nothing. `number`, not an
+   * integer, because a latitude is a measurement, not money (see migration
+   * 20261026000001 for why the paise rule does not apply).
+   */
+  lat: number | null;
+  lng: number | null;
   is_default: boolean;
   created_at: string;
   updated_at: string;
@@ -240,6 +276,12 @@ export type Order = {
   assigned_to: string | null;
   /** Set together with assigned_to. If one is null the other is too. */
   assigned_at: string | null;
+  /**
+   * When the rider took the bag from the shop. Distinct from
+   * `out_for_delivery`, which can be set at assignment while the bag is still
+   * on the counter. Set once, by the assigned rider, and never cleared.
+   */
+  picked_up_at: string | null;
   /** Why a delivery failed. Required once status is `failed` or `returned`. */
   failure_reason: FailureReason | null;
   /** The rider's own words, for the owner. Not shown to the customer. */
@@ -476,6 +518,18 @@ export type Database = {
         Update: never;
         Relationships: [];
       };
+      /**
+       * The rider's current position for the caller's own out-for-delivery
+       * order, narrowing what the ordering customer may see and nothing more.
+       * No row means "nothing showable": stale, too imprecise, or the delivery
+       * has ended.
+       */
+      order_rider_position: {
+        Row: OrderRiderPosition;
+        Insert: never;
+        Update: never;
+        Relationships: [];
+      };
     };
     Functions: {
       place_order: {
@@ -599,6 +653,26 @@ export type Database = {
       set_my_name: {
         Args: { p_full_name: string };
         Returns: Profile;
+      };
+      /**
+       * Record the caller's own position while carrying an order. Deliberately
+       * takes no rider id — it acts on `auth.uid()` only, so a rider cannot
+       * write a fix for somebody else. Refuses unless the caller is a delivery
+       * partner with an `out_for_delivery` order assigned, so an idle rider is
+       * never tracked, and there is no direct write path to the table.
+       *
+       * The client throttles (src/lib/tracking-rules.ts); the server does not,
+       * on purpose: a hostile client can only spend its own battery while
+       * already carrying a delivery, and a server-side throttle would make the
+       * dot drop out exactly when the customer is watching.
+       */
+      record_my_position: {
+        Args: {
+          p_lat: number;
+          p_lng: number;
+          p_accuracy_m?: number | null;
+        };
+        Returns: Record<string, unknown>;
       };
     };
     Enums: {
