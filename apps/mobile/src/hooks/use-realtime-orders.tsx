@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 
+import { useProfile } from '@/hooks/use-profile';
 import { isSupabaseConfigured, supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import type { Order } from '@/types/database';
@@ -32,6 +33,20 @@ import type { Order } from '@/types/database';
  *   accessToken callback), so a customer is delivered only their own orders and
  *   a signed-out socket is delivered nothing at all. This file does not relax
  *   that; it relies on it. See migration 20261013000002 and ROADMAP §11.
+ *
+ * WHY A CUSTOMER'S SOCKET IS ALSO FILTERED (register SCALE-1)
+ *   RLS is the security boundary, but it is not free: every order change is
+ *   matched against every subscriber. Riders and the owner genuinely need that
+ *   (the rider screen watches the unclaimed pool, which is a query no single
+ *   row's `user_id` can express), so their sockets stay broad. A customer needs
+ *   exactly one person's orders, and saying so with an equality filter lets the
+ *   server discard other people's changes before it does the per-subscriber
+ *   work. With fifty customers watching their own lunch, a change is then
+ *   interesting to one socket instead of fifty.
+ *
+ *   The filter is a performance measure, never a permission: it is absent for
+ *   staff, and if a filter were ever wrong the omitted RLS check is still there
+ *   underneath. See SCALE-AND-TRACKING.md §5.
  */
 
 export type OrderEvent =
@@ -51,6 +66,9 @@ const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 export function RealtimeOrdersProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const userId = useAuthStore((state) => state.user?.id ?? null);
+  // The role decides whether the socket can be narrowed. It comes from the same
+  // query the role gate already runs, so this costs no extra request.
+  const role = useProfile().data?.role ?? null;
   const listeners = useRef(new Set<Listener>());
 
   const subscribe = useCallback((listener: Listener) => {
@@ -67,11 +85,22 @@ export function RealtimeOrdersProvider({ children }: { children: ReactNode }) {
     // until somebody is signed in, then listen.
     if (!userId || !isSupabaseConfigured) return;
 
+    // One equality filter for a customer, nothing for staff (see the note at the
+    // top of the file). A null role means the profile has not loaded yet OR it
+    // failed: subscribe unfiltered rather than not at all, because a customer
+    // with no realtime is worse than one extra RLS check, and RLS still decides.
+    const filter = role === 'customer' ? `user_id=eq.${userId}` : undefined;
+
     const channel = supabase
       .channel(`orders:${userId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'orders' },
+        {
+          event: '*',
+          schema: 'public',
+          table: 'orders',
+          ...(filter ? { filter } : {}),
+        },
         (payload) => {
           // Invalidate first: the refetch is what actually updates the screen.
           void queryClient.invalidateQueries({ queryKey: ['orders'] });
@@ -89,7 +118,7 @@ export function RealtimeOrdersProvider({ children }: { children: ReactNode }) {
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [userId, queryClient]);
+  }, [userId, role, queryClient]);
 
   const value = useMemo(() => ({ subscribe }), [subscribe]);
   return <RealtimeContext.Provider value={value}>{children}</RealtimeContext.Provider>;
