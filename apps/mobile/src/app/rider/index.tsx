@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
 import { RiderAddressBlock } from '@/components/rider-address-block';
+import { LocationConsentCard } from '@/components/location-consent-card';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
 import { Badge } from '@/components/ui/badge';
@@ -23,8 +24,9 @@ import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { SectionHeader } from '@/components/ui/section-header';
 import { Radii, Spacing } from '@/constants/theme';
-import { useProfile } from '@/hooks/use-profile';
 import { useOrderEventListener } from '@/hooks/use-realtime-orders';
+import { useProfile } from '@/hooks/use-profile';
+import { useRiderPositionWriter } from '@/hooks/use-rider-position-writer';
 import {
   FAILABLE_FROM,
   RETURNABLE_FROM,
@@ -33,12 +35,14 @@ import {
   useDeliveredOrders,
   useFailOrder,
   useMyDeliveries,
+  usePickUpOrder,
   useWaitingOrders,
 } from '@/hooks/use-staff-orders';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
 import { formatClock, isSameDay, readSnapshotAddress } from '@/lib/order-view';
+import { hasLocationConsent, recordLocationConsent } from '@/lib/location-consent';
 import { orderStatusStyle } from '@/lib/order-status';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
@@ -86,6 +90,7 @@ export default function RiderScreen() {
   const insets = useSafeAreaInsets();
 
   const signOut = useAuthStore((state) => state.signOut);
+  const userId = useAuthStore((state) => state.user?.id ?? null);
   const profile = useProfile();
 
   const waiting = useWaitingOrders();
@@ -95,6 +100,7 @@ export default function RiderScreen() {
   const claim = useClaimOrder();
   const advance = useAdvanceOrder();
   const failOrder = useFailOrder();
+  const pickUp = usePickUpOrder();
 
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const [signingOut, setSigningOut] = useState(false);
@@ -104,7 +110,20 @@ export default function RiderScreen() {
   const [failingId, setFailingId] = useState<string | null>(null);
   const [failReason, setFailReason] = useState<FailureReason | null>(null);
   const [failNote, setFailNote] = useState('');
+  const [locationConsent, setLocationConsent] = useState<boolean | null>(null);
+  const [locationConsentSkipped, setLocationConsentSkipped] = useState(false);
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      setLocationConsent(await hasLocationConsent());
+    })();
+  }, []);
+
+  // The rider is tracked only while carrying an order, only while the app is
+  // open, and only after consent. Nothing here draws a dot; the customer's
+  // order screen reads the position through `order_rider_position`.
+  useRiderPositionWriter();
 
   // A phone in a rider's pocket does not show a screen. When an order that
   // nobody has taken lands, buzz and put a banner up for a while. The list
@@ -286,6 +305,15 @@ export default function RiderScreen() {
             />
           }>
           {/* --- The day at a glance ---------------------------------------- */}
+          {locationConsent === false && !locationConsentSkipped && (
+            <LocationConsentCard
+              onAgree={async () => {
+                await recordLocationConsent();
+                setLocationConsent(true);
+              }}
+              onSkip={() => setLocationConsentSkipped(true)}
+            />
+          )}
           <View style={styles.stats}>
             <StatTile
               value={waiting.data?.length ?? 0}
@@ -429,6 +457,19 @@ export default function RiderScreen() {
                       disabled={!address.phone}
                       onPress={() => onCall(address.phone)}
                     />
+                    {order.assigned_to === userId &&
+                    order.picked_up_at === null &&
+                    order.status !== 'placed' &&
+                    order.status !== 'confirmed' && (
+                      <Button
+                        label={busy ? t('common.pleaseWait') : t('rider.pickUp')}
+                        icon="bag-handle-outline"
+                        busy={pickUp.isPending && pickUp.variables === order.id}
+                        disabled={pickUp.isPending}
+                        onPress={() => void pickUp.mutateAsync(order.id)}
+                        style={styles.flex}
+                      />
+                    )}
                     {actionKey ? (
                       <Button
                         label={busy ? t('common.pleaseWait') : t(actionKey)}

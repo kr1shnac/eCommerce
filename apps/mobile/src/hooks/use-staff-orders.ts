@@ -182,6 +182,22 @@ export function useAdvanceOrder() {
   });
 }
 
+/** The rider took the bag from the counter: `picked_up_at`, once, and never cleared. */
+export function usePickUpOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const { error } = await supabase
+        .from('orders')
+        .update({ picked_up_at: new Date().toISOString() })
+        .eq('id', orderId);
+      if (error) throw error;
+    },
+    onSuccess: () => invalidateOrders(queryClient),
+  });
+}
+
 /**
  * Assign, reassign, or unassign a rider. Admin-only: RLS lets only staff update
  * orders, and `orders_guard_update` gives the rider branch no way to reach here

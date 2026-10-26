@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -18,15 +18,17 @@ import { IconButton } from '@/components/ui/icon-button';
 import { Radii, Spacing } from '@/constants/theme';
 import { CancelOrderRejected, useCancelOrder, useOrder } from '@/hooks/use-orders';
 import { useRider } from '@/hooks/use-profile';
+import { useRiderPosition } from '@/hooks/use-rider-position';
 import { useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
 import { formatSnapshotAddress, readSnapshotAddress } from '@/lib/order-view';
 import { orderStatusStyle } from '@/lib/order-status';
+import { etaMinutesFor, hasArrived, positionAgeSeconds } from '@/lib/tracking-rules';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useCartStore } from '@/store/cart-store';
-import type { OrderStatus } from '@/types/database';
+import type { OrderRiderPosition, OrderStatus } from '@/types/database';
 
 /**
  * One order: what was bought, what it cost, where it is going, and how to stop
@@ -54,6 +56,13 @@ export default function OrderDetailScreen() {
 
   const data = order.data;
   const canCancel = data?.status === 'placed';
+
+  // The rider's position for this order, only while it is out for delivery.
+  // Polled every 30 s — Realtime cannot reach `rider_positions` (no read
+  // policy), and the age stamp keeps a poll honest (SCALE-AND-TRACKING.md §6.3).
+  const position = useRiderPosition(
+    data?.status === 'out_for_delivery' ? orderId : null,
+  );
   // Shared with the rider and owner screens (`src/lib/order-view.ts`) — the same
   // jsonb column read the same way in all three places, so a rider and a customer
   // can never be shown two different versions of one address.
@@ -148,7 +157,10 @@ export default function OrderDetailScreen() {
             <ThemedText type="smallBold" themeColor="textSecondary">
               {t(TRACK_TITLE_KEY[data.status])}
             </ThemedText>
-            <StatusRow status={data.status} />
+            <StatusRow status={data.status} pickedUpAt={data.picked_up_at} />
+            {data.status === 'out_for_delivery' && (
+              <RiderPositionBlock position={position.data ?? null} />
+            )}
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
             <Row label={t('order.placedAt')} value={formatDate(data.placed_at)} />
             {data.estimated_delivery_at ? (
@@ -348,9 +360,17 @@ const TRACK_STEPS: {
   statuses: OrderStatus[];
   labelKey: string;
   icon: keyof typeof Ionicons.glyphMap;
+  /** Extra condition for a step that is a timestamp, not a status. */
+  visible?: (pickedUpAt: string | null) => boolean;
 }[] = [
   { statuses: ['placed', 'confirmed'], labelKey: 'order.step.placed', icon: 'receipt-outline' },
   { statuses: ['packing'], labelKey: 'order.step.packed', icon: 'bag-handle-outline' },
+  {
+    statuses: ['packing', 'out_for_delivery'],
+    labelKey: 'order.step.pickedUp',
+    icon: 'checkmark-circle-outline',
+    visible: (pickedUpAt) => Boolean(pickedUpAt),
+  },
   { statuses: ['out_for_delivery'], labelKey: 'order.step.onTheWay', icon: 'bicycle-outline' },
   { statuses: ['delivered'], labelKey: 'order.step.delivered', icon: 'home-outline' },
 ];
@@ -442,7 +462,13 @@ function RiderCard({ riderId, status }: { riderId: string | null; status: OrderS
   );
 }
 
-function StatusRow({ status }: { status: OrderStatus }) {
+function StatusRow({
+  status,
+  pickedUpAt,
+}: {
+  status: OrderStatus;
+  pickedUpAt: string | null;
+}) {
   const { t } = useTranslation();
   const theme = useTheme();
   const style = orderStatusStyle(theme, status);
@@ -460,7 +486,11 @@ function StatusRow({ status }: { status: OrderStatus }) {
     );
   }
 
-  const current = TRACK_STEPS.findIndex((step) => step.statuses.includes(status));
+  const current = TRACK_STEPS.reduce((last, step, index) => {
+    const relevant = step.statuses.includes(status);
+    const visible = step.visible ? step.visible(pickedUpAt) : true;
+    return relevant && visible ? index : last;
+  }, -1);
 
   return (
     <View
@@ -507,6 +537,89 @@ function StatusRow({ status }: { status: OrderStatus }) {
           </Fragment>
         );
       })}
+    </View>
+  );
+}
+
+/**
+ * The clock, read once as a lazy state initial value and then on a timer.
+ * Kept outside the component so the render body stays pure: `Date.now()` in
+ * render is what makes a screen render a different string on every pass.
+ */
+function clockNow() {
+  return Date.now();
+}
+
+/**
+ * The rider's position for an out-for-delivery order: age, distance and ETA.
+ *
+ * Text-first by design (SCALE-AND-TRACKING.md §6.2): a dot needs a map, a map
+ * needs data and a vendor decision the owner has not made yet. Age, distance
+ * and ETA fit on the smallest phone and work on 2G. Every number comes from
+ * `tracking-rules.ts`, so the UI cannot disagree with the database about how
+ * old a fix is or how far away the rider is.
+ */
+function RiderPositionBlock({ position }: { position: OrderRiderPosition | null }) {
+  const { t } = useTranslation();
+  const theme = useTheme();
+
+  /*
+   * "Updated 40 seconds ago" has to keep counting, so the clock is state, not a
+   * `Date.now()` read during render — reading the clock while rendering is what
+   * makes a screen render differently on every pass. `clockNow` is the one
+   * impure read, and it happens exactly twice per mount: as the lazy initial
+   * value and on each 30 s tick. It ticks on the same beat as the position
+   * query, so the age can be up to 30 s stale and the sentence is still true.
+   */
+  const [nowMs, setNowMs] = useState(clockNow);
+  useEffect(() => {
+    const id = setInterval(() => setNowMs(clockNow()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const distance = position?.distance_m ?? null;
+  const arrived = hasArrived(distance);
+  const eta = distance === null ? null : etaMinutesFor(distance);
+
+  const age = position && nowMs > 0
+    ? positionAgeSeconds(new Date(position.recorded_at).getTime(), nowMs)
+    : null;
+
+  let distanceText: string | null = null;
+  if (distance !== null) {
+    distanceText = distance < 1000
+      ? t('order.distanceMeters', { value: Math.round(distance) })
+      : t('order.distanceKilometers', { value: Math.round(distance / 100) / 10 });
+  }
+
+  if (!position) {
+    return (
+      <View style={styles.positionEmpty}>
+        <ThemedText type="smallBold">{t('order.positionNotAvailable')}</ThemedText>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.positionBlock}>
+      <View style={styles.positionRow}>
+        {age !== null ? (
+          <ThemedText type="smallBold">{t('order.positionUpdated', { age })}</ThemedText>
+        ) : null}
+        {arrived ? (
+          <ThemedText type="smallBold" style={{ color: theme.successInk }}>
+            {t('order.arrived')}
+          </ThemedText>
+        ) : null}
+      </View>
+      {distanceText ? (
+        <ThemedText type="small">{distanceText}</ThemedText>
+      ) : null}
+      {eta !== null ? (
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('order.eta', { minutes: eta })}
+        </ThemedText>
+      ) : null}
     </View>
   );
 }
@@ -585,6 +698,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepLabel: { textAlign: 'center' },
+  positionBlock: { gap: Spacing.one + 2 },
+  positionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: Spacing.two,
+  },
+  positionEmpty: { paddingVertical: Spacing.two },
   line: { width: 18, height: 3, borderRadius: 2, marginTop: 16 },
   action: { marginTop: Spacing.two },
 });
