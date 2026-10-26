@@ -628,7 +628,12 @@ launch, **C** = refuse with a reason.
 
 ### B — after launch
 
-- **B1 `availableQuantity` as the per-SKU cap** — `product_sku_limit` is a flag on their side; we can enforce `quantity <= stock_qty` in `place_order()`, which we may already do. `[UNVERIFIED]` — check the migration before claiming it.
+- **B1 Overtaken — nothing to do.** The teardown draft listed "per-SKU order cap"
+  as a gap. It is not: `place_order()` already rejects `quantity > stock_qty`
+  with the available number (`20261021000003_product_guard.sql:331`) and caps any
+  line at **99** (`:242`), which is a stricter version of Blinkit's
+  `product_sku_limit` flag. What we still lack is showing it *before* checkout —
+  A3.
 - **B2 Section order/visibility the owner can change without a build.** Not a widget engine (§2.5) — one `store_settings.home_sections jsonb` column and a `RENDERERS` map.
 - **B3 Cart button that shows rupees saved** (`bachatItemCount`). We already compute `discount_paise`; showing "₹40 saved" in the cart bar is a label change.
 - **B4 Search placeholder that cycles** with real shelf items ("ಅಕ್ಕಿ", "ಹಾಲು") — a copy change, and it teaches what search can do to someone who has never used search.
