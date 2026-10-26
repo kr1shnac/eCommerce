@@ -8,7 +8,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CallShop } from '@/components/call-shop';
 import { OfflineBanner } from '@/components/offline-banner';
-import { LoadingState, StateMessage } from '@/components/state-message';
+import { OrderSkeleton } from '@/components/screen-skeletons';
+import { StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -123,7 +124,7 @@ export default function OrderDetailScreen() {
       </View>
 
       {order.isLoading ? (
-        <LoadingState />
+        <OrderSkeleton />
       ) : order.isError || !data ? (
         <StateMessage
           title={t('order.errorTitle')}
@@ -145,7 +146,7 @@ export default function OrderDetailScreen() {
 
           <Card style={styles.section}>
             <ThemedText type="smallBold" themeColor="textSecondary">
-              {t('order.trackTitle')}
+              {t(TRACK_TITLE_KEY[data.status])}
             </ThemedText>
             <StatusRow status={data.status} />
             <View style={[styles.divider, { backgroundColor: theme.border }]} />
@@ -353,6 +354,25 @@ const TRACK_STEPS: {
   { statuses: ['out_for_delivery'], labelKey: 'order.step.onTheWay', icon: 'bicycle-outline' },
   { statuses: ['delivered'], labelKey: 'order.step.delivered', icon: 'home-outline' },
 ];
+
+/**
+ * The tracking card's heading (register UX-2).
+ *
+ * A live order is a *status*, and the ladder under this title is going to move —
+ * so "Delivery status" is true. A terminal order will never move again, and a
+ * failed delivery sitting under a heading that promises tracking is the kind of
+ * small lie this project refuses: the heading must be the fact, not the promise.
+ */
+const TRACK_TITLE_KEY: Record<OrderStatus, string> = {
+  placed: 'order.trackTitle',
+  confirmed: 'order.trackTitle',
+  packing: 'order.trackTitle',
+  out_for_delivery: 'order.trackTitle',
+  delivered: 'order.trackTitleDelivered',
+  cancelled: 'order.trackTitleCancelled',
+  failed: 'order.trackTitleFailed',
+  returned: 'order.trackTitleReturned',
+};
 
 /**
  * The rider carrying this order: a face, a name, and one tap to call them.

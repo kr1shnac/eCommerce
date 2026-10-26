@@ -18,7 +18,8 @@ import { CategoryChip } from '@/components/category-chip';
 import { LanguageSwitch } from '@/components/language-switch';
 import { OfflineBanner } from '@/components/offline-banner';
 import { ProductCard } from '@/components/product-card';
-import { LoadingState, StateMessage } from '@/components/state-message';
+import { CategoryChipsSkeleton, HomeShelfSkeleton } from '@/components/screen-skeletons';
+import { StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -197,16 +198,20 @@ export default function HomeScreen() {
         the shelf reads as one designed thing: who we are talking to, what we
         are for, and where it is going — in that order.
       */}
+      {/*
+        The promise, not the greeting. The one fact a customer opens this app for
+        is "will it come, and when" — so that is the largest line on the screen,
+        and the greeting is a caption above it (register UX-1). When the shop is
+        shut the same line says so instead of promising a delivery, which is why
+        the separate "closed" card below is gone: two blocks saying the shop is
+        closed is one block too many, and the hero is the one people actually
+        read.
+      */}
       <View style={[styles.hero, { backgroundColor: theme.accentSoft, borderColor: theme.accentBorder }]}>
-        <ThemedText type="title" numberOfLines={2}>
-          {greeting}
-        </ThemedText>
-        <ThemedText type="small" style={[styles.ask, { color: theme.accent }]}>
-          {t('home.ask')}
-        </ThemedText>
-
-        {/* Where it is going, and whether the shop is taking orders yet. */}
-        <View style={styles.statusRow}>
+        <View style={styles.heroTop}>
+          <ThemedText type="caption" themeColor="textSecondary" numberOfLines={1} style={styles.flex}>
+            {greeting}
+          </ThemedText>
           <View style={[styles.pill, { backgroundColor: theme.card, borderColor: theme.accentBorder }]}>
             <Ionicons name="location" size={14} color={theme.accent} />
             <ThemedText type="caption" style={{ color: theme.text }} numberOfLines={1}>
@@ -215,23 +220,22 @@ export default function HomeScreen() {
                 : t('home.deliveringTo')}
             </ThemedText>
           </View>
-          {!isClosed && zone?.eta_minutes ? (
-            <Badge label={t('home.deliveryIn', { minutes: zone.eta_minutes })} tone="success" icon="time-outline" />
-          ) : null}
         </View>
-      </View>
 
-      {isClosed ? (
-        <Card tone="warning" style={styles.notice}>
-          <Ionicons name="moon-outline" size={20} color={theme.warning} />
-          <View style={styles.flex}>
-            <ThemedText type="smallBold">{t('home.closedTitle')}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {t('home.closedHint')}
-            </ThemedText>
-          </View>
-        </Card>
-      ) : null}
+        {/* One claim, big. No address yet means no zone, so no ETA is invented —
+            the shop's standing line is shown instead. */}
+        <ThemedText type="title" numberOfLines={2}>
+          {isClosed
+            ? t('home.closedTitle')
+            : zone?.eta_minutes
+              ? t('home.promise', { minutes: zone.eta_minutes })
+              : t('home.subtitle')}
+        </ThemedText>
+
+        <ThemedText type="small" style={[styles.ask, { color: theme.accent }]}>
+          {isClosed ? t('home.closedHint') : t('home.ask')}
+        </ThemedText>
+      </View>
 
       {/* Live offers, straight from the database. Shown before the shelves: a
           code is the reason to fill a basket. Hidden while searching, so it
@@ -296,6 +300,9 @@ export default function HomeScreen() {
             }}
           />
         ))}
+        {/* Chips arrive after the shelf's own bones do, because they are one
+            query behind. Bones keep the rail from jumping when they land. */}
+        {categories.isLoading ? <CategoryChipsSkeleton /> : null}
       </ScrollView>
 
       {!isSearching && deals.length > 0 ? (
@@ -452,7 +459,9 @@ export default function HomeScreen() {
         }
         ListEmptyComponent={
           products.isLoading ? (
-            <LoadingState />
+            // Grey cards in the shape of the shelf, not a spinner: on a 2G
+            // connection a spinner for six seconds reads as "broken" (UX-5).
+            <HomeShelfSkeleton />
           ) : products.isError ? (
             // Never show products.error.message: it is a PostgREST string, and
             // the customer cannot act on it (rule 9.2).
@@ -666,12 +675,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   ask: { marginTop: 2 },
-  statusRow: {
+  heroTop: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
+    justifyContent: 'space-between',
     gap: Spacing.two,
-    marginTop: Spacing.three,
   },
   pill: {
     flexDirection: 'row',
@@ -692,12 +700,6 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   searchInput: { flex: 1, fontSize: 16, paddingVertical: 0 },
-  notice: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    marginTop: Spacing.three,
-  },
   sectionTitle: { marginTop: Spacing.four, marginBottom: Spacing.two },
   chipsRow: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
   dealsRow: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
