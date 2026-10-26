@@ -8,6 +8,124 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-26 — Rider tracking, phase T4: the position, and the honest pickup
+
+**What was asked.** Continue the tracking build in the order agreed: T4 — the
+tracking *database* — before any tracking UI, because a UI that draws a dot is
+worthless (and dishonest) until something trustworthy fills it.
+
+**Migration `supabase/migrations/20261026000001_rider_positions.sql`.**
+
+- `addresses.lat` / `addresses.lng`, `double precision`, nullable, with range
+  checks and a `not (lat = 0 and lng = 0)` check. Nothing fills them yet — the
+  address screen has to ask — so **there is no ETA in the app until then**, by
+  design rather than by accident.
+- `rider_positions`: one row per rider (`rider_id` primary key → upsert), with
+  `order_id`, `lat`, `lng`, `accuracy_m`, `recorded_at`. **No history table, and
+  it is a comment in the migration that there will not be one** — a trail is a
+  log of where an employee went all day, which nobody consented to.
+- `record_my_position(p_lat, p_lng, p_accuracy_m)` — `security definer`, takes
+  **no rider id** (acts on `auth.uid()`, like `set_my_name()` and
+  `delete_my_account()`), requires role `delivery` **and** an `out_for_delivery`
+  order assigned to the caller. **No server-side throttle**, deliberately: the
+  client throttles (T3), and a server-side one would drop the dot exactly when
+  the customer is watching. A hostile client can only spend its own battery
+  while already carrying a delivery.
+- `public.metres_between()` (haversine) and `public.eta_minutes_for()` (5.5 m/s,
+  floored at 3 minutes, `null` beyond 45) — the same constants as
+  `src/lib/tracking-rules.ts`, asserted to the same numbers by the DB test, so
+  the two cannot drift.
+- View `public.order_rider_position` — the **only** read path. Returns
+  `order_id, rider_id, lat, lng, recorded_at, age_seconds, distance_m,
+  eta_minutes`, and only for the customer's own `out_for_delivery` order (or the
+  shop owner). It returns **no row** when the fix is older than 10 minutes, worse
+  than 150 m accuracy, or the delivery has ended — the app must never be handed a
+  dot it has to remember to distrust. `is_staff()` is deliberately *not* used, so
+  a rider cannot watch another rider.
+- `orders.picked_up_at` + a **separate** trigger `orders_guard_picked_up_at`.
+  `guard_order_update()` is a column denylist, so it would have accepted the new
+  column without a question; re-creating 200 lines of it to add one rule is how a
+  guard silently loses a rule. The new trigger owns exactly one column: set once,
+  by the assigned rider, only from `confirmed`/`packing`/`out_for_delivery`, never
+  cleared, and refused if it is more than five minutes in the future.
+- `orders_clear_rider_position` — an `after update of status` trigger that
+  **deletes the stored position** the moment an order leaves `out_for_delivery`.
+  This is what makes "no delivery, no stored position" literally true, even for a
+  rider who closed the app with a stale fix on file.
+
+**Decision: `double precision`, deviating from `SCALE-AND-TRACKING.md`.** The
+paise rule in `AGENTS.md` §2 is about **money**. A latitude is a measurement with
+metres of real uncertainty and PostGIS itself stores geometry as double
+precision; `numeric` would imply 0.1 m precision that a phone does not have. The
+reason is written in the migration header so it is not "fixed" by somebody
+applying the money rule too broadly.
+
+**Test `supabase/tests/24_rider_positions_test.sql` — 52 new assertions.** It
+proves the forbidden cases, not just the happy one: an idle rider refused; a
+customer, the shop owner and a signed-out caller refused; direct `INSERT` and
+direct `SELECT` on the table refused (`42501`) so the RPC cannot be bypassed; a
+second fix overwrites instead of appending; `0,0` / out-of-range / null / negative
+accuracy refused; a customer sees their own position and **not** another
+customer's; a rider cannot read the view at all; the owner can see both live
+deliveries; a stale fix and a 500 m fix are not returned; distance and ETA match
+the server formula; a destination without coordinates yields `null` for both;
+`picked_up_at` refused for a customer, another rider, twice, cleared, and on an
+already-delivered order; closing the order deletes the position; deleting the
+rider's auth user cascades their position away.
+
+**Two real traps found while making the test pass, both worth remembering:**
+
+1. **`orders` UPDATE is staff-only at the RLS layer.** The old "you can cancel
+   your own order" policy was replaced by `staff update orders`, so a customer's
+   `UPDATE` matches **zero rows and raises nothing**. The test therefore asserts
+   `touches(..., 0)` for the customer case rather than expecting an exception.
+   The same subtlety is why the app must never conclude "saved" from a silent
+   update.
+2. **Deleting a rider's auth user cascades `orders.assigned_to` to NULL, which
+   fires `orders_guard_update`.** If the delete is performed while that rider is
+   the signed-in user, the guard sees a rider whose profile is already gone and
+   refuses — so the operation must be done as the admin (or the service role).
+   Noted in the test. Fine today (deleting a rider is an owner action), but the
+   kind of thing that would bite a future "delete my own account" path for riders.
+
+**Types.** `apps/mobile/src/types/database.ts` updated by hand per `AGENTS.md`
+§3: `Address.lat/lng`, `Order.picked_up_at`, a new `OrderRiderPosition`, the
+`order_rider_position` view, and `record_my_position` in `Functions`. The
+`rider_positions` table itself is deliberately **omitted from `TableRowMap`**,
+because there is no client path to it; adding it would invite one.
+
+**Docs.** `SCALE-AND-TRACKING.md`: T4 marked **DONE**, plus a new §6.3.1 "As
+built" naming the five deltas from the design (float vs numeric, no policies at
+all, delete-on-close, filters in `where` not the payload, ETA null until the
+address has coordinates). The data-path diagram no longer claims `numeric`.
+
+**Verified, and how:**
+
+- `npm run typecheck` — 0 errors, both apps.
+- `npm run lint` — 0 errors, 0 warnings (all eight chained checks, including
+  `check:tracking` and `check:i18n`).
+- `npm run test:db` against a throwaway PostgreSQL — **590 passed, 0 failed**
+  (baseline was 538; +52 from test 24).
+- The customer-pickup case was reproduced by hand against a `--keep` database
+  before the test was changed, which is how the RLS-zero-rows behaviour above was
+  found rather than guessed.
+
+**Not verified, and cannot be from here:**
+
+- Nothing has been applied to the **hosted** Supabase project. Only the throwaway
+  test database has seen this migration.
+- No device has run anything (`PRODUCTION.md` C4). T5 and T6 — the rider consent
+  screen and the customer tracking block — need `expo-location`, permission flows
+  on both platforms, and a Kannada sign-off that is still outstanding (M7). The
+  database is ready for them; the UI is not started.
+- `addresses.lat/lng` are unpopulated, so `distance_m` and `eta_minutes` are
+  `null` in real use until the address picker ships. The app must render "on the
+  way, updated 20 s ago" and no ETA in the meantime.
+
+---
+
+---
+
 ## 2026-10-21 — Feature parity against Blinkit/Zepto, and the tracking rules (T3)
 
 **What was asked.** Reverse-engineer Blinkit or Zepto, find what this app is

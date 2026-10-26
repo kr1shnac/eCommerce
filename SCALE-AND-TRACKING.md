@@ -294,8 +294,8 @@ GPS fix
   ↓ throttled by rule (§6.4)
 write via one RPC:  ───►  rider_positions (one row per rider, upsert)
    record_my_position(        · rider_id  (auth.uid(), never a param)
-     lat, lng, accuracy,      · lat/lng    (numeric, no float money concerns here)
-     recorded_at)             · accuracy_m
+     lat, lng, accuracy,      · lat/lng    (double precision — a measurement,
+     recorded_at)             · accuracy_m    not money; see §6.3.1)
                               · recorded_at
                               · order_id (nullable, the order being delivered)
                                 ↓
@@ -333,6 +333,41 @@ write via one RPC:  ───►  rider_positions (one row per rider, upsert)
   *works* on a 30 s poll and *improves* with Realtime. A fresh-enough dot every
   30 s is honest ("updated 20 s ago" can be shown); a dot that pretends to be
   live and is 4 minutes old is a lie. **Show the age.**
+
+### 6.3.1 As built (2026-10-26, migration `20261026000001`)
+
+T4 is done and the design above survived with five changes worth naming, because
+each one is a decision a future reader would otherwise re-open:
+
+1. **`double precision`, not `numeric`.** The paise rule in `AGENTS.md` §2 is
+   about money. A latitude is a measurement with metres of real uncertainty, and
+   PostGIS stores geometry as double precision. The reason is a comment in the
+   migration so nobody "fixes" it.
+2. **The table has no read or write policy at all.** RLS is on and every
+   privilege is revoked from `public`, `anon` and `authenticated`. The
+   security-definer RPC is the only write path and the view is the only read
+   path — so "only while delivering" is enforced in one place, not in a policy
+   that a later grant could quietly widen.
+3. **The position is deleted when the delivery ends.** A trigger on `orders`
+   removes the row as soon as the order leaves `out_for_delivery`, so a rider who
+   left the app open is not left with a stored position. That is stronger than
+   the stale-filter and it is what makes "no delivery, no stored position"
+   literally true.
+4. **The 10-minute and 150 m filters live in `where`, not in the payload.** The
+   view returns *no row* rather than a row the app must remember to distrust. The
+   app's `isPositionShowable()` (T3) stays as a second line for a cached
+   payload.
+5. **`distance_m` and `eta_minutes` are NULL until `addresses.lat/lng` exist.**
+   Those two nullable columns were added in the same migration, and nothing fills
+   them yet — the address screen has to ask. Until then the customer sees
+   position and age, and **no ETA at all** rather than one computed from nothing.
+   The arithmetic is proved correct by the DB test, so it is ready the day the
+   address picker ships.
+
+`orders.picked_up_at` also landed here, guarded by its own trigger
+(`guard_picked_up_at`) rather than by re-creating the 200-line
+`guard_order_update()`, which is a denylist and would have accepted the column
+without a question. T5/T6 render it.
 
 ### 6.4 Throttling — how often a position is written
 
@@ -431,7 +466,7 @@ that make it honest.
 | T1 | PERF-1…PERF-4 (perceived speed) | cold-start timing on device |
 | T2 | SCALE-1 (Realtime filters) + SCALE-4 (plan/limits noted) | DB tests + Realtime log check |
 | T3 | `src/lib/tracking-rules.ts` + `check:tracking` (pure logic, no native) | lint, check:tracking — **DONE 2026-10-21**, see `CHANGELOG.md` |
-| T4 | `rider_positions` table + `record_my_position()` + narrow read view + migration + **test with forbidden cases** | `npm run test:db` |
+| T4 | `rider_positions` table + `record_my_position()` + narrow read view + migration + **test with forbidden cases** | `npm run test:db` — **DONE 2026-10-26**, see `CHANGELOG.md` |
 | T5 | Rider consent screen (both languages) + write throttle wired to the rule module | device test |
 | T6 | Customer text-first tracking block on `order/[id].tsx` (age + distance + ETA) | device test |
 | T7 | Optional static route image, then optional live map, behind a tap | owner's data-budget decision |
