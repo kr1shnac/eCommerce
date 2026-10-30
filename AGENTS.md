@@ -363,13 +363,20 @@ As of this build, the app is a working end-to-end flow on one shop:
   map / background location. The text-first rider position above *is* built.
   Everything except location still runs in Expo Go; push notifications, Razorpay
   and the location screens need an EAS development build.
+- **The competitor-derived design plan is measured, not built.**
+  `COMPETITOR-TEARDOWN.md` §7 lists A1–A10 from Blinkit/Zepto evidence. No
+  A1–A6 item is complete; A3 exists on the product page only (not the shelf
+  card), and A9 has only `net_quantity`/`packer_name`. The five decisions in its
+  §8 are still open. `HANDOFF.md` §6.4 is the audit and the agreed order
+  (A5 → A6 → A4 → A3-card → A2 → A1).
 
 `ROADMAP.md` is the detailed phase-by-phase plan; read it alongside this file.
-`SCALE-AND-TRACKING.md` is where the app goes *after* it works: the UI
-improvement list, the perceived-speed and concurrency work, and the detailed
-design for rider location tracking (data path, throttling, privacy rules, and
-the deliberately-vendor-free map decision). It is the newest of these files;
-where it disagrees with an older fact, check its date.
+`SCALE-AND-TRACKING.md` covers the UI, perceived-speed and concurrency work and
+the detailed design for rider location tracking (data path, throttling, privacy
+rules, and the deliberately-vendor-free map decision). `COMPETITOR-TEARDOWN.md`
+is the measured evidence behind the design decisions, and `HANDOFF.md` is the
+current state and the laptop-move checklist. Where they disagree with an older
+fact, the newest file wins — and the CHANGELOG wins over all of them.
 
 ## 8. Keep the build log honest
 

@@ -245,6 +245,12 @@ building, are done too — including the honest list of what was refused and why
 the next phase that can be built without a client decision**; P6 needs the
 owner's partial-fulfilment decision first.
 
+The separate **design** gap list — A1–A10, with measured evidence — lives in
+`COMPETITOR-TEARDOWN.md` §7. It is a plan, not a build log: none of A1–A6 is
+complete; A3 is half-built (product page only), and the five decisions in its §8
+are still open. `HANDOFF.md` §6.4 has the audit and the agreed order
+(A5 → A6 → A4 → A3-card → A2 → A1).
+
 | Phase | Work | Gate | Effort |
 | --- | --- | --- | --- |
 | **P1** | `src/lib/tracking-rules.ts` + `npm run check:tracking` — pure throttle logic, no native code | lint — **DONE** | S |

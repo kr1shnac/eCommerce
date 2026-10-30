@@ -9,6 +9,18 @@ whether an app feels like a product or like a form.
 Read `FEATURE-PARITY.md` first for the business judgement. Read this for the
 numbers.
 
+> **Status 2026-10-30 — this is a plan, not a build log.** The measurements and
+> the A/B/C lists below are the record. Since this was written, **no A1–A6 item
+> is complete**: the session that was told "proceed" ran out of model
+> credits before its first edit, and no branch, worktree or stash contains the
+> work. No A-item is complete: A3 is the one partial (the product page shows
+> "Only N left" at ≤ 5; the shelf card does not). A7–A10 are not started. The
+> five decisions in §8 are
+> still open. `HANDOFF.md` §6.4 has the item-by-item audit, plus three
+> corrections to this file: A2's file target is wrong for this repo, A3's real
+> gap is the card rather than the product page, and A5 must not apply negative
+> tracking to Kannada.
+
 ---
 
 ## 0. How this was captured, and what it cannot see
@@ -613,17 +625,21 @@ launch, **C** = refuse with a reason.
 
 ### A — worth doing before launch
 
+**Status 2026-10-30:** A1 ✗ · A2 ✗ · A3 ◐ (product page only) · A4 ✗ · A5 ✗ ·
+A6 ✗ · A7 ✗ · A8 ✗ · A9 ◐ (`net_quantity` + `packer_name` only) · A10 ✗.
+`HANDOFF.md` §6.4 has the evidence and the decisions still needed.
+
 | # | Gap | Evidence | Where it lands |
 | --- | --- | --- | --- |
-| A1 | **ETA is one number per zone.** Theirs is a function of store × order shape: large order +50 %, COD +2 min, prescription +22 min. | `[MEASURED]` §3 | migration + `shop_day_totals`-style RPC; home hero, checkout, order screen |
-| A2 | **No per-unit price (₹/kg, ₹/L).** The one honest way to compare two packs on the same shelf. | `[MEASURED]` §2.6 `pricePerUom` | `product_pack_options` already normalises g/ml (`PRODUCTION.md` M4); add `price_per_100g` display derived in `src/lib/pack.ts` |
-| A3 | **Stock is invisible until checkout fails.** They show `availableQuantity` and "only 3 left". | `[MEASURED]` §2.6 | `product-card`, product screen — we already have `stock_qty` |
-| A4 | **No status-bar / top-of-screen brand.** | `[MEASURED]` §2.3, §1.1 | `app.json` + root layout |
-| A5 | **No tracking on the type scale**, so headings read as default. | `[MEASURED]` §2.1 vs `[CODE]` `theme.ts` `Type` | `Type` gains `letterSpacing` per step (−0.5 large → +0.2 overline) |
+| A1 | **ETA is one number per zone.** Theirs is a function of store × order shape: large order +50 %, COD +2 min, prescription +22 min. We are COD-only today, so the payment dimension is future-proofing; the size dimension is real now. | `[MEASURED]` §3 | migration + `shop_day_totals`-style RPC; home hero, checkout, order screen |
+| A2 | **No per-unit price (₹/kg, ₹/L).** The one honest way to compare two packs on the same shelf. | `[MEASURED]` §2.6 `pricePerUom` | `product_pack_options` already normalises g/ml (`PRODUCTION.md` M4). Put the rate in a **new** pure module (`src/lib/unit-price.ts`) or `money.ts` — **not** `pack.ts`, which `check:packs` forbids from touching money |
+| A3 | **Stock is invisible on the shelf card** (the product page has shown it since Phase 2.5). They show `availableQuantity` and "only 3 left". | `[MEASURED]` §2.6 | `product-card` — we already have `stock_qty` and `product.lowStock` in both locales |
+| A4 | **No status-bar / top-of-screen brand.** | `[MEASURED]` §2.3, §1.1 | `app.json` + root layout. The light/dark `StatusBar` already exists; the missing part is the brand strip |
+| A5 | **No tracking on the type scale**, so headings read as default. | `[MEASURED]` §2.1 vs `[CODE]` `theme.ts` `Type` | `Type` gains `letterSpacing` per step (−0.5 large → +0.2 overline) for **Latin only**; Kannada stays at 0 |
 | A6 | **`Spacing` has no 12**, so 12 px gutters need magic numbers. Blinkit's page gutter is 12. | `[MEASURED]` §1.3 vs `[CODE]` | `theme.ts` `Spacing.three` stays 16; add `twoHalf: 12` |
 | A7 | **Refresh-on-resume rule is ad hoc.** Theirs: 300 m **or** 420 s. | `[MEASURED]` §4 | `hooks/` + `SCALE-AND-TRACKING.md` PERF rows |
 | A8 | **No `fetchpriority` / no lazy strategy per image role.** Zepto: lazy + `fetchpriority=low` + `w-144,q-40`; Blinkit: eager + explicit size. | `[MEASURED]` §1.5, §2 | `product-card` (first 4 eager, rest lazy), `expo-image` `priority` |
-| A9 | **Missing catalogue truth**: brand, country of origin, ingredients, manufacturer, net quantity, return/replacement window. These are on the pack and are legally expected for prepacked goods. | `[MEASURED]` §2.6 | migration + product screen. **Legal Metrology wording is still `[UNVERIFIED]`** (`PRODUCTION.md`) — this is the row that touches it |
+| A9 | **Missing catalogue truth**: brand, country of origin, ingredients, manufacturer, return/replacement window. **Net quantity and packer name already exist** (`20261020000002_shop_identity.sql`). The rest are on the pack and legally expected for prepacked goods. | `[MEASURED]` §2.6 | migration + product screen. **Legal Metrology wording is still `[UNVERIFIED]`** (`PRODUCTION.md`) — this is the row that touches it |
 | A10 | **Two-level taxonomy.** They have L1 → L2 → L3. We have one flat list of 8. | `[MEASURED]` §1.5, §2.6 | categories gain `parent_id`; matters at ~300 SKUs, not at 34 |
 
 ### B — after launch

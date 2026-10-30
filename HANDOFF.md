@@ -478,6 +478,94 @@ model.
 - `common.off` is an unused i18n key and `expo-localization` is only a config
   plugin; both are deliberately left for a future "follow the device" option.
 
+### 6.4 The post-teardown design plan (A1–A10) — decided, built, still open
+
+`COMPETITOR-TEARDOWN.md` (2026-10-26, commit `c145ca2`) is the measured half of
+`FEATURE-PARITY.md`: Blinkit and Zepto at 412×915, read from computed styles,
+their CSS and the JSON their own pages fetched. No binaries were opened, and
+logged-in screens (cart, checkout, tracking, order history) are marked
+`[UNKNOWN]`, not described from memory. It produced the A/B/C gap list and five
+decisions.
+
+**It is a plan, not a build log.** Audited against `master` on 2026-10-30:
+
+**What was finalised (and is already in the code or the rules):**
+
+- The town is **trip-poor and information-poor, not time-poor**. The product is
+  the shop's shelf (is it in stock?), its price (₹/kg), and its person (the
+  shop's helper, in Kannada) — not a 10-minute delivery promise.
+- **Refused, with reasons:** membership/subscription, the 10-minute theatre,
+  Blinkit/Zepto density (12–13 px names), tiered `SUPER_SAVER` pricing, retail
+  media/ads, server-driven UI/LMS widgets, `user-scalable=0`, dropping semantic
+  headings, buying a commissioned typeface before trying the free Noto
+  superfamily, and their five-service-tier model.
+- **Kept and defended:** full dark mode (neither web app has one), the 12.5 px
+  floor with 1.5× line height, Kannada-first voice, text-first rider tracking
+  (no map, no dot), packs not fractions (integer paise), and money/RLS in
+  Postgres.
+- **Agreed build order for the cheap six:** A5 → A6 → A4 → A3 → A2 → A1. A7–A10
+  after that; A9 needs the owner and a CA.
+
+**What is actually built:**
+
+| Item | Status on 2026-10-30 | Evidence |
+| --- | --- | --- |
+| A1 ETA as a function | **Not built** | `delivery_zones.eta_minutes` is still one number per zone. The only ETA function is `eta_minutes_for(distance)` for the rider tracker. |
+| A2 ₹/kg, ₹/L | **Not built** | No per-unit price module or display. The pack chips show each pack's price, with no rate to compare packs. |
+| A3 stock visible | **Half built** | The product page shows `Only N left` when `stock_qty ≤ 5` (`product/[id].tsx`). The **shelf card does not**, which is where the teardown found the gap. |
+| A4 status-bar / top brand | **Not built** | `expo-status-bar` already switches light/dark in `_layout.tsx`; there is no marigold hairline and no tinted status-bar background. |
+| A5 letter-spacing | **Not built** | `Type` has no `letterSpacing`. Ad-hoc tracking exists only in the OTP box, the coupon code and the offer code. |
+| A6 spacing 12 | **Not built** | `Spacing` runs 2/4/8/16/24/32/64; the standard gutter is 16. There is no 12 token, so a 12 px gutter still needs a magic number. |
+| A7 refresh-on-resume | **Not built** | `_layout.tsx` refreshes the auth session on `active`; React Query has no `focusManager`, so the catalogue does not refetch on resume. |
+| A8 image priority | **Not built** | No eager/lazy split and no `priority`/`cachePolicy` per image role. |
+| A9 pack facts | **Half built** | `products.net_quantity` and `products.packer_name` exist (shop identity, migration `20261020000002`). No brand, country of origin, ingredients or return window. |
+| A10 two-level categories | **Not built** | `categories` has no `parent_id`. Matters at ~300 SKUs, not 34. |
+
+**Why no A-item is complete:** the session that was told "proceed" ran out of
+model credits/context before its first edit. The only committed artefact is the
+teardown document itself (`c145ca2`). There is no branch, worktree or stash that
+contains the work — checked on 2026-10-30. (A3's product-page badge predates the
+teardown; its card half is still missing.)
+
+**Three corrections the audit found in the plan itself:**
+
+1. **A2's file target is wrong for this repo.** The teardown says "derived in
+   `src/lib/pack.ts`", but `scripts/check-packs.mjs` deliberately forbids money
+   (any `paise`/`price`) in `pack.ts` — that rule is what stopped the M4
+   fractional-quantity mistake. A2 belongs in a separate pure module (e.g.
+   `src/lib/unit-price.ts`) or in `money.ts`, with its own check.
+2. **A3 is not "invisible until checkout fails".** The product page has shown
+   `Only N left` at `≤ 5` since Phase 2.5. The real gap is the **card in the
+   grid**, where a shopper decides before opening the product.
+3. **A5 cannot copy Zepto's tracking blindly.** Negative `letterSpacing` on
+   Kannada can collide conjuncts and detach matras. Tracking must be applied to
+   Latin only (or held at 0 when language is `kn`); the Kannada cut keeps its
+   natural spacing. This is a `KUNIGAL.md` rule, not a preference.
+
+**The five decisions are still open** (nothing in the repo answers them):
+
+1. **Typeface** — try the free Noto Sans superfamily (Latin + Kannada, already
+   OFL-licensed for the Kannada cuts) before buying or commissioning anything.
+   Five minutes of licence checking, not a purchase.
+2. **Card density** — recommended: keep 16 px names and the 12.5 px floor;
+   recover the third row with a 12 px gutter, the already-overlaid discount
+   badge, and the ADD moved onto the price row. Any further contradicts
+   `KUNIGAL.md`.
+3. **ETA** — publish a function of (zone, order size, payment method), computed
+   in Postgres, with an honest window (e.g. "20–25 min") rather than one number.
+   The shop is COD-only today, so the payment dimension is future-proofing.
+   This is the only A-item that changes a customer-visible promise, so the owner
+   should confirm the numbers even if the code is built.
+4. **Pack facts** — the owner types brand/net quantity/manufacturer/origin/
+   ingredients/return window per product (34 products, one evening), or A9 stays
+   empty. Empty is a legal exposure for prepacked goods; needs the CA.
+5. **Top 16 px** — a marigold hairline + tinted status bar is the cheap,
+   reversible default; the alternative is the shop's own colour. One opinion,
+   not a design project.
+
+Only A4 depends on decision 5. A5, A6, A3-card and A2 can be built without any
+of the five; A1 needs the owner's numbers but not a design decision.
+
 ---
 
 ## 7. Next steps once the laptop is running
@@ -486,12 +574,16 @@ model.
 2. Open the app on a real Android phone with Expo Go; walk the customer flow
    end to end, then rider, then owner.
 3. Fix the first-device findings (expect some; that is why C4 is a blocker).
-4. Apply the missing migrations to the hosted project and clean the demo data.
-5. Set up OTP/SMS + DLT and prove one real sign-in.
-6. Create an EAS development build; test location consent, a real rider fix,
+4. Build the cheap pre-launch design gaps in the agreed order: **A5 → A6 →
+   A3-card → A2 → A1** (§6.4). A4 waits on decision 5. Each is small, and each
+   should ship with its own CHANGELOG entry; A1 changes a customer-visible
+   promise, so confirm the numbers with the owner first.
+5. Apply the missing migrations to the hosted project and clean the demo data.
+6. Set up OTP/SMS + DLT and prove one real sign-in.
+7. Create an EAS development build; test location consent, a real rider fix,
    the customer's text tracker, and native crash reporting.
-7. Then push notifications, then Razorpay, then the map.
-8. Only then start the Play closed test; the calendar is the launch gate.
+8. Then push notifications, then Razorpay, then the map.
+9. Only then start the Play closed test; the calendar is the launch gate.
 
 ---
 
@@ -618,6 +710,8 @@ When asking a future session for help, paste the failing command and the first
 - `ROADMAP.md` §14 — the current gap audit.
 - `SCALE-AND-TRACKING.md` §8 — T0–T7 status.
 - `FEATURE-PARITY.md` §5 — P1–P8 status.
+- `COMPETITOR-TEARDOWN.md` §7–§8 — the measured A/B/C gap list and the five open
+  decisions. It is a plan, not a build log: none of A1–A6 was built (§6.4).
 - `.council/runs/20261019-1731-kunigal-production-review/` — the adversarial
   review that produced `PRODUCTION.md` (read-only history; not part of the app).
 
@@ -628,4 +722,5 @@ When asking a future session for help, paste the failing command and the first
 The software is built and proven at the database/type/lint level — **590 database
 assertions, clean typecheck and lint, a 6.1 MB Android bundle** — and it has never
 been seen on a phone; the move to Windows is a tooling step, and the first real
-milestone on the other side is a device run, not more features.
+milestone on the other side is a device run, not more features. The Blinkit/Zepto
+design gaps (A1–A10) are measured and prioritised but **not built** — see §6.4.

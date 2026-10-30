@@ -146,6 +146,54 @@ M12; the hosted-project migration sweep; the five owner decisions in
 the live map. No new feature work was started — this session was about making
 the existing work portable and legible, not about adding to it.
 
+### Addendum (same day) — the teardown plan audited
+
+**What was asked.** Check the A1–A10 plan from `COMPETITOR-TEARDOWN.md` and put
+"what was finalised" into the handoff, so the Windows session does not assume
+the design work shipped.
+
+**Finding: it did not ship.** The session after the teardown was told
+"proceed", but it ran out of model credits before its first edit. `git log`,
+`git branch -a`, `git worktree list` and `git stash list` all agree: the last
+two commits are `c145ca2` (the teardown document) and `60192e1` (this handoff),
+and no branch or stash contains A-item code. No A-item is complete. A3 is the
+one partial — `product/[id].tsx` has shown "Only N left" at ≤ 5 since Phase 2.5;
+the **shelf card** still hides stock, which is where the teardown found the gap.
+
+**What was written down:**
+
+- `HANDOFF.md` §6.4 — the item-by-item status table (A1–A10, with evidence),
+  what was finalised (the refusals, the keeps, the agreed order), why nothing
+  landed, and the five open decisions with their recommended defaults.
+- `COMPETITOR-TEARDOWN.md` — a dated "plan, not a build log" block and a
+  one-line status row above the A table.
+- `FEATURE-PARITY.md` §5 and `AGENTS.md` §7 — pointers so the design gaps are
+  not mistaken for the feature build order (P1–P8).
+- Three corrections to the teardown itself:
+  1. **A2 cannot live in `src/lib/pack.ts`.** `scripts/check-packs.mjs`
+     deliberately forbids money there; that rule is what stopped the M4
+     fractional-quantity mistake. A2 belongs in a separate pure module (e.g.
+     `src/lib/unit-price.ts`) or in `money.ts`, with its own check.
+  2. **A3's real gap is the card, not the product page.** The detail screen has
+     shown the low-stock badge for months; the grid is where the decision is
+     made.
+  3. **A5 must not copy Zepto's negative tracking onto Kannada.** It can collide
+     conjuncts and detach matras; tracking is Latin-only (or 0 when the language
+     is `kn`).
+
+**Verified:** documentation-only change. `npm run typecheck`, `npm run lint`
+and `npm run test:db` were green at `60192e1` and no code or migration changed;
+`git diff --check` is clean. The 590 assertions and 613 i18n keys are unchanged.
+
+**Decision and reason:** do not invent answers to the five product/taste
+decisions in a documentation pass. A4 depends on decision 5, and A1 changes a
+customer-visible promise and needs the owner's numbers. The cheap four (A5, A6,
+A3-card, A2) can be built without any of them and are the next code session's
+first job, in that order, before A1.
+
+**Still open:** A1–A10 (A3 and A9 partial), D1–D5 in `COMPETITOR-TEARDOWN.md`
+§8, plus everything listed in the previous entry.
+
 ---
 
 ## 2026-10-26 — Rider position, end to end (P3/P4), and Blinkit/Zepto measured
