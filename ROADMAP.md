@@ -4,7 +4,11 @@
 done; this file is the plan and the reasons behind it. When they disagree, the
 CHANGELOG is right and this file is stale.
 
-**Last written:** 2026-10-13. See the CHANGELOG for progress against these phases.
+**Last written:** 2026-10-13. **Status refreshed 2026-10-30:** Phases 0–3 and
+most of the customer depth work are built; §14 below is the current gap audit.
+The code as handed over passes typecheck, lint and **590** database assertions,
+and has still never run on a real phone. Read `HANDOFF.md` first for the
+one-page state, then the newest `CHANGELOG.md` entries for the detail.
 
 ---
 
@@ -496,34 +500,45 @@ is *maintenance*, not a wish list: each row is either a real customer-facing gap
 a claimed-but-not-built feature, or a launch blocker.
 
 ### 14.1 Launch blockers (must be done before a real store build)
-- **`android.package` / `ios.bundleIdentifier` are not set** in
-  `apps/mobile/app.json`. An EAS build (needed for Phases 4–6) cannot be created
-  without them.
 - **Nothing has ever run on a device or emulator.** Every claim in the CHANGELOG
   is type-checked, linted, or tested against PostgreSQL — *none* has been seen on
   a screen. The first device run must exercise: sign-in (OTP), browse → cart →
   checkout → place order, the rider claim → advance flow, the Realtime update + a
-  buzz, search, reorder, and the Kannada rendering. Until then "works" means
-  "compiles and is unit-tested".
-- **No error monitoring / crash reporting.** There is no Sentry (or equivalent)
-  and no analytics. In a shop where the owner cannot read a stack trace, a silent
-  crash is invisible. The pasted "SKF System Bot" logs earlier in this project's
-  history are exactly the kind of thing a real crash reporter would surface; the
-  app currently has no equivalent. Candidate for a small Phase 0.5.
+  buzz, search, reorder, Kannada rendering, and the new location consent/tracking
+  flow. Until then "works" means "compiles and is unit-tested".
+- **Phone OTP is disabled on the hosted project; there is no SMS provider or DLT
+  registration** (PRODUCTION.md C1). The app has no other release sign-in path.
+- **The hosted Supabase project has not had the newest migrations applied.**
+  Every migration has been applied to the throwaway test cluster and proved
+  there, but `20261021000004` onward (packs, in-app product creation, names,
+  rider positions) still needs a deliberate `supabase db push` / SQL-editor sweep
+  on the real project. Never edit an applied migration; apply only the missing
+  ones in filename order.
+- **The Play closed-test calendar** (12 testers / 14 days, C6) has not started.
+- **Demo accounts and demo orders may still be live on the hosted project**
+  (C7). Sign in with a real owner account and remove them before any public
+  build.
+- **The statutory layer is incomplete**: privacy-policy URL, LICENSE, FSSAI
+  licence number, GST decision / cash-memo wording, and Legal Metrology
+  declarations (C5, H6, H7, H8). The fields exist; the numbers and wording are the
+  owner's.
+- **No backup / restore / rollback runbook** and no on-call name (H13).
+- **No iOS build path from the Linux development machine** (M12). A Mac or a
+  cloud build is needed before an iPhone release.
 
 ### 14.2 Features the ROADMAP claims but that are not built
-- **Persisted offline catalogue.** §3.5 used to claim last-known prices render
-  offline; corrected. The query cache is in-memory only — needs an async-storage
-  persister.
-- **Saved-address management.** Built in Phase 2.5 (list, edit, delete,
-  choose-default; `supabase/migrations/20261014000003_address_one_default.sql`).
-- **Admin "Today" totals.** §4.3 lists an orders count, collected-cash total and
-  most-ordered items. The board and team screens exist; **the money/today summary
-  does not.** For a cash business the "how much did I collect today" number is
-  arguably the owner's most-wanted screen.
-- **Admin product/category edit in-app.** §4.3 implies the owner can fix a price
-  or stock in the app. Today that is only possible in the demoted Next.js panel,
-  not on the phone the owner actually carries.
+- **Category create/edit in the app.** The Shelf tab edits products, price, stock
+  and on/off-shelf state, and the Add-a-product panel creates a product. Category
+  management is still only in the Next.js panel.
+- **The web panel has fallen behind the app's pack fields.** `apps/admin` does not
+  know `sold_by` / `pack_size` / `pack_unit`, so a product created there is always
+  a counted piece with no "also in 1 kg" options. Either bring it level or retire
+  it; decision needed before the pilot (`PRODUCTION.md` §14 item 9).
+- **Push notifications (Phase 4), Razorpay (Phase 5), live map / background
+  location (Phase 6)** — none is started; all need an EAS development build.
+- **Partial fulfilment (P6), scheduled delivery (P7), and the post-delivery
+  "was everything right?" loop (P5)** are designed in `FEATURE-PARITY.md` but not
+  built. P6 is the one that needs an owner decision first.
 
 ### 14.3 Product features deliberately not built (and where they are planned)
 - **Product detail screen.** Built in Phase 2.5 (`src/app/product/[id].tsx`).
@@ -535,23 +550,32 @@ a claimed-but-not-built feature, or a launch blocker.
   location (Phase 6)** — all require an EAS development build; none is started.
 
 ### 14.4 Accessibility / Kunigal-specific gaps (see `KUNIGAL.md` §8)
-- **No text-to-speech / voice.** With literacy ≈ 69%, voice guidance is the
-  single biggest unfilled accessibility gap for *this* town. Not built, not
-  scheduled. This is the strongest candidate for a Kunigal-specific differentiator.
+- **Kannada text-to-speech is built but unproven on a device.** The Listen button
+  and spoken-price formatter are behind `check:speech` (46 assertions) and hidden
+  when the phone has no Kannada voice. Whether a real cheap Android has that voice,
+  and whether the spoken price sounds right, needs a phone.
 - **The Kannada voice has not been reviewed by a Kunigal local.** It is written in
   plain old-Mysuru Kannada by the build; a native read-through should happen
   before launch (wording may shift with zero code change, since every string is a
-  key).
+  key). The new consent and tracking strings are first draft and join this list.
+- **The iOS location permission strings are English only.** iOS reads them from
+  `InfoPlist.strings`, which Expo does not localise automatically; a Kannada-first
+  rider meets an English system dialog. Fix with a config plugin / `native/`
+  override during the EAS-build work.
+- **No analytics.** Sentry reports crashes, not usage; nothing tracks where a
+  customer gives up. Deliberate until there is a privacy decision.
 
 ### 14.5 Housekeeping / correctness
-- `apps/mobile/src/components/placeholder-screen.tsx` appears unused after the
-  real screens landed — verify and delete if dead.
-- `common.off` (`"{percent}% off"` / `"{percent}% ರಿಯಾಯಿತಿ"`) is currently unused;
-  the product card renders its own `"{off}%"` badge. Either wire it up or delete
-  it.
-- `expo-localization` is now imported nowhere (Kannada is the hard default, §3.1a).
-  Leave it for a future "follow the device" option, or drop it with
-  `npx expo install --fix`.
+- `apps/mobile/src/components/placeholder-screen.tsx` is gone — verified unused
+  and removed.
+- `common.off` (`"{percent}% off"` / `"{percent}% ರಿಯಾಯಿತಿ"`) is still unused; the
+  product card renders its own `"{off}%"` badge. Either wire it up or delete it.
+- `expo-localization` is imported nowhere (Kannada is the hard default, §3.1a) but
+  remains in `app.json` as a config plugin. Keep it for the future
+  "follow the device" option, or remove both together with `npx expo install --fix`.
 - `apps/admin` is a skeleton kept only for bulk catalogue edits; it has no tests.
   Its typecheck can trip on stale `.next/types` output (delete `apps/admin/.next`
   and `tsconfig.tsbuildinfo` if so).
+- `npm run test:db` used to be bash-only. It is now
+  `scripts/run-db-tests.mjs`, so the gate runs on Windows too; the old
+  `supabase/tests/run.sh` is a wrapper for macOS/Linux.

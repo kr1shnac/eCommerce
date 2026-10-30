@@ -6,6 +6,148 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-30 — The Windows handoff: one test runner, one report, no stale maps
+
+**What was asked.** The project is moving to a Windows laptop. Stock everything
+done so far in a report a fresh OpenCode session can read, finish what can be
+finished now, and make sure the code and its gates will actually run there.
+
+### The real blocker: `npm run test:db` was bash-only
+
+The old `supabase/tests/run.sh` used bash, `/usr/lib/postgresql/*/bin`, a Unix
+domain socket, `mktemp`, `sed`, and a second bash file for the concurrency race.
+None of that exists on a normal Windows install. That made the **third required
+gate of every step** (`AGENTS.md` §9.10) impossible on the new machine, which is
+not a documentation problem.
+
+Replaced with a Node runner that does the same job on every OS:
+
+- `scripts/run-db-tests.mjs` — boots a throwaway cluster, applies the auth stub,
+  every migration in filename order, the seed and fixtures, runs every
+  `*_test.sql`, then the two-session race, prints the 590-assertion summary and
+  deletes the cluster. `--keep` still leaves the server running.
+- `scripts/db-tests/postgres.mjs` — finds PostgreSQL via `PGBIN`, `PATH`, or
+  `C:\Program Files\PostgreSQL\*\bin`; uses a free TCP port on `127.0.0.1`
+  instead of a Unix socket; forces `PGCLIENTENCODING=UTF8` for the Kannada seed;
+  prints the installer link and exits 127 (changing nothing) if PostgreSQL is
+  absent.
+- `scripts/db-tests/concurrency.mjs` — the exact nine assertions of the old
+  `04_concurrency_test.sh`, ported to Node with the same labels: two simultaneous
+  `place_order()` calls, one winner, `items_unavailable` for the loser, stock at
+  exactly 0, one order, and the shop's row lock actually blocking for >1.2 s.
+- The old `supabase/tests/run.sh` remains as a thin wrapper for macOS/Linux;
+  `04_concurrency_test.sh` is retired (its content lives in the Node module).
+
+`package.json` now maps `test:db` to `node scripts/run-db-tests.mjs`.
+
+### Line endings and the Windows checkout
+
+- New `.gitattributes`: `* text=auto eol=lf`, explicit LF for `.sh`/`.sql`/`.ts`/
+  `.tsx`/`.json`/`.md`, binary for fonts/images. Without it, Git for Windows
+  rewrites shell scripts to CRLF and they fail with `bad interpreter: …^M`.
+  `HANDOFF.md` also tells the new laptop to set `core.autocrlf false`.
+
+### The handoff report and the stale docs
+
+- New `HANDOFF.md` — what this is, what is built, what was verified and how, the
+  exact Windows setup (tools, clone, `.env` files that are not in Git, hosted-vs-
+  new Supabase project, `PGBIN`, firewall, EAS), the full "not done" list, the
+  next-step order, a repo map, the non-negotiable rules, a Windows-trap table and
+  a triage checklist. It is written to be the first file the next session opens.
+- `README.md` — requirements now name Git, Node 22 and PostgreSQL 16; a Windows
+  subsection covers PowerShell policy, firewall, tunnel, long paths and `PGBIN`;
+  the migration list was **stale** (it stopped at `20261021000003` while the repo
+  has four newer migrations) and now lists all 26; the command list gained
+  `check:packs`, `check:storage`, `check:location` and `check:tracking`.
+- `AGENTS.md` — tree line points at the Node runner; the command list gained
+  `check:location`, lost the non-existent `check:my-name`, and explains
+  `test:db`; §7 now records the text-first rider position work (built, not
+  device-verified) and separates it from the still-unbuilt live map.
+- `ROADMAP.md` — dated status banner; §14 rewritten to the current truth. The
+  old audit still claimed bundle identifiers were missing (they exist), Sentry
+  was absent (it exists), the offline catalogue/Today totals/shelf editing were
+  missing (all built), and TTS was missing (built). The genuinely open items are
+  now the list: device run, OTP/SMS, hosted migrations, demo accounts, legal
+  numbers, backup runbook, iOS path, Kannada sign-off, photos, partial
+  fulfilment.
+- `PRODUCTION.md` — 2026-10-30 status block; §3 table refreshed (26 migrations,
+  590 assertions, 613 i18n keys, Sentry, CI, tracking); the feature table no
+  longer says voice/H10/Today/H2 are missing; §8's runner path updated.
+- `SCALE-AND-TRACKING.md` / `FEATURE-PARITY.md` — T5/T6 and P3/P4 now read
+  "code done 2026-10-26, device test still owed" instead of "next" or "device".
+
+### Bugs found while doing it
+
+1. **Dollar-quote interpolation bug in the new runner.** `$${name}$$` inside a
+   JavaScript template literal interpolates the name and leaves a single `$`, so
+   the SQL was `$race: …$$` and PostgreSQL raised a syntax error. Fixed by
+   concatenating the `$$` delimiters explicitly. This was caught by running the
+   suite, not by reading it.
+2. **PostgreSQL 18 on this Linux box would not start** because it tried to put
+   its socket lock in `/var/run/postgresql` (permission denied). The runner now
+   starts with `unix_socket_directories=''`, which is also the only mode Windows
+   supports.
+3. **README's migration list had been stale for four migrations** — exactly the
+   kind of map error that makes a new machine apply an incomplete schema.
+4. **`AGENTS.md` told a future session to run `npm run check:my-name`**, which
+   has never existed in `package.json`. Removed rather than invented.
+5. **`PRODUCTION.md` §3 had a table row orphaned below a blockquote** and a
+   snapshot note that contradicted the register; the table is now current.
+
+### Verified, and how
+
+On the Linux machine that built the project, from the repo root:
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean, zero warnings, all nine chained checks.
+- `npm run test:db` — **590 passed / 0 failed**, through the new Node runner,
+  including the ported concurrency suite (`asha=true|`, `ravi=false|
+  items_unavailable`, blocked for ~2.0 s).
+- `npx expo-doctor` — 20/21, only the known, deliberate Metro
+  `disableHierarchicalLookup` exemption.
+- `npx expo export --platform android` — built a 6.1 MB Hermes bundle.
+
+### Not verified — say it plainly
+
+- **The Windows path has not run on Windows hardware.** The runner's Windows
+  discovery (`.exe`, `C:\Program Files\PostgreSQL\*\bin`, TCP) is written
+  deliberately and its shared code passed on Linux; the first Windows run is the
+  proof. `HANDOFF.md` §11 says exactly what to do if `PGBIN` is needed.
+- **Nothing has been run on a phone.** Still C4. The device list in `HANDOFF.md`
+  §4.7 is the next session's first job.
+- **The hosted Supabase project has not been touched.** The newest migrations
+  are still only in the throwaway test cluster; `HANDOFF.md` §4.5 has the SQL to
+  check which are missing.
+
+### Decisions and reasons
+
+- **Node, not WSL or PowerShell.** A Node runner is the same command in CI, on
+  Linux, on macOS and on Windows, and the repo already runs everything else
+  through Node. WSL would make the gate depend on a second OS install; a
+  PowerShell port would be a second implementation to keep in sync.
+- **TCP on a free localhost port, not a fixed 54399 or a Unix socket.** No
+  collisions with a PostgreSQL service, no `/var/run` permissions, and the only
+  mode Windows supports.
+- **Keep `run.sh` as a wrapper.** Old notes and habits still work on macOS/Linux;
+  there is only one implementation underneath.
+- **`.gitattributes` with LF everywhere.** The app and the tests do not care
+  about line endings, but shell scripts and diffs do. One rule is cheaper than a
+  class of "works on my machine" bugs.
+- **The docs were refreshed, not rewritten.** The historical reasoning in
+  `PRODUCTION.md`/`ROADMAP.md` is worth keeping; stale *status* is not. The
+  register and gap audit now say what is true, with dates, while the narrative
+  keeps its original voice.
+
+### Still open after this session
+
+`PRODUCTION.md` C1, C4, C5 (hosted URL + LICENSE), C6, C7, H6–H8, H13, M7, M8,
+M12; the hosted-project migration sweep; the five owner decisions in
+`COMPETITOR-TEARDOWN.md` §8; P5–P8 in `FEATURE-PARITY.md`; push, Razorpay and
+the live map. No new feature work was started — this session was about making
+the existing work portable and legible, not about adding to it.
+
+---
+
 ## 2026-10-26 — Rider position, end to end (P3/P4), and Blinkit/Zepto measured
 
 **What was asked.** Two things in one session: finish the location work that T4

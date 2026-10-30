@@ -1,0 +1,35 @@
+# Keep the checkout identical on Windows, macOS and Linux.
+#
+# The project runs on Windows now. Without this file, Git for Windows defaults
+# to `core.autocrlf=true`, which rewrites shell scripts and SQL files to CRLF on
+# checkout. A CRLF `#!/usr/bin/env bash` script fails in WSL/Git Bash with
+# `bad interpreter: /usr/bin/env bash^M`, and line-sensitive tests become
+# mysterious. Everything textual is therefore stored and checked out with LF.
+#
+# `npm run test:db` no longer needs bash (it is Node), but the wrapper
+# `supabase/tests/run.sh` and any future shell tooling do. LF is the safe rule.
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.sql  text eol=lf
+*.mjs  text eol=lf
+*.js   text eol=lf
+*.cjs  text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.json text eol=lf
+*.md   text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+
+# These must never be line-ending converted.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.zip   binary

@@ -13,7 +13,7 @@
     "mobile:web": "npm run web --workspace @kunigal/mobile",
     "admin": "npm run dev --workspace @kunigal/admin",
     "dev": "concurrently --names \"mobile,admin\" --prefix-colors \"green,cyan\" \"npm:mobile\" \"npm:admin\"",
-    "test:db": "./supabase/tests/run.sh",
+    "test:db": "node scripts/run-db-tests.mjs",
     "check:session": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-session-persistence.mjs",
     "check:auth-doors": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-auth-doors.mjs",
     "check:view": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-order-view.mjs",

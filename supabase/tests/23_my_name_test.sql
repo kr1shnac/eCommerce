@@ -30,7 +30,7 @@
 
 select test_result.begin_suite('23 my name');
 
--- The three seeded people (see supabase/tests/run.sh):
+-- The three seeded people (see supabase/tests/support/02_fixtures.sql):
 --   1111… = customer, 2222… = rider, 3333… = admin.
 
 -- -----------------------------------------------------------------------------

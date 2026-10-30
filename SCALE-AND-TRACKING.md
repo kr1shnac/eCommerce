@@ -456,7 +456,7 @@ it here rather than claiming it is done.
 | No map SDK chosen | Decide when the tracking phase starts; text-first means this can wait | Dev + client |
 | Background-location battery behaviour `[UNVERIFIED]` | Device test with the rider build | Dev (needs device) |
 | Whether a free routing API is usable `[UNVERIFIED]` | Check licence + quota before drawing any road route | Dev |
-| Rider consent wording in Kannada | New strings in both locales, signed off per `KUNIGAL.md` | Dev + owner |
+| Rider consent wording in Kannada | **Built in both locales** (2026-10-26); still needs a Kunigal read-through per `KUNIGAL.md` | Owner |
 | The 60 s poll and the tracking poll must not double | One timer, one owner; assert in a check script | Dev |
 
 ---
@@ -473,8 +473,8 @@ that make it honest.
 | T2 | SCALE-1 (Realtime filters) + SCALE-4 (plan/limits noted) | DB tests + Realtime log check — **SCALE-1 DONE 2026-10-26** (customer sockets filtered to their own orders); SCALE-4 noted in §5.2 |
 | T3 | `src/lib/tracking-rules.ts` + `check:tracking` (pure logic, no native) | lint, check:tracking — **DONE 2026-10-21**, see `CHANGELOG.md` |
 | T4 | `rider_positions` table + `record_my_position()` + narrow read view + migration + **test with forbidden cases** | `npm run test:db` — **DONE 2026-10-26**, see `CHANGELOG.md` |
-| T5 | Rider consent screen (both languages) + write throttle wired to the rule module | device test |
-| T6 | Customer text-first tracking block on `order/[id].tsx` (age + distance + ETA) | device test |
+| T5 | Rider consent screen (both languages) + write throttle wired to the rule module | **CODE DONE 2026-10-26**; device test still owed (needs EAS dev build) |
+| T6 | Customer text-first tracking block on `order/[id].tsx` (age + distance + ETA) | **CODE DONE 2026-10-26**; device test still owed (needs EAS dev build) |
 | T7 | Optional static route image, then optional live map, behind a tap | owner's data-budget decision |
 
 **Every phase ends the same way**, per `AGENTS.md` §9.10: `npm run typecheck`

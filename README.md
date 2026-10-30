@@ -13,14 +13,18 @@ paise — never rupees, never floats.
 
 | Need | Version | Notes |
 | ---- | ------- | ----- |
-| Node.js | 20.19+ or 22+ | `node -v` to check |
+| Node.js | 20.19+ or 22+ | 22 LTS is what CI uses; `node -v` to check |
 | npm | 10+ | ships with Node |
+| Git | any | for cloning and for the `.gitattributes` line-ending rules |
 | Expo Go app | latest | on your Android phone, from the Play Store |
 | Android Studio | optional | only for an emulator on your PC |
-| Supabase project | free tier is fine | you need the project URL + anon key |
+| Supabase project | free tier is fine | you need the project URL + publishable/anon key |
+| PostgreSQL | 16 recommended | **only** for `npm run test:db`; the runner boots its own throwaway cluster and finds PostgreSQL automatically |
 
 macOS is required only for running on an iPhone. Everything else works on
-Windows, macOS and Linux.
+Windows, macOS and Linux. **Moving this project to a new machine?** Read
+[`HANDOFF.md`](./HANDOFF.md) first — it is the checklist for what to carry over
+(the `.env` files are deliberately not in Git) and what is still unfinished.
 
 ---
 
@@ -104,7 +108,14 @@ panel. Do **not** run `npm install` inside `apps/`.
    20261021000001_order_tracker.sql
    20261021000002_shop_totals.sql
    20261021000003_product_guard.sql
+   20261021000004_pack_sizes.sql
+   20261021000005_create_product.sql
+   20261021000006_my_name.sql
+   20261026000001_rider_positions.sql
    ```
+
+   That is the whole list. If the hosted project already has some of them,
+   apply only the missing ones; never edit a migration that has already run.
 
 3. Open `supabase/seed.sql`, paste it, **Run**. This adds 1 store, 8 categories,
    34 products (English + Kannada names, a per-product `emoji`), 2 coupons, 4
@@ -220,6 +231,22 @@ npm run dev          # mobile dev server + admin panel on http://localhost:3000
 > After editing `.env`, restart with `npm run mobile -- -c`. The `-c` clears
 > the Metro cache, because env values are inlined at bundle time.
 
+### On Windows specifically
+
+- Use **Node 22 LTS**. If `npm` is blocked by PowerShell's execution policy, run
+  `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` once, or use `npm.cmd`.
+- Windows Defender Firewall may ask about Node.js the first time Metro starts.
+  Allow it on **private networks**, otherwise the phone cannot reach the dev
+  server. Phone and laptop must be on the same Wi-Fi.
+- If the QR code still cannot connect, Metro can tunnel:
+  `npx expo start --tunnel` (adds `@expo/ngrok` on first use).
+- Clone to a short path such as `C:\dev\eCommerce`. Deep `node_modules` paths can
+  exceed the old 260-character Windows limit.
+- `npm run test:db` needs the PostgreSQL **binaries**, not a running service.
+  Install PostgreSQL 16 (EDB installer) and the runner finds
+  `C:\Program Files\PostgreSQL\16\bin` itself. If it is somewhere else, set
+  `PGBIN` for that terminal. See `HANDOFF.md` §4 for the exact commands.
+
 ---
 
 ## 6. What you should see
@@ -282,15 +309,27 @@ npm run admin         # Next.js on http://localhost:3000
 npm run dev           # both at once
 
 npm run typecheck     # tsc --noEmit in both apps
-npm run lint          # eslint in both apps, then the i18n key check
+npm run lint          # eslint in both apps + nine chained safety checks
 npm run check:i18n    # en/kn key parity + every key used in code exists
 npm run check:session # the signed-in session survives an app restart
 npm run check:auth-doors # a release build has no dev login, the review build has one
 npm run check:view    # the address/time helpers all three faces share
 npm run check:persist # only public shop data is written to the device
 npm run check:speech  # the Kannada speech rules and spoken-price formatter
-npm run test:db       # all database tests against a throwaway PostgreSQL 16
+npm run check:packs   # pack sizes and the money arithmetic that must never round
+npm run check:storage # only src/lib/storage.ts may touch AsyncStorage
+npm run check:location # only src/lib/location.ts may touch expo-location
+npm run check:tracking # the rider throttle, staleness and ETA rules
+npm run test:db        # all database tests against a throwaway PostgreSQL 16
 ```
+
+`npm run test:db` works on Windows, macOS and Linux. It starts its own
+PostgreSQL cluster in the OS temp directory on a free localhost port, applies
+every migration in filename order, loads the seed and fixtures, runs all 23 SQL
+test files plus the two-session concurrency race, and deletes the cluster. It never
+touches the PostgreSQL service installed on the machine, and it does not need
+Docker. If PostgreSQL is not installed, it prints the installer link and exits
+without changing anything.
 
 ---
 

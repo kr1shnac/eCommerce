@@ -325,7 +325,7 @@ $$;
 --
 -- This uses its OWN throwaway admin, never the shared fixture admin
 -- (33333333…). The first version of this suite deleted the shared one, and
--- because run.sh runs this file before the shell race test, the shop's own
+-- because the runner runs this file before the concurrency suite, the shop's own
 -- transaction in test 04 then ran as a user that no longer existed, silently
 -- failed, and released its row lock instantly — so the race test failed for a
 -- reason that had nothing to do with racing. A test may create its own fixtures

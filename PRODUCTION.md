@@ -11,6 +11,19 @@ whole repository (the council run kept in `.council/runs/20261019-1731-kunigal-p
 "the council", that run is meant. The register in §12 is the chairman's, item for
 item.
 
+> **Status update 2026-10-30.** §3 and the register in §12 have been refreshed to
+> the current code; the narrative sections keep their 2026-10-19 voice so the
+> reasoning is not lost. The repository now passes typecheck, lint and **590**
+> database assertions. The database suite is cross-platform (the Windows path is
+> written and the shared code passed on Linux; the first Windows run is still to
+> be done on the new laptop).
+> The launch blockers that remain are **owner actions or device work**, not
+> missing code: OTP/SMS (C1), a first run on a real phone (C4), the Play
+> closed-test calendar (C6), demo accounts on the hosted project (C7), the
+> hosted-project migration sweep, FSSAI/GST/Legal Metrology numbers, Kannada
+> sign-off (M7), and real product photographs (M8). See `HANDOFF.md` for the
+> one-page state and the laptop-move checklist.
+
 ---
 
 ## 0. How to read this file
@@ -49,15 +62,15 @@ already owns.**
 
 | The real situation in Kunigal | What the product must therefore do | Where it is now |
 | --- | --- | --- |
-| One in three adults cannot comfortably read a sentence | The meaning must survive without reading: icons, numbers, big targets, and eventually voice. Kannada text never smaller than English. | Mostly done (`KUNIGAL.md` §2); **voice is not built** — register H4 |
+| One in three adults cannot comfortably read a sentence | The meaning must survive without reading: icons, numbers, big targets, and eventually voice. Kannada text never smaller than English. | Done to the extent code can: icons, big targets, and Kannada TTS on the product and cart screens, hidden when the phone has no Kannada voice (H4) |
 | Kannada is the default, not a preference | Kannada loads first; English is the one-tap switch. | Done — `DEFAULT_LANGUAGE = 'kn'` |
 | Cash economy, low order values | Cash on delivery is the *primary* path, never an apology. UPI is a bonus. | Done — COD only today; Razorpay deliberately not started |
-| Joint families share one handset | "One phone = one person" is false here. | **Not handled** — register H10 |
-| Homes have no reliable numbering | The address must be a landmark a rider can find, plus a phone call. | **Yes** — `landmark` is a column, is captured at checkout, is snapshotted onto the order, and now leads the rider's card (register M5) |
-| Loose goods by weight (ragi, millet, coconut, dal, chilli) | Half a kilo must be orderable and priced. | **Handled as a pack, not a fraction** — `sold_by`/`pack_size`/`pack_unit` + `product_pack_options`, and "also in 1 kg" chips; `quantity` stays an integer `[VERIFIED]` — register M4 |
-| Word of mouth travels in one step | Trust devices matter more than discounts: the shop's own name, the licence, the rider's name and face. | Rider assignment is live; licence/legal display is not — register H6/H7 |
-| The rider *is* the app's interface | Who is coming, can I call them, when will they arrive. | Assignment + realtime live; no call action, no push — register H2 |
-| The owner runs a cash business alone | "How much did I collect today, and how much does Ravi still owe me" is his most-wanted number. | **Does not exist** — register H3 |
+| Joint families share one handset | "One phone = one person" is false here. | Handled — `set_my_name()` and a name editor on the account screen (H10, migration `20261021000006`) |
+| Homes have no reliable numbering | The address must be a landmark a rider can find, plus a phone call. | **Yes** — `landmark` is a column, is captured at checkout, is snapshotted onto the order, and now leads the rider's card (M5) |
+| Loose goods by weight (ragi, millet, coconut, dal, chilli) | Half a kilo must be orderable and priced. | **Handled as a pack, not a fraction** — `sold_by`/`pack_size`/`pack_unit` + `product_pack_options`, and "also in 1 kg" chips; `quantity` stays an integer `[VERIFIED]` — M4 |
+| Word of mouth travels in one step | Trust devices matter more than discounts: the shop's own name, the licence, the rider's name and face. | Rider assignment, the rider's name/photo and a Call button are live; the FSSAI/GST **fields** exist but the numbers are the owner's — H6/H7 |
+| The rider *is* the app's interface | Who is coming, can I call them, when will they arrive. | Assignment + realtime + call are live; text-first position/ETA is built; **push is still missing** — H2 |
+| The owner runs a cash business alone | "How much did I collect today, and how much does Ravi still owe me" is his most-wanted number. | **Built** — `shop_day_totals()` / `shop_day_by_rider()` on the Today tab, computed in Postgres (H3) |
 
 ### What success is (so the plan has a target)
 
@@ -88,38 +101,36 @@ Three showstoppers, all of them facts about this repository:
    artefact to release. — register C3, **fixed in this commit** (§4).
 
 …and the meta-flaw that made all three easy to miss: **nothing has ever run on a
-device or an emulator.** Every "DONE" in `ROADMAP.md` means "type-checks and 348
-SQL assertions pass". That is a real achievement about Postgres; it is not
-evidence about Kunigal. — register C4.
+device or an emulator.** When this was written, every "DONE" in `ROADMAP.md`
+meant "type-checks and 348 SQL assertions pass"; it is 590 now. That is a real
+achievement about Postgres; it is not evidence about Kunigal. — register C4.
 
-Finally, the cash loop is open: the owner's "Today" totals screen does not exist,
-so the first cash variance he cannot reconcile is the day he stops using the app.
+Finally, the cash loop was open when this was written: the owner's "Today" totals
+screen did not exist. It is now built in Postgres (`shop_day_totals()`, H3) — but
+it still has not been seen on the owner's phone, which is C4.
 
 ---
 
 ## 3. Where the repository actually stands today
 
-`[VERIFIED]` by running the commands in this session unless marked otherwise.
+`[VERIFIED]` on 2026-10-30 by running the commands named in the right-hand
+column. This table replaced the 2026-10-19 snapshot; the register in §12 remains
+the item-by-item tracker.
 
 | Area | State |
 | --- | --- |
-| Database | 17 migrations, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement |
-| Database tests | **348 assertions, 0 failures**, against real PostgreSQL (`npm run test:db`) |
-| Typecheck / lint / i18n | Clean. **416 keys in parity** across `en.json` and `kn.json` |
-| Mobile app | Three faces by `profiles.role` (customer / rider / admin), realtime order updates, light **and** dark themes, design system in `src/components/ui/` |
-| Install path | `app.json` + `eas.json` now exist (this commit). Still never built |
+| Database | **26 migrations**, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement |
+| Database tests | **590 assertions, 0 failures**, against throwaway PostgreSQL (`npm run test:db`); now runs on Windows, macOS and Linux |
+| Typecheck / lint / i18n | Clean. **613 keys in parity** across `en.json` and `kn.json`; every chained check passes with zero warnings |
+| Mobile app | Three faces by `profiles.role` (customer / rider / admin), realtime order updates, light **and** dark themes, design system in `src/components/ui/`, responsive skeletons, offline catalogue persistence |
+| Rider tracking | Text-first position sharing is built (consent, foreground throttle, distance/ETA, "Picked up"); **no map, no background location** |
+| Install path | `app.json` + `eas.json` exist. **Still never built by EAS** |
 | Device runs | **None. Ever.** No screenshot, no emulator session, no APK |
-| Sign-in | Phone OTP only in release builds; the email+password path is `__DEV__`-gated |
-| CI | None (`.github/` does not exist) |
-| Crash reporting / analytics | None (`expo-updates`, push, Sentry all absent from `package.json`) |
+| Sign-in | Phone OTP only in release builds; email+password demo path is `__DEV__`-gated; the hosted project has OTP disabled (C1) |
+| CI | Exists — `.github/workflows/checks.yml` runs typecheck, lint, session, database suite and `expo-doctor` (H12) |
+| Crash reporting / analytics | Sentry for JavaScript errors (`src/lib/crash-reporting.ts`, H11); native crashes need a real build; no analytics |
 | Payments, push, maps | Deliberately not started |
-| Expo SDK | `~57.0.26`. Latest is `58.0.14` `[EXTERNAL]` (npm registry, 2026-10-19) |
-
-> **Snapshot, not current fact.** This table is how the repository stood when
-> Phase 0 landed (2026-10-19). Two rows have since changed: **CI now exists**
-> (`.github/workflows/checks.yml`, register H12) and **Sentry is now in**
-> (`src/lib/crash-reporting.ts`, register H11). "Never built" and "no device run"
-> are, sadly, still true. Read §12 for the current status of any row.
+| Expo SDK | `~57.0.31` `[VERIFIED]`; an SDK 58 upgrade is Phase 8 work, not a pilot-week change |
 | Deployable admin panel | `apps/admin` is a skeleton, optional, kept only for bulk catalogue edits |
 
 ---
@@ -466,8 +477,10 @@ CI-only scripts, so green CI means green locally and neither is a special case:
 | database suite | `npm run test:db` |
 | Expo SDK consistency | `npx expo-doctor` |
 
-PostgreSQL 16 is installed in the job because `supabase/tests/run.sh` boots its
-own throwaway cluster with `initdb`/`pg_ctl` and needs no service or container.
+PostgreSQL 16 is installed in the job because `scripts/run-db-tests.mjs` boots
+its own throwaway cluster with `initdb`/`pg_ctl` and needs no service or
+container. The same command runs on Windows, where the runner finds
+`C:\Program Files\PostgreSQL\*\bin` itself.
 
 **One exemption, and it is argued rather than assumed.** `expo-doctor` reports
 `resolver.disableHierarchicalLookup mismatch` in `metro.config.js`. That line is

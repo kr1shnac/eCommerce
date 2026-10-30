@@ -3,6 +3,11 @@
 Read this file first. It is the single source of truth for how this repo works.
 If you change a rule here, change it here — not just in the code.
 
+> **New laptop / new session?** Read [`HANDOFF.md`](./HANDOFF.md) first. It is the
+> current state, the Windows setup checklist, and the list of what is *not* in
+> Git (the two `.env` files). This file owns the rules; `HANDOFF.md` owns the
+> move.
+
 ## 1. What this project is
 
 A grocery / essentials delivery app for Kunigal, Karnataka. Think "Blinkit, but
@@ -101,7 +106,7 @@ two languages are written side by side, not translated one from the other.
     ├── migrations/            ← numbered .sql, applied in filename order
     ├── seed.sql               ← 1 store, 8 categories, 34 products
     ├── demo.sql               ← dev-only: orders, favourites, addresses for demos
-    └── tests/                 ← run.sh boots a throwaway PostgreSQL and runs these
+    └── tests/                 ← the runner boots a throwaway PostgreSQL and runs these
 ```
 
 ### Mobile conventions
@@ -217,7 +222,7 @@ npm run admin                     # Next.js on http://localhost:3000
 npm run dev                       # both at once
 
 npm run typecheck                 # tsc --noEmit in both apps
-npm run lint                      # eslint in both apps, then the i18n key check
+npm run lint                      # eslint in both apps + nine chained safety checks
 npm run check:i18n                # en/kn key parity + every key used in code exists
 npm run check:session             # the signed-in session survives an app restart
 npm run check:auth-doors          # a release build has no dev login; the review build has one
@@ -226,10 +231,18 @@ npm run check:persist             # only public shop data is written to the devi
 npm run check:speech              # the Kannada speech rules and spoken-price formatter
 npm run check:packs               # pack sizes, and the arithmetic that must never round money
 npm run check:storage             # only one module may touch AsyncStorage (the expo-start crash)
+npm run check:location            # only one module may touch expo-location, and foreground only
 npm run check:tracking            # the rider throttle, staleness and ETA rules
-npm run check:my-name               # one phone, several adults
-npm run test:db                   # all database tests against real PostgreSQL
+npm run test:db                   # all database tests against a throwaway PostgreSQL (Windows/macOS/Linux)
 ```
+
+`npm run test:db` is `scripts/run-db-tests.mjs`. It needs the PostgreSQL
+binaries (16 recommended) but **not** a running service: it boots its own
+cluster in the OS temp directory on a free localhost port, applies every
+migration in filename order, loads the seed and fixtures, runs every SQL suite
+plus the two-session concurrency race, and deletes the cluster. On Windows it
+finds `C:\Program Files\PostgreSQL\*\bin`; set `PGBIN` to override. The old
+`supabase/tests/run.sh` still works on macOS/Linux as a thin wrapper.
 
 After changing `.env`, restart with `npm run mobile -- -c` (the `-c` clears the
 Metro cache, because env vars are inlined at bundle time).
@@ -335,9 +348,21 @@ As of this build, the app is a working end-to-end flow on one shop:
   auth doors), the session check, the database suite and `expo-doctor` on every push,
   using the same commands a developer runs. See `PRODUCTION.md` for the one argued
   `expo-doctor` exemption.
-- **Not built yet**, in the intended order: push notifications → Razorpay → live
-  rider tracking/maps. Everything so far runs in Expo Go; push notifications and
-  Razorpay need an EAS development build.
+- **The rider's position is shared, text first.** A rider consents once, then the
+  foreground watcher writes throttled fixes through `record_my_position()`
+  (migration `20261026000001`, test 24); the customer's order screen reads
+  `order_rider_position` and shows age, distance and an ETA — **no map and no
+  dot**. The fifth tracker stop ("Picked up") appears once `picked_up_at` is set.
+  The position is deleted when the delivery closes, a fix older than 10 minutes is
+  never shown, and there is no background location. `src/lib/location.ts` is the
+  only module allowed to mention `expo-location` (enforced by `check:location`).
+  **This needs an EAS development build; Expo Go cannot exercise it.** Proved by
+  `supabase/tests/24_rider_positions_test.sql`, `check:tracking` and
+  `check:location`, but **not yet on a phone**.
+- **Not built yet**, in the intended order: push notifications → Razorpay → a live
+  map / background location. The text-first rider position above *is* built.
+  Everything except location still runs in Expo Go; push notifications, Razorpay
+  and the location screens need an EAS development build.
 
 `ROADMAP.md` is the detailed phase-by-phase plan; read it alongside this file.
 `SCALE-AND-TRACKING.md` is where the app goes *after* it works: the UI

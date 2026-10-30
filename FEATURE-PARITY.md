@@ -237,18 +237,20 @@ Writing this down is the point. Without it, every future session relitigates.
 
 Extends `SCALE-AND-TRACKING.md` §8, which stops at T7.
 
-**Status 2026-10-26:** P1 and P2 are **done** (see `CHANGELOG.md` for
-2026-10-21 and 2026-10-26). `SCALE-AND-TRACKING.md` T0, and the parts of T1/T2
-worth building, are done too — including the honest list of what was refused and
-why (§8.1 there). **P3 is the next phase that can be built**, and it cannot be
-*verified* without a phone.
+**Status 2026-10-30:** P1–P4 are **built** (see `CHANGELOG.md` for 2026-10-21
+and 2026-10-26). `SCALE-AND-TRACKING.md` T0, and the parts of T1/T2 worth
+building, are done too — including the honest list of what was refused and why
+(§8.1 there). **P3/P4 are code-complete but unverified on a phone**, because
+`expo-location` needs an EAS development build. **P5 (post-delivery feedback) is
+the next phase that can be built without a client decision**; P6 needs the
+owner's partial-fulfilment decision first.
 
 | Phase | Work | Gate | Effort |
 | --- | --- | --- | --- |
 | **P1** | `src/lib/tracking-rules.ts` + `npm run check:tracking` — pure throttle logic, no native code | lint — **DONE** | S |
 | **P2** | `rider_positions` table + `record_my_position()` + narrow read view + `picked_up_at` column + migration + **test proving the forbidden cases** | `npm run test:db` — **DONE** (590 assertions) | M |
-| **P3** | Rider: consent screen in Kannada + throttle wired to the rule module + "I have the bag" button | device | M |
-| **P4** | Customer: text-first tracking block (distance, ETA, age) + fifth `TRACK_STEPS` stop | device | M |
+| **P3** | Rider: consent screen in Kannada + throttle wired to the rule module + "I have the bag" button | **CODE DONE 2026-10-26**; device still owed | M |
+| **P4** | Customer: text-first tracking block (distance, ETA, age) + fifth `TRACK_STEPS` stop | **CODE DONE 2026-10-26**; device still owed | M |
 | **P5** | Post-delivery "was everything right?" + translated problem picker → a recorded row | device | S |
 | **P6** | Partial fulfilment: `unavailable` line state, server-side recompute, refund visibility | `npm run test:db` | L |
 | **P7** | Scheduled delivery slots | device | M |
