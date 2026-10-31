@@ -15,12 +15,22 @@ Windows laptop. Read this before changing code.
 > `KUNIGAL.md` owns the Kannada voice and `DESIGN.md` owns the visuals. When this
 > file and an older doc disagree, this file is newer; when this file and the code
 > disagree, the code wins and this file gets fixed.
+>
+> **Moving the agent too?** This file moves the *project*. `SKILLS.md` moves the
+> *OpenCode setup* — the `council` skill and its 8 subagents, the 57 `gstack-*`
+> skills, `reverse-engineer-anything`, the Context7 MCP and the memory plugin.
+> Those live in `~/.config/opencode/`, not in Git, so a clone alone will not
+> bring them.
 
 ---
 
 ## 0. The ten-minute version
 
 Do these in order on the Windows laptop. If all six pass, the move worked.
+
+> These six move the **project**. They do not restore the agent's skills — see
+> `SKILLS.md` for that, and do it once the gates below are green so you know a
+> failure is a skill problem, not a code problem.
 
 1. Install **Git**, **Node 22 LTS**, and **PostgreSQL 16** (binaries only; the
    tests start their own cluster). Install **Expo Go** on the Android phone.
@@ -184,6 +194,26 @@ Run on the Linux machine that built the project, from the repo root.
 | `npm run test:db` | **590 passed / 0 failed** | Migrations apply in order; RLS, guards, money, stock race, coupons, deletion, totals, packs, product creation, names, rider positions all behave |
 | `npx expo-doctor` | 20/21 checks pass; only the known Metro warning | SDK packages are internally consistent |
 | `npx expo export --platform android` | Built a 6.1 MB Hermes bundle | The app bundles for Android, fonts included |
+
+### 3.1 A fresh clone is self-sufficient (re-checked 2026-10-31)
+
+The move only works if `git clone` + `npm ci` is enough — i.e. nothing the gates
+need is sitting in an untracked file on the old laptop. That was tested, not
+assumed:
+
+```
+git clone https://github.com/kr1shnac/eCommerce.git <tmp>/clone-check
+cd <tmp>/clone-check && npm ci        # succeeded, no manual step
+npm run typecheck                     # clean
+npm run lint                          # clean, all nine chained checks
+npm run test:db                       # 590 passed / 0 failed
+```
+
+Only two things are deliberately **not** in Git: `apps/mobile/.env` and
+`apps/admin/.env` (§4.4). Every other file the gates touch — the four Noto Sans
+Kannada fonts, the OFL licence, `.gitattributes`, the SQL suites — is tracked.
+So a failure on Windows is a *Windows* problem (Node version, PostgreSQL path,
+firewall, line endings), not a missing file.
 
 **What this does not prove — say it plainly:**
 
@@ -570,6 +600,9 @@ of the five; A1 needs the owner's numbers but not a design decision.
 
 ## 7. Next steps once the laptop is running
 
+0. **Restore the agent tooling** if you want it: `SKILLS.md` §2 (copy the
+   `~/.config/opencode` folder) or §3 (rebuild from sources), then restart
+   OpenCode. Independent of the steps below — the app builds without it.
 1. `npm run typecheck && npm run lint && npm run test:db` — all green on Windows.
 2. Open the app on a real Android phone with Expo Go; walk the customer flow
    end to end, then rider, then owner.
@@ -594,6 +627,8 @@ of the five; A1 needs the owner's numbers but not a design decision.
 ├── AGENTS.md                 rules: money, i18n, RLS, security, production standards
 ├── CHANGELOG.md              newest-first build log; read the top few entries
 ├── HANDOFF.md                this file
+├── SKILLS.md                 moving the OpenCode skills/agents/MCP to a new laptop
+├── SKILL.md                  the council skill body (also installed under ~/.config/opencode)
 ├── KUNIGAL.md                the town + the Kannada voice/style guide
 ├── DESIGN.md                 palette, contrast, type, light/dark rules
 ├── ROADMAP.md                phases and the current gap audit

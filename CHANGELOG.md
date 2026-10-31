@@ -6,6 +6,83 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-10-31 — The move is proven, and the agent moves with it
+
+**What was asked.** The project is going to a Windows laptop and the OpenCode
+session there has to pick up where this one left off. Three questions: is it
+finished, what must be carried, and which file tells the next session
+everything. Plus: make the *skills* portable too.
+
+**What was built.**
+
+- **`SKILLS.md` (new, repo root).** The agent-side half of the handoff. An
+  inventory of everything under `~/.config/opencode` — the `council` skill, its 8
+  read-only subagents, the `/council` command, the 57 `gstack-*` skills and
+  commands, `reverse-engineer-anything`, the Context7 MCP and the
+  `simple-memory` plugin — with (a) a copy-the-folder path that is exact, and
+  (b) a rebuild-from-sources path. The council agent and command files are
+  reproduced **verbatim** in it, because they exist in no public repository and
+  would otherwise be lost with the old laptop. It also records what must *not*
+  travel (`service.json`, `tamias.md`'s Linux path, `gstack/.source-path`,
+  `node_modules`) and which skill applies to which task in this project.
+- **`HANDOFF.md`** now points at it from the header, §0, §7 (step 0) and the repo
+  map, and gained **§3.1** below.
+
+**Verified — and this is the point of the session.**
+
+A fresh clone of the pushed repository was tested end to end, so the move is
+proven rather than described:
+
+```
+git clone https://github.com/kr1shnac/eCommerce.git <tmp>/clone-check
+npm ci            -> succeeded, no manual step
+npm run typecheck -> clean (both apps)
+npm run lint      -> clean, all nine chained checks, zero warnings
+npm run test:db   -> 590 passed / 0 failed, RESULT: all assertions passed
+```
+
+That proves nothing the gates need is sitting in an untracked file. Only
+`apps/mobile/.env` and `apps/admin/.env` are deliberately absent, and
+`HANDOFF.md` §4.4 says how to restore or recreate them. Everything else the
+build touches is tracked — including the four Noto Sans Kannada fonts and the
+OFL licence, which a `.gitignore` mistake would have silently dropped.
+
+**Decisions and their reasons.**
+
+1. **No feature work was started during the move.** The agreed A1–A10 design
+   batch (`COMPETITOR-TEARDOWN.md` §8) is still not built, and that is deliberate.
+   Half a design change, unverifiable on a phone, is a worse handoff than a
+   documented "not started". §6.4 of `HANDOFF.md` already carries the exact
+   status of every A-item and the three corrections the audit found.
+2. **`SKILLS.md` carries a placeholder, not the Context7 key.** The key is a
+   credential; the file is committed. Path A (copying the folder over a private
+   channel) carries the real key without ever putting it in Git.
+3. **`service.json` is marked do-not-carry.** It holds a local password and
+   OpenCode regenerates it; carrying it buys nothing.
+4. **The two council frontmatter styles are left as they are.** Advisors `a`–`e`
+   use the deprecated `permission:` map; `council-advisor`, `council-reviewer`
+   and `council-chairman` use the newer `permissions:` ruleset array. Checked
+   against the OpenCode 2.0.32 config schema (`opencode.ai/config.json`): both
+   are accepted and both are enforced, so this is tidiness, not a hole. Noted in
+   `SKILLS.md` §6.2 rather than silently rewritten.
+
+**Not verified / still open.** Unchanged from 2026-10-30, and none of it is a
+code problem:
+
+- **Nothing has run on a phone or emulator** (C4). Still the biggest item.
+- **The Windows runner has still not executed on Windows.** The clone test above
+  ran on Linux; it proves the repo is complete, not that `PGBIN`, PowerShell and
+  Defender behave. `HANDOFF.md` §10–§11 cover the traps.
+- **Hosted Supabase is still behind the newest migrations**; the demo accounts
+  may still be live (C7).
+- **Phone OTP/SMS/DLT (C1), FSSAI/GST/Legal Metrology (H6–H8), the Play
+  closed-test calendar (C6), the Kannada sign-off (M7), 6 products without
+  photos (M8), no iOS build path (M12), no backup/rollback runbook (H13).**
+- **REA's MCP still cannot run here** (Node 22.22.0 vs its `>= 22.23.4` floor);
+  `SKILLS.md` §3.5 says so and gives the fix.
+
+---
+
 ## 2026-10-30 — The Windows handoff: one test runner, one report, no stale maps
 
 **What was asked.** The project is moving to a Windows laptop. Stock everything
