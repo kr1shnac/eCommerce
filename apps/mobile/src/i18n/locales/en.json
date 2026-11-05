@@ -383,6 +383,27 @@
     "riderNote": "The rider will call before arriving. Keep your phone near you.",
     "failureOnlyWhenOut": "A delivery can only fail once the bag has left the shop."
   },
+  "feedback": {
+    "title": "Was everything right?",
+    "hint": "One tap. It tells the shop what to fix.",
+    "yes": "Yes, all good",
+    "no": "Something was wrong",
+    "reasonTitle": "What went wrong?",
+    "reason": {
+      "missing_item": "An item was missing",
+      "damaged": "Something was damaged",
+      "late": "It came very late",
+      "wrong_address": "It went to the wrong place",
+      "wrong_item": "I got the wrong item",
+      "other": "Something else"
+    },
+    "thanks": "Thank you. The shop has seen this.",
+    "recordedOk": "You told us everything was right.",
+    "recordedProblem": "You told us: {reason}",
+    "saving": "Saving.",
+    "error": "Could not save your answer.",
+    "retry": "Try again"
+  },
   "support": {
     "call": "Call the shop"
   },

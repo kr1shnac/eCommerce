@@ -359,6 +359,14 @@ As of this build, the app is a working end-to-end flow on one shop:
   **This needs an EAS development build; Expo Go cannot exercise it.** Proved by
   `supabase/tests/24_rider_positions_test.sql`, `check:tracking` and
   `check:location`, but **not yet on a phone**.
+- **The customer can say whether the bag arrived right.** One record per
+  delivered order (`order_feedback`, migration `20261106000001`, test 25):
+  `was_ok` plus, when not, one of six fixed reasons — `missing_item`, `damaged`,
+  `late`, `wrong_address`, `wrong_item`, `other`. It is deliberately not a star
+  rating: each reason maps to something the owner can do. The row is immutable
+  (no update/delete policy), only the order's own customer may write it and only
+  after `delivered`, and erasing the account erases it. The question lives in
+  `src/components/order-feedback.tsx` on the order screen.
 - **Not built yet**, in the intended order: push notifications → Razorpay → a live
   map / background location. The text-first rider position above *is* built.
   Everything except location still runs in Expo Go; push notifications, Razorpay

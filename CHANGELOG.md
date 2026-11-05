@@ -6,7 +6,101 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
-## 2026-11-03 — The laptop works, six design gaps close, and the agent comes back
+## 2026-11-06 — P5: the customer's one answer after the bag arrives
+
+**What was asked.** Proceed through the agreed feature list one at a time,
+starting with **P5 — post-delivery feedback** (the first item that needed no
+owner decision, no `.env`, and no phone).
+
+**What was built.**
+
+- **`supabase/migrations/20261106000001_order_feedback.sql`** — one row per
+  delivered order. `order_id` is the primary key; `user_id` cascades from
+  `profiles`; `was_ok` is a boolean; `reason` is one of six fixed codes
+  (`missing_item`, `damaged`, `late`, `wrong_address`, `wrong_item`, `other`)
+  and is required exactly when `was_ok` is false, enforced by a CHECK.
+  RLS: INSERT only for `user_id = auth.uid()` **and** an order the caller owns in
+  `status = 'delivered'`; SELECT own rows or all rows for `is_staff()`; **no
+  UPDATE policy and no DELETE policy**, so the record is immutable even for the
+  admin. Account deletion cascades the row away; the order survives under the
+  tombstone.
+- **`supabase/tests/25_order_feedback_test.sql`** — 27 assertions proving the
+  allowed insert, the duplicate, pre-delivery, failed-order, other-customer and
+  spoofed-`user_id` refusals (42501), the three CHECK shapes (23514, run with RLS
+  out of the way so the failure is the constraint and not the policy), read
+  scoping for customer/rider/owner, zero-row UPDATE and DELETE for both customer
+  and admin, and the erase-and-cascade path.
+- **`apps/mobile/src/types/database.ts`** — `FeedbackReason`, `OrderFeedback`,
+  and the `order_feedback` table in `TableRowMap` with `Update: never`.
+- **`apps/mobile/src/hooks/use-order-feedback.ts`** — the read (`maybeSingle`,
+  `staleTime: Infinity`) and the write (insert with `.select().single()`, then
+  `setQueryData` + invalidate). A `23505` on a retried tap is treated as "already
+  answered", not an error to show.
+- **`apps/mobile/src/components/order-feedback.tsx`** +
+  **`src/app/order/[id].tsx`** — the card appears above the rider slot, only for
+  the order's owner, only when `status = 'delivered'`. Yes is one tap; "something
+  was wrong" reveals the six translated chips. Every control is disabled while
+  the write is in flight. Loading renders nothing (no flash of the question to
+  someone who already answered); a read failure gets a translated line and
+  Retry; a write failure is shown in the card.
+- **i18n** — `feedback.*` in both locales; 618 → **635 keys**, same key set in
+  `en.json` and `kn.json`. **`KUNIGAL.md`** gained the three new glossary rows
+  (the question, "all fine", and the six reasons) with the reasons for each
+  word, plus a screen-by-screen line.
+
+**Verified.**
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean, zero warnings; `check:i18n` reports **635 keys in both
+  languages**.
+- `node scripts/run-db-tests.mjs` (portable PostgreSQL 16.6) — **617 passed, 0
+  failed, 617 total** (590 before this session), `RESULT: all assertions
+  passed`. Zero leftover `postgres` processes and zero `grocery-dbtest-*`
+  directories afterwards.
+- **Not verified: the card on a real screen.** No `.env` and no device on this
+  laptop, so layout, tap targets and the Kannada wrap have never been seen. Same
+  standing caveat as every other screen.
+
+**Decisions, and why.**
+
+1. **A record, not a rating.** Blinkit's stars average to a number nobody acts
+   on. Six reasons each imply a different action (re-send, replace, call the
+   rider, fix the address, call the customer), which is the whole value at this
+   catalogue size. No score, no free-text note — a text box is unreadable to the
+   third of adults here who cannot comfortably read a sentence.
+2. **Immutable on purpose.** No update/delete policy at all, not even for the
+   admin. A customer cannot turn "damaged" into "all fine" after a refund, and a
+   member of staff cannot tidy the record. The account-erasure cascade is the
+   only way a row leaves, and it is a DPDP requirement, not an edit.
+3. **Insert is customer-only.** Staff read, they do not answer. Letting the owner
+   record feedback on a customer's behalf would make the record unattributable.
+4. **`is_staff()` reads, not `is_admin()`.** A rider seeing "damaged" on their own
+   delivery is the correction loop working; the row carries no address, phone or
+   money.
+5. **The card sits on the order screen, not a modal or a Home banner.** The
+   customer is already at the order, and the question is about that bag only.
+
+**Bug found, not fixed.** A rider who is still assigned to an order cannot delete
+their account: removing the profile fires `orders.assigned_to on delete set null`,
+and `guard_order_update()` refuses the resulting UPDATE because the caller's
+profile is already gone (so the role reads `customer`). It is recorded in
+`HANDOFF.md` §6.3. Customers are unaffected; fixing it needs its own erasure
+shape and test, so it did not ride along with P5.
+
+**Test tripwire worth knowing.** The first version of test 25 used
+`55555555-…` for the throwaway deleting customer — an id tests 09 and 24 already
+use for a rider. It failed exactly as designed (the FK tried to unassign that
+rider's orders). The test now uses an id used nowhere else
+(`f25f25f2-…`), which is the safe pattern for any new fixture.
+
+**Open gaps.**
+
+- The owner's board does not summarise the answers yet (counts per reason per
+  day). The record is there; the reporting is a smaller follow-up.
+- P6 (partial fulfilment) is next in the build order and still needs the owner's
+  answer: deliver short and refund, or cancel?
+
+---
 
 **What was asked.** Restore the freshly cloned repo on the Windows laptop, finish
 whatever could be finished without the two `.env` files or a phone, put the

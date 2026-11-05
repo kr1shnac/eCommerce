@@ -213,6 +213,16 @@ That produces a record, which is the thing a phone call cannot produce.
 
 Pair it with §3.3's ETA and the correction loop closes.
 
+**Built 2026-11-06.** One record per delivered order, and it is the customer's
+own: `order_feedback` (migration `20261106000001`, test 25) stores `was_ok` plus
+one of six fixed reasons (`missing_item`, `damaged`, `late`, `wrong_address`,
+`wrong_item`, `other`). No star, no free text, no score. The row is immutable —
+no update or delete policy — so an answer cannot be rewritten after the shop has
+acted on it, and an erased account takes its answer with it. The question card
+appears on `order/[id]` only to the order's owner once `status = 'delivered'`.
+The owner's board does not aggregate it yet; that is the next useful step, not a
+gap in the record.
+
 ---
 
 ## 4. What to refuse, and why
@@ -237,13 +247,13 @@ Writing this down is the point. Without it, every future session relitigates.
 
 Extends `SCALE-AND-TRACKING.md` §8, which stops at T7.
 
-**Status 2026-10-30:** P1–P4 are **built** (see `CHANGELOG.md` for 2026-10-21
-and 2026-10-26). `SCALE-AND-TRACKING.md` T0, and the parts of T1/T2 worth
-building, are done too — including the honest list of what was refused and why
-(§8.1 there). **P3/P4 are code-complete but unverified on a phone**, because
-`expo-location` needs an EAS development build. **P5 (post-delivery feedback) is
-the next phase that can be built without a client decision**; P6 needs the
-owner's partial-fulfilment decision first.
+**Status 2026-11-06:** P1–P5 are **built** (see `CHANGELOG.md` for 2026-10-21,
+2026-10-26 and 2026-11-06). `SCALE-AND-TRACKING.md` T0, and the parts of T1/T2
+worth building, are done too — including the honest list of what was refused and
+why (§8.1 there). **P3/P4/P5 are code-complete but unverified on a phone**,
+because `expo-location` needs an EAS development build and no device has run the
+UI. **P6 is the next phase and needs the owner's partial-fulfilment decision
+first.**
 
 The separate **design** gap list — A1–A10, with measured evidence — lives in
 `COMPETITOR-TEARDOWN.md` §7. It is a plan, not a build log: none of A1–A6 is
@@ -257,7 +267,7 @@ are still open. `HANDOFF.md` §6.4 has the audit and the agreed order
 | **P2** | `rider_positions` table + `record_my_position()` + narrow read view + `picked_up_at` column + migration + **test proving the forbidden cases** | `npm run test:db` — **DONE** (590 assertions) | M |
 | **P3** | Rider: consent screen in Kannada + throttle wired to the rule module + "I have the bag" button | **CODE DONE 2026-10-26**; device still owed | M |
 | **P4** | Customer: text-first tracking block (distance, ETA, age) + fifth `TRACK_STEPS` stop | **CODE DONE 2026-10-26**; device still owed | M |
-| **P5** | Post-delivery "was everything right?" + translated problem picker → a recorded row | device | S |
+| **P5** | Post-delivery "was everything right?" + translated problem picker → a recorded row | `npm run test:db` — **DONE 2026-11-06** (test 25); device still owed | S |
 | **P6** | Partial fulfilment: `unavailable` line state, server-side recompute, refund visibility | `npm run test:db` | L |
 | **P7** | Scheduled delivery slots | device | M |
 | **P8** | Optional: static route image, then live map behind a tap | owner's data budget | L |

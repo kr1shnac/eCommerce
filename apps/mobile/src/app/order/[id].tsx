@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CallShop } from '@/components/call-shop';
 import { OfflineBanner } from '@/components/offline-banner';
+import { OrderFeedbackCard } from '@/components/order-feedback';
 import { OrderSkeleton } from '@/components/screen-skeletons';
 import { StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
@@ -27,6 +28,7 @@ import { formatSnapshotAddress, readSnapshotAddress } from '@/lib/order-view';
 import { orderStatusStyle } from '@/lib/order-status';
 import { etaMinutesFor, hasArrived, positionAgeSeconds } from '@/lib/tracking-rules';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth-store';
 import { useCartStore } from '@/store/cart-store';
 import type { OrderRiderPosition, OrderStatus } from '@/types/database';
 
@@ -52,10 +54,15 @@ export default function OrderDetailScreen() {
   const order = useOrder(orderId);
   const cancelOrder = useCancelOrder();
   const replaceAll = useCartStore((state) => state.replaceAll);
+  const session = useAuthStore((state) => state.session);
   const [cancelError, setCancelError] = useState<string | null>(null);
 
   const data = order.data;
   const canCancel = data?.status === 'placed';
+  // Only the person who placed the order is asked how it went. Staff open this
+  // same screen from the rider and owner faces; they see the order, not the
+  // question.
+  const isOwner = Boolean(session && data && session.user.id === data.user_id);
 
   // The rider's position for this order, only while it is out for delivery.
   // Polled every 30 s — Realtime cannot reach `rider_positions` (no read
@@ -194,6 +201,15 @@ export default function OrderDetailScreen() {
                   : t('orders.failureHint')}
               </ThemedText>
             </Card>
+          ) : null}
+
+          {/*
+            After a delivered order, one question. It goes above the rider card
+            because the rider card is hidden for delivered orders — this is the
+            only thing on the screen asking the customer for anything.
+          */}
+          {data.status === 'delivered' ? (
+            <OrderFeedbackCard orderId={data.id} isOwner={isOwner} />
           ) : null}
 
           <RiderCard riderId={data.assigned_to} status={data.status} />

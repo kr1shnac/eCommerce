@@ -484,8 +484,10 @@ model.
 4. **Live map / background location** (Phase 6), only after the text-first
    tracking has been used on a phone. Choose the map vendor last; keep the screen
    replaceable.
-5. **P5 — post-delivery "was everything right?"** (designed, not built; no
-   client decision needed).
+5. **P5 — post-delivery "was everything right?"** — **built 2026-11-06**
+   (`order_feedback`, migration `20261106000001`, test 25, the card on
+   `order/[id]`). The record exists; aggregating it for the owner is a later,
+   smaller step. No client decision was needed.
 6. **P6 — partial fulfilment** (needs the owner's decision: short order or
    cancel?).
 7. **P7 — scheduled delivery** (needs the owner's answer about rider days).
@@ -508,6 +510,14 @@ model.
 - The 60 s order poll and the 30 s position poll are separate queries; they are
   a backstop, not a substitute for push.
 - `apps/admin` has no tests.
+- **A rider assigned to an order cannot delete their account.** Deleting the
+  profile makes `orders.assigned_to` `on delete set null`, and that FK-driven
+  UPDATE is then refused by `guard_order_update()` — by which point the caller's
+  profile is gone, so `current_user_role()` reads `customer`. Found on
+  2026-11-06 while proving the feedback cascade; **not fixed**, because it needs
+  its own shape in the erasure path plus a test. Customers are unaffected.
+- The feedback card is code-complete but has never been seen on a phone, like
+  every other screen here.
 - `common.off` is an unused i18n key and `expo-localization` is only a config
   plugin; both are deliberately left for a future "follow the device" option.
 

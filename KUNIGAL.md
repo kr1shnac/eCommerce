@@ -4,7 +4,7 @@
 we build it for* and *the exact voice* of every word the customer reads. When a
 translation decision is argued about, the answer lives here.
 
-**Last written:** 2026-10-13.
+**Last written:** 2026-11-06.
 
 ---
 
@@ -105,6 +105,9 @@ and why.
 | Out for delivery | **ಡೆಲಿವರಿಗೆ ಹೊರಟಿದೆ** | "It has left for delivery." |
 | Delivered | **ಮನೆ ಸೇರಿದೆ** | "It reached home." Warmer than `ತಲುಪಿಸಲಾಗಿದೆ`. |
 | Cancelled | **ರದ್ದಾಗಿದೆ** | Plain, already-done form. |
+| After-delivery check | **ಎಲ್ಲಾ ಸರಿಯಾಗಿ ಬಂದಿದೆಯಾ?** | The question the shop helper asks at the door. Not `ನಿಮ್ಮ ಅನುಭವ ಹೇಗಿತ್ತು?` ("how was your experience"), which is a form, and not a star rating, which says nothing. |
+| All fine | **ಎಲ್ಲಾ ಸರಿ** | Two words, already-done. Not `ಸಂತೃಪ್ತಿ` (satisfaction), which nobody says out loud. |
+| What went wrong (six choices) | **ಒಂದು ಸಾಮಾನು ಬಂದಿಲ್ಲ** · **ಸಾಮಾನು ಹಾಳಾಗಿದೆ** · **ತುಂಬಾ ತಡವಾಗಿ ಬಂದಿದೆ** · **ಬೇರೆ ಕಡೆ ಹೋಗಿದೆ** · **ಬೇರೆ ಸಾಮಾನು ಬಂದಿದೆ** · **ಬೇರೆ ಏನೋ** | Each states the fact in counter words. `ಕಾಣೆಯಾಗಿದೆ` ("is missing") sounds like a police complaint, `ತಪ್ಪು ಉತ್ಪನ್ನ` is catalogue-speak, and a free-text box would be unreadable to a third of customers — the phone call that follows carries the detail. |
 
 ## 5. Improvisations (deliberate, not literal)
 
@@ -140,6 +143,8 @@ English, and the English should be improved to match where it is weak:
   that appears is the shop's, and it says how much was saved.
 - **Orders.** "Where is my bag" first (status in words a person says), then the
   number to read out, then reorder.
+- **After delivery.** "Did everything come right?" One tap for yes; if not, one
+  of six plain reasons. It is a record the owner can act on, not a score.
 - **Rider.** Brisk and practical, like a work instruction on a bike phone mount.
 - **Admin.** The owner is busy standing at the counter: it is a board, not a
   dashboard. Every label is an action.

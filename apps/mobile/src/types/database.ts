@@ -33,6 +33,18 @@ export type FailureReason =
   | 'refused'
   | 'unreachable'
   | 'other';
+/**
+ * What was wrong, after a delivery. Six fixed codes rather than a star rating,
+ * because each one maps to a different thing the shop can do about it. See
+ * migration 20261106000001.
+ */
+export type FeedbackReason =
+  | 'missing_item'
+  | 'damaged'
+  | 'late'
+  | 'wrong_address'
+  | 'wrong_item'
+  | 'other';
 export type PaymentMethod = 'cod' | 'online';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
@@ -308,6 +320,20 @@ export type OrderItem = {
 };
 
 /**
+ * The customer's one answer after a delivered order. `order_id` is the primary
+ * key, so there is exactly one per order, and the row is immutable: no update
+ * or delete policy exists (migration 20261106000001).
+ */
+export type OrderFeedback = {
+  order_id: string;
+  user_id: string;
+  was_ok: boolean;
+  /** NULL when `was_ok`. Always set when something went wrong. */
+  reason: FeedbackReason | null;
+  created_at: string;
+};
+
+/**
  * Orders are written by `place_order()` and `cancel_order()` in the database,
  * never by the app. Both come back as one jsonb value so the server can explain
  * a refusal in a form the app can translate.
@@ -500,6 +526,27 @@ type TableRowMap = {
         foreignKeyName: 'order_items_order_id_fkey';
         columns: ['order_id'];
         isOneToOne: false;
+        referencedRelation: 'orders';
+        referencedColumns: ['id'];
+      },
+    ]
+  >;
+  /**
+   * One immutable answer per delivered order. `Update: never` is deliberate:
+   * the table has no update policy (migration 20261106000001), so a write that
+   * tries to change an answer would touch zero rows.
+   */
+  order_feedback: Table<
+    OrderFeedback,
+    Pick<OrderFeedback, 'order_id' | 'user_id' | 'was_ok'> & {
+      reason?: FeedbackReason | null;
+    },
+    never,
+    [
+      {
+        foreignKeyName: 'order_feedback_order_id_fkey';
+        columns: ['order_id'];
+        isOneToOne: true;
         referencedRelation: 'orders';
         referencedColumns: ['id'];
       },
