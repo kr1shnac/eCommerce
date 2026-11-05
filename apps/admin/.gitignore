@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# ...but the template IS committed: README.md §3 tells a new laptop to copy it.
+!.env.example
 
 # vercel
 .vercel

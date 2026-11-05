@@ -411,7 +411,14 @@
   },
   "pack": {
     "sizesTitle": "Available in",
-    "openSize": "{name}, {size}, {price}"
+    "openSize": "{name}, {size}, {price}",
+    "openSizeRate": "{name}, {size}, {price}, {rate}"
+  },
+  "unitPrice": {
+    "perUnit": "{price}/{unit}",
+    "a11y": "{price} per {unitName}",
+    "kg": "kilogram",
+    "l": "litre"
   },
   "speech": {
     "listen": "Listen",

@@ -8,6 +8,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { usePackOptions } from '@/hooks/use-pack-options';
 import { formatPaise } from '@/lib/money';
 import { packInBase, trimNumber } from '@/lib/pack';
+import { unitRatePaise } from '@/lib/unit-price';
 import { localizedName } from '@/lib/localized';
 import type { PackUnit, ProductSoldBy } from '@/types/database';
 
@@ -52,6 +53,25 @@ export function PackOptions({ product }: { product: PackLike }) {
 
   const mine = packInBase(product.pack_size, product.pack_unit);
 
+  /** "₹99.00/kg" for a chip, or null when the product has no honest rate (A2). */
+  const rateText = (pricePaise: number, size: number | null, unit: PackUnit | null) => {
+    const rate = unitRatePaise(pricePaise, size, unit);
+    return rate
+      ? t('unitPrice.perUnit', { price: formatPaise(rate.paise), unit: rate.unit })
+      : null;
+  };
+
+  /** The same rate as a spoken sentence, for the accessibility label. */
+  const rateSpoken = (pricePaise: number, size: number | null, unit: PackUnit | null) => {
+    const rate = unitRatePaise(pricePaise, size, unit);
+    return rate
+      ? t('unitPrice.a11y', {
+          price: formatPaise(rate.paise),
+          unitName: rate.unit === 'l' ? t('unitPrice.l') : t('unitPrice.kg'),
+        })
+      : null;
+  };
+
   return (
     <View style={styles.wrap}>
       <ThemedText type="caption" themeColor="textSecondary">
@@ -64,6 +84,7 @@ export function PackOptions({ product }: { product: PackLike }) {
         <Chip
           label={packSizeLabel(product.pack_size, product.pack_unit, product.unit)}
           price={formatPaise(product.price_paise)}
+          rate={rateText(product.price_paise, product.pack_size, product.pack_unit)}
           selected
           disabled={false}
           onPress={() => undefined}
@@ -72,22 +93,35 @@ export function PackOptions({ product }: { product: PackLike }) {
         {rows.map((row) => {
           const theirs = packInBase(row.pack_size, row.pack_unit);
           const soldOut = row.stock_qty <= 0;
+          const size = packSizeLabel(row.pack_size, row.pack_unit, row.unit);
+          const price = soldOut ? t('product.outOfStock') : formatPaise(row.price_paise);
+          const rate = soldOut ? null : rateText(row.price_paise, row.pack_size, row.pack_unit);
+          const spoken = soldOut
+            ? null
+            : rateSpoken(row.price_paise, row.pack_size, row.pack_unit);
+
           return (
             <Chip
               key={row.id}
               label={packSizeLabel(row.pack_size, row.pack_unit, '')}
-              price={soldOut ? t('product.outOfStock') : formatPaise(row.price_paise)}
+              price={price}
+              rate={rate}
               // Bigger or smaller than what is on screen, read as a direction, so
               // the customer can find the size they meant without arithmetic.
               bigger={theirs !== null && mine !== null ? theirs > mine : undefined}
               selected={false}
               disabled={soldOut}
               onPress={() => router.push(`/product/${row.id}`)}
-              accessibilityLabel={t('pack.openSize', {
-                name: localizedName(row),
-                size: packSizeLabel(row.pack_size, row.pack_unit, row.unit),
-                price: formatPaise(row.price_paise),
-              })}
+              accessibilityLabel={
+                spoken
+                  ? t('pack.openSizeRate', {
+                      name: localizedName(row),
+                      size,
+                      price,
+                      rate: spoken,
+                    })
+                  : t('pack.openSize', { name: localizedName(row), size, price })
+              }
             />
           );
         })}
@@ -105,6 +139,7 @@ export function PackOptions({ product }: { product: PackLike }) {
 function Chip({
   label,
   price,
+  rate,
   selected,
   disabled,
   bigger,
@@ -113,6 +148,8 @@ function Chip({
 }: {
   label: string;
   price: string;
+  /** A2: the rate line ("₹99.00/kg"), or null when the pack has no honest rate. */
+  rate?: string | null;
   selected: boolean;
   disabled: boolean;
   bigger?: boolean;
@@ -125,6 +162,7 @@ function Chip({
   const border = selected ? theme.accent : theme.border;
   const labelInk = selected ? theme.accent : theme.text;
   const priceInk = selected ? theme.accent : disabled ? theme.textTertiary : theme.textSecondary;
+  const rateInk = selected ? theme.accent : theme.textTertiary;
 
   return (
     <Pressable
@@ -132,7 +170,7 @@ function Chip({
       disabled={disabled || selected}
       accessibilityRole="button"
       accessibilityState={{ selected, disabled: disabled || selected }}
-      accessibilityLabel={accessibilityLabel ?? `${label}, ${price}`}
+      accessibilityLabel={accessibilityLabel ?? [label, price, rate].filter(Boolean).join(', ')}
       style={[styles.chip, { backgroundColor: bg, borderColor: border }, disabled && styles.chipDisabled]}>
       <View style={styles.chipTop}>
         {bigger !== undefined && !selected ? (
@@ -147,6 +185,14 @@ function Chip({
       <ThemedText type="caption" style={{ color: priceInk }} numberOfLines={1}>
         {price}
       </ThemedText>
+      {/* The rate is the reason this row exists, so it gets its own line rather
+          than being squeezed beside the price. Tertiary ink, because it is
+          supporting evidence, not the thing being bought. */}
+      {rate ? (
+        <ThemedText type="caption" style={{ color: rateInk }} numberOfLines={1}>
+          {rate}
+        </ThemedText>
+      ) : null}
     </Pressable>
   );
 }

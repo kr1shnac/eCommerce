@@ -411,7 +411,14 @@
   },
   "pack": {
     "sizesTitle": "ಇದರಲ್ಲಿ ಸಿಗುತ್ತದೆ",
-    "openSize": "{name}, {size}, {price}"
+    "openSize": "{name}, {size}, {price}",
+    "openSizeRate": "{name}, {size}, {price}, {rate}"
+  },
+  "unitPrice": {
+    "perUnit": "{price}/{unit}",
+    "a11y": "{unitName} ಒಂದಕ್ಕೆ {price}",
+    "kg": "ಕಿಲೋಗ್ರಾಂ",
+    "l": "ಲೀಟರ್"
   },
   "speech": {
     "listen": "ಕೇಳಿ",

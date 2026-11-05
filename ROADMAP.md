@@ -530,10 +530,13 @@ a claimed-but-not-built feature, or a launch blocker.
 - **Category create/edit in the app.** The Shelf tab edits products, price, stock
   and on/off-shelf state, and the Add-a-product panel creates a product. Category
   management is still only in the Next.js panel.
-- **The web panel has fallen behind the app's pack fields.** `apps/admin` does not
-  know `sold_by` / `pack_size` / `pack_unit`, so a product created there is always
-  a counted piece with no "also in 1 kg" options. Either bring it level or retire
-  it; decision needed before the pilot (`PRODUCTION.md` §14 item 9).
+- **The web panel is level with the app's pack fields — corrected 2026-11-03.**
+  An earlier version of this bullet claimed `apps/admin` did not know
+  `sold_by` / `pack_size` / `pack_unit`. That is false: `products/page.tsx`
+  reads, loads and writes all three, and a measure product always saves both pack
+  fields or neither (verified by grep on 2026-11-03). The panel is still a
+  skeleton (no tests, category management only there), so "retire or finish it"
+  remains a real decision — but "it creates pieces with no pack" is not a reason.
 - **Push notifications (Phase 4), Razorpay (Phase 5), live map / background
   location (Phase 6)** — none is started; all need an EAS development build.
 - **Partial fulfilment (P6), scheduled delivery (P7), and the post-delivery

@@ -13,6 +13,30 @@ It does **not** give you `council`, the 57 `gstack-*` skills, or
 `reverse-engineer-anything`. Those live in `~/.config/opencode/`, outside Git.
 This file puts them back.
 
+> **Status 2026-11-03 — restored on the Windows laptop.** Done via Path B (§3):
+> `council` + 8 agents + command, `reverse-engineer-anything`, and `gstack` are
+> installed and visible to OpenCode. Three things differ from the text below and
+> are recorded rather than silently fixed:
+>
+> - **gstack is v1.92.55.0**, because the documented `v1.91.173.0` tag no longer
+>   exists upstream. That version ships as **one** `gstack` skill directory with
+>   sub-skills inside (`review/`, `qa/`, `design/`, …) plus `bin/`, instead of 57
+>   top-level `gstack-*` directories. So the "expect 60 skills / 58 commands"
+>   count in §1 and §4 is now **3 global skills** (`council`, `gstack`,
+>   `reverse-engineer-anything`), **1 command** (`/council`) and **8 agents**.
+>   The gstack router still routes `/gstack-review` and friends through its own
+>   `SKILL.md`.
+> - **Two council models were repointed** to models that exist on this account:
+>   advisor C `longcat-2.5-preview-free` → `opencode/beam-free`, advisor E
+>   `space-bunny-free` → `opencode/flint-40b-free`. The others were available as
+>   written. Deleting `model:` would also work but costs the diversity the skill
+>   depends on.
+> - **`opencode.jsonc` here is bare.** No Context7 key was available, and a
+>   placeholder key only produces failed MCP calls. Add the real key (`§3.2`)
+>   when you have it; the skills do not depend on it.
+>
+> The numbers in §1/§4 are kept as the historical record of the old machine.
+
 > **For the agent reading this on the new laptop:** you are being asked to
 > rebuild a tool environment, not to change the grocery app. Do §2 (copy) or §3
 > (rebuild), then run §4 to prove it worked. Do not edit anything under `apps/`,

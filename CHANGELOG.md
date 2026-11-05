@@ -6,6 +6,139 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-03 — The laptop works, six design gaps close, and the agent comes back
+
+**What was asked.** Restore the freshly cloned repo on the Windows laptop, finish
+whatever could be finished without the two `.env` files or a phone, put the
+OpenCode skills back, and turn the reverse-engineered Blinkit/Zepto teardown into
+a plan for what is left.
+
+**What was built (app).**
+
+- **A5 — type tracking, Latin only.** `theme.ts` `Type` now carries
+  `letterSpacing` per step (−0.5 display, +0.2 caption). `themed-text.tsx` forces
+  `letterSpacing: 0` whenever the language is Kannada, because negative tracking
+  collides conjuncts and detaches matras — this is the correction the teardown
+  audit found, and it is now in code rather than a note.
+- **A6 — `Spacing.twoHalf = 12`.** Used by the Home shelf grid (row and column
+  gap). The 16 px screen gutter is unchanged.
+- **A3-card — stock on the shelf card.** `product-card.tsx` shows
+  `product.lowStock` with an alert icon when `0 < stock_qty ≤ 5`, same threshold
+  as the product page, so the two cannot disagree.
+- **A2 — ₹/kg and ₹/L.** New pure module `src/lib/unit-price.ts`
+  (`unitRatePaise`, integer paise, rounds once, no formatter). The product page
+  and every pack chip show the rate; a piece product gets `null`, so no screen
+  invents a "per kg of soap". The new `scripts/check-unit-price.mjs` runs in
+  `npm run lint` (38 assertions: same rate across sizes, liquid scale, null and
+  divide-by-zero cases, one-rounding, and a code scan proving the module imports
+  no money helper and never divides by 100).
+- **A7 — refresh on resume.** `src/hooks/use-refresh-on-resume.ts` bridges
+  `AppState` into React Query's `focusManager`, and `refetchOnWindowFocus` went
+  from `false` to `true`. Stale queries (shelf: 5 min) refresh when the app comes
+  back; fresh ones do not, so a glance at the clock costs no request.
+- **A8 — image priority.** `ProductCard` takes `priority`; the grid marks the
+  first 4 cards and each rail its first 2. All images cache `memory-disk`.
+
+**What was built (docs / tooling).**
+
+- **`apps/admin/.env.example`** added (README §3 referenced it but it did not
+  exist), and `apps/admin/.gitignore` gained `!.env.example` so the template is
+  actually committed — the existing `.env*` rule would have silently dropped it.
+- **Two stale claims corrected:** `HANDOFF.md` §6.2/§6.4 and `ROADMAP.md` §14.2
+  said `apps/admin` did not know `sold_by` / `pack_size` / `pack_unit`. Grep
+  shows it reads, writes and reloads all three; the docs now say so.
+- **`HANDOFF.md` §6.4/§6.5** now carry the per-item status and a concrete plan
+  for A1, A4, A9 and A10, including the exact migration shape and the person each
+  one waits on. **`COMPETITOR-TEARDOWN.md`** §7 status and rows updated.
+- **`scripts/db-tests/postgres.mjs` — the Windows hang.** `pg_ctl start` is now
+  spawned with `stdio: 'ignore'` so the server grandchild cannot hold the pipe
+  open and block `spawnSync` forever. This is the only change to test tooling in
+  the session; the schema, policies and tests are untouched.
+- **Agent tooling restored** from `SKILLS.md` §3 (Path B): `council` skill + 8
+  `council-*` subagents + `/council` command, `reverse-engineer-anything`, and
+  `gstack`. Two model lines had to be repointed because the old machine's
+  catalogue no longer exists (`longcat-2.5-preview-free` → `opencode/beam-free`,
+  `space-bunny-free` → `opencode/flint-40b-free`). gstack's documented tag
+  `v1.91.173.0` is gone from upstream; **v1.92.55.0** is installed, and it now
+  ships as one `gstack` skill with sub-skills inside instead of 57 top-level
+  `gstack-*` directories. `SKILLS.md`'s "expect 60 skills" count is therefore
+  superseded — see its status note.
+
+**Verified — and how.**
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean, zero warnings, all chained checks including the new
+  `check:unit-price`; `check:i18n` reports **618 keys in both languages**, 458
+  used literals.
+- `npm run check:unit-price` — 38/38 pass.
+- `npm run test:db` against the portable PostgreSQL 16.6 binaries
+  (`PG_BIN=%TEMP%\opencode\pgsql16\pgsql\bin`) — **590 passed / 0 failed**,
+  `RESULT: all assertions passed`. All 24 SQL suites plus the two-session
+  concurrency race ran; nothing was skipped.
+- OpenCode now lists `council`, `gstack`, `reverse-engineer-anything`, `supabase`
+  and `supabase-postgres-best-practices`, and the eight `council-*` subagents are
+  on disk. **Skills are read at session start, so a restart is required** before
+  a fresh session can use them.
+- **Not verified: anything on a phone.** A7 and A8 are device behaviour; they are
+  typechecked, not seen. That is still the project's oldest gap (`HANDOFF.md`
+  §6.3).
+
+**Decisions and their reasons.**
+
+1. **A7 uses `focusManager`, not "invalidate everything on resume".** Invalidating
+   would throw away good data and show a spinner for a two-second glance on the
+   patchy connection this app is built for. Staleness is the honest test, and
+   React Query already owns it.
+2. **A2 lives in its own module, not `money.ts` or `pack.ts`.** `check:packs`
+   forbids money in `pack.ts` (that rule stopped the M4 fractional-quantity
+   mistake), and `money.ts` must stay the only formatter. `unit-price.ts` computes
+   an integer and stops.
+3. **The rate is hidden for `piece` products and for sold-out packs.** `null`
+   means "no honest rate", not "free"; the chip falls back to the old
+   name/size/price accessibility label.
+4. **No A1 numbers were invented.** The remaining ETA work is written as a plan
+   with the owner's questions, not as a default. Same for A4's colour and A9's
+   legal wording.
+5. **gstack was installed at the newest tag, not the documented one.** The
+   documented tag no longer exists upstream; pinning to a dead tag fails. The
+   version difference is recorded rather than hidden.
+6. **The Windows hang was fixed in the runner, not worked around.** The tempting
+   alternative was "run it in Git Bash like before", which would hide a real bug
+   from the next Windows clone and leave `npm run test:db` broken by documented
+   default. `stdio: 'ignore'` is one line and keeps the cross-platform runner
+   honest.
+
+**Bugs found.**
+
+- **`npm run test:db` hung on Windows before printing a single line.** The
+  cluster booted and then nothing happened: no output, no `psql` child, one
+  idle `node` process. Cause: `startCluster()` ran `pg_ctl start` through
+  `spawnSync` with the default pipes. `pg_ctl` exits, but the server it leaves
+  behind is a grandchild that inherits the pipe handles, so `spawnSync` keeps
+  waiting for the read end to close — which only happens when the server stops.
+  The runner could never reach its first `console.log`. Fixed in
+  `scripts/db-tests/postgres.mjs` by starting the cluster with
+  `stdio: 'ignore'` (the server's output already goes to `-l logfile`, which is
+  what the failure path reads). No test or migration changed.
+- Two orphaned `grocery-dbtest-*` clusters from the hung attempts had to be
+  stopped by hand with `pg_ctl -D <dir> -m immediate stop`; the runner's own
+  `stop()` cannot help a process that is blocked before it returns. After the
+  fix, a full run leaves **no** postgres process and **no** temp directory
+  behind (checked).
+- The first PostgreSQL extraction was truncated (a timed-out `Expand-Archive`
+  left no `share/postgres.bki`), which made `initdb` fail with a misleading
+  "corrupted installation". Re-extracting with `tar` fixed it; the test runner's
+  error message is accurate, the cause was the download step.
+- `apps/admin/.env.example` would have been invisible to Git because of the
+  nested `.gitignore`; fixed before it could bite the next clone.
+
+**Still open.** The two `.env` files (user will supply), a first real-device run,
+A1/A4/A9/A10 as planned in `HANDOFF.md` §6.5, and the Context7 MCP key (the
+`opencode.jsonc` here is bare; adding a placeholder key would only produce failed
+MCP calls).
+
+---
+
 ## 2026-10-31 — The move is proven, and the agent moves with it
 
 **What was asked.** The project is going to a Windows laptop and the OpenCode

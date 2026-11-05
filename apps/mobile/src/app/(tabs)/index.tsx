@@ -182,11 +182,14 @@ export default function HomeScreen() {
     ? t('home.greetNamed', { greeting: t(greetingKey), name: firstName })
     : t(greetingKey);
 
-  const renderProduct = ({ item }: { item: Product }) => (
+  const renderProduct = ({ item, index }: { item: Product; index: number }) => (
     <View style={styles.cardSlot}>
       <ProductCard
         product={item}
         fallbackEmoji={item.category_id ? emojiByCategory.get(item.category_id) : undefined}
+        // Two columns, so the first four cards are the first two rows — the
+        // only ones visible before a thumb moves. A8.
+        priority={index < 4}
       />
     </View>
   );
@@ -609,10 +612,12 @@ function ProductRail({
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.rail}>
-        {products.map((product) => (
+        {products.map((product, index) => (
           <View key={product.id} style={styles.railCard}>
             <ProductCard
               product={product}
+              // A horizontal rail peeks two cards; the third is already offscreen.
+              priority={index < 2}
               fallbackEmoji={
                 product.category_id ? emojiByCategory.get(product.category_id) : undefined
               }
@@ -729,8 +734,8 @@ const styles = StyleSheet.create({
   dealEmoji: { fontSize: 30, lineHeight: 36 },
   dealPriceRow: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.one, marginTop: 2 },
   mrp: { textDecorationLine: 'line-through' },
-  row: { gap: Spacing.three },
-  columnGap: { height: Spacing.three },
+  row: { gap: Spacing.twoHalf },
+  columnGap: { height: Spacing.twoHalf },
   cardSlot: { flex: 1 },
   basketWrap: {
     position: 'absolute',

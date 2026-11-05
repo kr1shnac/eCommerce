@@ -63,9 +63,19 @@ export function ThemedText({ style, type = 'default', themeColor, ...rest }: The
 
   // Applied LAST so the family always matches its own weight: setting a
   // `fontWeight` on a single-face font makes Android fake-bold it.
+  //
+  // `letterSpacing: 0` is not cosmetic. The `Type` scale carries Latin tracking
+  // (A5), and negative tracking on Kannada collides conjuncts and detaches
+  // matras. The Kannada cut keeps its natural spacing even when a caller set a
+  // tracking value of its own (an offer code, an OTP box), because readability
+  // in the shop's first language wins over a Latin typographic flourish.
   const kannada =
     language === 'kn' && type !== 'code'
-      ? { fontFamily: kannadaFontForWeight(TYPE_WEIGHT[type]), fontWeight: 'normal' as const }
+      ? {
+          fontFamily: kannadaFontForWeight(TYPE_WEIGHT[type]),
+          fontWeight: 'normal' as const,
+          letterSpacing: 0,
+        }
       : null;
 
   return (

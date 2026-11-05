@@ -170,12 +170,15 @@ export const Fonts = Platform.select({
 
 /**
  * 4-point spacing scale. Screens compose these; nothing uses a magic number.
- * `three` (16) is the standard screen gutter.
+ * `three` (16) is the standard screen gutter. `twoHalf` (12) is the tighter
+ * gutter the 2-column shelf uses (register A6: Blinkit's measured page gutter is
+ * 12 px, and borrowing it buys back width without shrinking a single glyph).
  */
 export const Spacing = {
   half: 2,
   one: 4,
   two: 8,
+  twoHalf: 12,
   three: 16,
   four: 24,
   five: 32,
@@ -185,18 +188,25 @@ export const Spacing = {
 /**
  * Type scale. Kannada has taller glyphs than Latin, so line heights run ~1.5×.
  * Nothing here is below 12.5 px: KUNIGAL.md forbids shrinking text to fit.
+ *
+ * `letterSpacing` is the Latin-only tracking measured from the quick-commerce
+ * rivals (register A5): large display tightens (−0.5 px), small labels open up
+ * (+0.2 px), body stays neutral. It is deliberately NOT applied to Kannada —
+ * negative tracking collides conjuncts and detaches matras, so `ThemedText`
+ * forces 0 whenever the language is `kn`. That is a KUNIGAL.md rule, not a
+ * preference; see `components/themed-text.tsx`.
  */
 export const Type = {
-  display: { fontSize: 30, lineHeight: 40, fontWeight: '800' },
-  title: { fontSize: 24, lineHeight: 34, fontWeight: '700' },
-  heading: { fontSize: 19, lineHeight: 28, fontWeight: '700' },
-  body: { fontSize: 16, lineHeight: 24, fontWeight: '400' },
-  bodyStrong: { fontSize: 16, lineHeight: 24, fontWeight: '600' },
-  small: { fontSize: 14, lineHeight: 22, fontWeight: '400' },
-  smallStrong: { fontSize: 14, lineHeight: 22, fontWeight: '700' },
-  caption: { fontSize: 12.5, lineHeight: 18, fontWeight: '600' },
-  price: { fontSize: 17, lineHeight: 24, fontWeight: '800' },
-  priceLarge: { fontSize: 22, lineHeight: 28, fontWeight: '800' },
+  display: { fontSize: 30, lineHeight: 40, fontWeight: '800', letterSpacing: -0.5 },
+  title: { fontSize: 24, lineHeight: 34, fontWeight: '700', letterSpacing: -0.3 },
+  heading: { fontSize: 19, lineHeight: 28, fontWeight: '700', letterSpacing: -0.2 },
+  body: { fontSize: 16, lineHeight: 24, fontWeight: '400', letterSpacing: 0 },
+  bodyStrong: { fontSize: 16, lineHeight: 24, fontWeight: '600', letterSpacing: 0 },
+  small: { fontSize: 14, lineHeight: 22, fontWeight: '400', letterSpacing: 0 },
+  smallStrong: { fontSize: 14, lineHeight: 22, fontWeight: '700', letterSpacing: 0 },
+  caption: { fontSize: 12.5, lineHeight: 18, fontWeight: '600', letterSpacing: 0.2 },
+  price: { fontSize: 17, lineHeight: 24, fontWeight: '800', letterSpacing: -0.2 },
+  priceLarge: { fontSize: 22, lineHeight: 28, fontWeight: '800', letterSpacing: -0.4 },
 } as const satisfies Record<string, TextStyle>;
 
 /** Corner radii. Cards are `lg`, sheets are `xl`, chips/buttons are `pill`. */

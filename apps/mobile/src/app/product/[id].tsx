@@ -25,6 +25,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { localizedName } from '@/lib/localized';
 import { packLabel } from '@/lib/pack';
 import { spokenProductLine } from '@/lib/speech';
+import { unitRatePaise } from '@/lib/unit-price';
 import { formatPaiseForSpeech, discountPercent, formatPaise } from '@/lib/money';
 
 /**
@@ -122,6 +123,21 @@ export default function ProductScreen() {
   // what it showed before the pack fields existed.
   const sizeLabel = packLabel(item);
 
+  // A2: the rate behind the pack. Only a structured measure product has one, and
+  // it is the same integer-paise arithmetic the pack screen uses — see
+  // `lib/unit-price.ts`. Nothing is shown for a piece product, because "per kg of
+  // soap" is not a number a shopkeeper would ever say.
+  const rate = unitRatePaise(item.price_paise, item.pack_size, item.pack_unit);
+  const rateText = rate
+    ? t('unitPrice.perUnit', { price: formatPaise(rate.paise), unit: rate.unit })
+    : null;
+  const rateA11y = rate
+    ? t('unitPrice.a11y', {
+        price: formatPaise(rate.paise),
+        unitName: rate.unit === 'l' ? t('unitPrice.l') : t('unitPrice.kg'),
+      })
+    : undefined;
+
   const category = (categories.data ?? []).find((candidate) => candidate.id === item.category_id);
   const categoryIcon = category?.icon ?? '🛒';
   const emoji = item.emoji ?? categoryIcon;
@@ -171,7 +187,17 @@ export default function ProductScreen() {
 
         <View style={styles.titleBlock}>
           <ThemedText type="title">{name}</ThemedText>
-          <ThemedText themeColor="textSecondary">{sizeLabel}</ThemedText>
+          <View style={styles.sizeRow}>
+            <ThemedText themeColor="textSecondary">{sizeLabel}</ThemedText>
+            {rateText ? (
+              <ThemedText
+                type="caption"
+                themeColor="textSecondary"
+                accessibilityLabel={rateA11y}>
+                {rateText}
+              </ThemedText>
+            ) : null}
+          </View>
         </View>
 
         <Card style={styles.buyCard}>
@@ -290,6 +316,7 @@ const styles = StyleSheet.create({
   categoryRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   categoryEmoji: { fontSize: 16, lineHeight: 22 },
   titleBlock: { gap: 2 },
+  sizeRow: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: Spacing.two },
   buyCard: { gap: Spacing.two },
   priceRow: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.two },
   mrp: { textDecorationLine: 'line-through' },

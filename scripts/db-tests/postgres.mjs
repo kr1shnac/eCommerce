@@ -243,12 +243,19 @@ export async function startCluster({ keep = false } = {}) {
       `-p ${port} -c listen_addresses=127.0.0.1${socketOption} -c fsync=off -c full_page_writes=off -c synchronous_commit=off`,
       'start',
     ],
-    { env },
+    // `stdio: 'ignore'`, NOT the default pipes. On Windows, `pg_ctl start`
+    // leaves the server running as a grandchild, and that grandchild inherits
+    // whichever handles it was given. With pipes, `spawnSync` keeps waiting
+    // for the read end to close — which only happens when the server exits, so
+    // the whole test run hangs before its first line of output. Ignoring stdio
+    // means there is no pipe to hold open; the server's own output already goes
+    // to `logfile` via `-l`, and that is what the error path reads below.
+    { env, stdio: 'ignore' },
   );
   if (started.status !== 0) {
     const log = existsSync(logfile) ? readFileSync(logfile, 'utf8') : '';
     throw new Error(
-      `could not start PostgreSQL:\n${indent(`${started.stdout}\n${started.stderr}\n${log}`)}`,
+      `could not start PostgreSQL:\n${indent(`${started.stdout ?? ''}\n${started.stderr ?? ''}\n${log}`)}`,
     );
   }
 

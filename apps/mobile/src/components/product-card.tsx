@@ -24,6 +24,15 @@ type ProductCardProps = {
    * the same leaf.
    */
   fallbackEmoji?: string;
+  /**
+   * A8: true for the first few cards a customer sees (the first two rows of the
+   * grid), so their photos are fetched ahead of the rest. Everything below the
+   * fold loads at normal priority and caches to disk. This mirrors the measured
+   * split at Blinkit (eager above the fold) and Zepto (lazy below it), without
+   * their `fetchpriority=low` starvation — a phone on one bar should still fill
+   * row five eventually.
+   */
+  priority?: boolean;
 };
 
 /**
@@ -34,7 +43,7 @@ type ProductCardProps = {
  * because a card that swallows the Add tap is worse than no card tap at all.
  * The heart in the corner is a third, equally separate target.
  */
-export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
+export function ProductCard({ product, fallbackEmoji, priority = false }: ProductCardProps) {
   const { t } = useTranslation();
   const theme = useTheme();
   const router = useRouter();
@@ -46,6 +55,11 @@ export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
 
   const off = discountPercent(product.price_paise, product.mrp_paise);
   const isOutOfStock = product.stock_qty <= 0;
+  // A3: the shelf card must say "only N left", not just the product page. This is
+  // where a shopper decides whether to open the item at all, and it is the last
+  // chance to warn before the basket. Five is the same threshold the product page
+  // has used since Phase 2.5, so the two screens cannot disagree.
+  const isLowStock = !isOutOfStock && product.stock_qty <= 5;
   const showImage = Boolean(product.image_url) && !imageFailed;
   const emoji = product.emoji ?? fallbackEmoji ?? '🛒';
   const name = localizedName(product, language);
@@ -71,6 +85,8 @@ export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
               style={styles.image}
               contentFit="cover"
               transition={150}
+              priority={priority ? 'high' : 'normal'}
+              cachePolicy="memory-disk"
               onError={() => setImageFailed(true)}
             />
           ) : (
@@ -82,6 +98,18 @@ export function ProductCard({ product, fallbackEmoji }: ProductCardProps) {
 
           {off !== null && !isOutOfStock ? (
             <Badge label={`-${off}%`} tone="secondary" solid style={styles.offBadge} />
+          ) : null}
+
+          {/* Bottom-left, because the discount owns the top-left and the heart
+              owns the top-right. Colour + icon + word, so it survives for a
+              reader who cannot read the sentence (DESIGN.md §2.5). */}
+          {isLowStock ? (
+            <Badge
+              label={t('product.lowStock', { count: product.stock_qty })}
+              tone="warning"
+              icon="alert-circle-outline"
+              style={styles.lowStock}
+            />
           ) : null}
 
           {isOutOfStock ? (
@@ -168,6 +196,7 @@ const styles = StyleSheet.create({
   },
   emoji: { fontSize: 54, lineHeight: 64 },
   offBadge: { position: 'absolute', top: Spacing.two, left: Spacing.two },
+  lowStock: { position: 'absolute', bottom: Spacing.two, left: Spacing.two, maxWidth: '92%' },
   heart: { position: 'absolute', top: Spacing.one, right: Spacing.one },
   soldOut: {
     position: 'absolute',

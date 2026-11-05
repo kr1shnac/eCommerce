@@ -78,7 +78,10 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       retry: 1,
-      refetchOnWindowFocus: false,
+      // A7: hand focus to `focusManager` (see `hooks/use-refresh-on-resume.ts`),
+      // then let React Query refetch only the queries whose `staleTime` has
+      // passed. `false` here meant a resume never refreshed anything.
+      refetchOnWindowFocus: true,
       staleTime: 60_000,
       // Must be >= MAX_AGE_MS, or React Query garbage-collects a query from memory
       // before the persister is given a chance to restore it. This is the single

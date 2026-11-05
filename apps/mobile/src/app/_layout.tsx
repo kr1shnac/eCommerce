@@ -10,6 +10,7 @@ import { ActivityIndicator, AppState, StyleSheet, View } from 'react-native';
 
 import { useProfile } from '@/hooks/use-profile';
 import { RealtimeOrdersProvider } from '@/hooks/use-realtime-orders';
+import { useRefreshOnResume } from '@/hooks/use-refresh-on-resume';
 import { useResolvedScheme, useTheme } from '@/hooks/use-theme';
 import {
   setCrashReportingUser,
@@ -34,6 +35,11 @@ function RootLayout() {
   const hydrate = useLanguageStore((state) => state.hydrate);
   const isReady = useLanguageStore((state) => state.isReady);
   const themeReady = useThemeStore((state) => state.isReady);
+
+  // A7: the shelf refreshes when the customer comes back to the app, once the
+  // data is older than its `staleTime`. See the hook for why this is not an
+  // invalidate-everything.
+  useRefreshOnResume();
 
   // The Kannada face is bundled (assets/fonts) so the language looks the same on
   // every phone. Latin keeps the system font; only `ThemedText` in Kannada

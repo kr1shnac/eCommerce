@@ -489,8 +489,11 @@ model.
 6. **P6 — partial fulfilment** (needs the owner's decision: short order or
    cancel?).
 7. **P7 — scheduled delivery** (needs the owner's answer about rider days).
-8. **Bring `apps/admin` level with the packs fields, or retire it.** Two shelf
-   tools that disagree is worse than one.
+8. **Decide whether `apps/admin` earns its keep, or retire it.** It is *not*
+   behind on packs — corrected 2026-11-03: it reads and writes `sold_by`,
+   `pack_size` and `pack_unit` (grep-verified), so the old "two shelf tools
+   disagree" worry is gone. The remaining question is whether a second shelf tool
+   with no tests is worth maintaining when the phone already does the job.
 
 ### 6.3 Known limitations, stated so nobody rediscovers them
 
@@ -517,7 +520,8 @@ logged-in screens (cart, checkout, tracking, order history) are marked
 `[UNKNOWN]`, not described from memory. It produced the A/B/C gap list and five
 decisions.
 
-**It is a plan, not a build log.** Audited against `master` on 2026-10-30:
+**It is a plan with a build log attached.** Audited against the working tree on
+2026-11-03 (the session recorded at the top of `CHANGELOG.md`):
 
 **What was finalised (and is already in the code or the rules):**
 
@@ -533,37 +537,40 @@ decisions.
   floor with 1.5× line height, Kannada-first voice, text-first rider tracking
   (no map, no dot), packs not fractions (integer paise), and money/RLS in
   Postgres.
-- **Agreed build order for the cheap six:** A5 → A6 → A4 → A3 → A2 → A1. A7–A10
-  after that; A9 needs the owner and a CA.
+- **Agreed build order for the cheap six:** A5 → A6 → A4 → A3 → A2 → A1.
+  **A5, A6, A3-card and A2 are built** (2026-11-03). A7–A10 come after that; A9
+  needs the owner and a CA.
 
 **What is actually built:**
 
-| Item | Status on 2026-10-30 | Evidence |
+| Item | Status on 2026-11-03 | Evidence |
 | --- | --- | --- |
-| A1 ETA as a function | **Not built** | `delivery_zones.eta_minutes` is still one number per zone. The only ETA function is `eta_minutes_for(distance)` for the rider tracker. |
-| A2 ₹/kg, ₹/L | **Not built** | No per-unit price module or display. The pack chips show each pack's price, with no rate to compare packs. |
-| A3 stock visible | **Half built** | The product page shows `Only N left` when `stock_qty ≤ 5` (`product/[id].tsx`). The **shelf card does not**, which is where the teardown found the gap. |
-| A4 status-bar / top brand | **Not built** | `expo-status-bar` already switches light/dark in `_layout.tsx`; there is no marigold hairline and no tinted status-bar background. |
-| A5 letter-spacing | **Not built** | `Type` has no `letterSpacing`. Ad-hoc tracking exists only in the OTP box, the coupon code and the offer code. |
-| A6 spacing 12 | **Not built** | `Spacing` runs 2/4/8/16/24/32/64; the standard gutter is 16. There is no 12 token, so a 12 px gutter still needs a magic number. |
-| A7 refresh-on-resume | **Not built** | `_layout.tsx` refreshes the auth session on `active`; React Query has no `focusManager`, so the catalogue does not refetch on resume. |
-| A8 image priority | **Not built** | No eager/lazy split and no `priority`/`cachePolicy` per image role. |
+| A1 ETA as a function | **Not built — needs the owner's numbers** | `delivery_zones.eta_minutes` is still one number per zone. The only ETA function is `eta_minutes_for(distance)` for the rider tracker. |
+| A2 ₹/kg, ₹/L | **Built** | `src/lib/unit-price.ts` (`unitRatePaise`, integer paise, no formatter), shown on the product page and on every pack chip. `scripts/check-unit-price.mjs` (38 assertions) runs in `npm run lint`. |
+| A3 stock visible | **Built** | The shelf card (`product-card.tsx`) now shows `product.lowStock` when `0 < stock_qty ≤ 5`, and the product page keeps its badge. Same threshold on both, so they cannot disagree. |
+| A4 status-bar / top brand | **Not built — needs decision 5** | `expo-status-bar` already switches light/dark in `_layout.tsx`; there is no marigold hairline and no tinted status-bar background. |
+| A5 letter-spacing | **Built** | `Type` carries Latin-only tracking (−0.5 display → +0.2 caption); `themed-text.tsx` forces `letterSpacing: 0` for Kannada, because negative tracking collides conjuncts. |
+| A6 spacing 12 | **Built** | `Spacing.twoHalf = 12`, used by the Home shelf grid for both row and column gaps. |
+| A7 refresh-on-resume | **Built** | `hooks/use-refresh-on-resume.ts` bridges `AppState` into React Query's `focusManager`, and `refetchOnWindowFocus` is now `true`, so stale queries (shelf: 5 min) refresh when the app returns. Fresh ones do not. |
+| A8 image priority | **Built** | `product-card.tsx` takes `priority`; the Home grid marks the first 4 cards (two rows) and each rail its first 2. Everything else loads at normal priority and caches `memory-disk`. |
 | A9 pack facts | **Half built** | `products.net_quantity` and `products.packer_name` exist (shop identity, migration `20261020000002`). No brand, country of origin, ingredients or return window. |
 | A10 two-level categories | **Not built** | `categories` has no `parent_id`. Matters at ~300 SKUs, not 34. |
 
-**Why no A-item is complete:** the session that was told "proceed" ran out of
-model credits/context before its first edit. The only committed artefact is the
-teardown document itself (`c145ca2`). There is no branch, worktree or stash that
-contains the work — checked on 2026-10-30. (A3's product-page badge predates the
-teardown; its card half is still missing.)
+**What the 2026-11-03 session changed:** A5, A6, A3-card, A2, A7 and A8 are
+built and in the working tree — the agreed cheap four plus the two that needed no
+decision. They are typechecked, linted (including the new `check:unit-price`) and
+list-checked, but **not yet seen on a phone** — that remains true of the whole
+app. A1 needs the owner's numbers; A4 needs decision 5; A9 needs the owner and a
+CA; A10 waits for ~300 SKUs. §6.5 is the concrete plan for those four.
 
-**Three corrections the audit found in the plan itself:**
+**Three corrections the audit found in the plan itself (all now acted on):**
 
-1. **A2's file target is wrong for this repo.** The teardown says "derived in
-   `src/lib/pack.ts`", but `scripts/check-packs.mjs` deliberately forbids money
-   (any `paise`/`price`) in `pack.ts` — that rule is what stopped the M4
-   fractional-quantity mistake. A2 belongs in a separate pure module (e.g.
-   `src/lib/unit-price.ts`) or in `money.ts`, with its own check.
+1. **A2's file target was wrong for this repo — and the split is now the
+   implementation.** The teardown says "derived in `src/lib/pack.ts`", but
+   `scripts/check-packs.mjs` deliberately forbids money (any `paise`/`price`) in
+   `pack.ts` — that rule is what stopped the M4 fractional-quantity mistake. The
+   rate now lives in `src/lib/unit-price.ts`, with its own check, and `pack.ts`
+   still passes its "no money" assertions.
 2. **A3 is not "invisible until checkout fails".** The product page has shown
    `Only N left` at `≤ 5` since Phase 2.5. The real gap is the **card in the
    grid**, where a shopper decides before opening the product.
@@ -593,24 +600,79 @@ teardown; its card half is still missing.)
    reversible default; the alternative is the shop's own colour. One opinion,
    not a design project.
 
-Only A4 depends on decision 5. A5, A6, A3-card and A2 can be built without any
-of the five; A1 needs the owner's numbers but not a design decision.
+Only A4 depends on decision 5. A5, A6, A3-card, A2, A7 and A8 are **built** and
+needed none of the five; A1 needs the owner's numbers but not a design decision.
+What remains needs a person, not a laptop: A1, A4, A9, A10.
+
+### 6.5 The plan for what remains — A1, A4, A9, A10
+
+Written 2026-11-03 so the next session does not re-derive it. **Nothing here is
+blocked on code.** Each item is blocked on a person answering a question, and
+each answer is small.
+
+**A1 — ETA as a function (needs the owner).**
+Ask the owner three numbers, in his own words: (a) the honest minutes for a
+normal order today (the zone's `eta_minutes` is already that), (b) how much longer
+a *big* order takes, and what "big" means in rupees, (c) the worst honest case on
+a Sunday. Then:
+1. Migration `2026…_order_eta.sql`: add `eta_large_order_extra_minutes` and
+   `eta_large_order_min_paise` to `store_settings` (nullable, so an absent answer
+   changes nothing), plus `eta_window_minutes_for(store_id, subtotal_paise,
+   payment_method)` returning `(min_minutes, max_minutes)` — the same shape as
+   `eta_minutes_for(distance)` already used by the tracker.
+2. Snapshot the window onto the order at placement — one `orders.eta_window_minutes`
+   integer for the low end is enough. History must not change when the shop edits
+   its settings.
+3. Show it on the home hero, checkout, and the order screen; keep the existing
+   single number as the fallback when the settings are null.
+4. Test `supabase/tests/25_order_eta_test.sql`: at the threshold, below it, a
+   null setting, a cancelled order, and a delivery order. **Do not invent the
+   minutes**; an empty setting must render the old number, not a guess.
+
+**A4 — top-of-screen brand (needs decision 5, one opinion).**
+If the answer is "marigold hairline": a 4 px `theme.secondary` strip above the
+navigator in `_layout.tsx`, `StatusBar` background matching `theme.background` on
+Android, and the same tokens in both themes. If it is "the shop's own colour",
+that colour must be added to `theme.ts` in light **and** dark and contrast-checked
+against `DESIGN.md` §2 before it is used. Half a session either way; reversible.
+
+**A9 — pack facts (needs the owner and the CA).**
+The fields are: brand, net quantity (already exists), manufacturer, country of
+origin, ingredients (en + kn), and the return/replacement window. One migration
+adds nullable columns and one SQL test proves a product with them renders and
+one without them shows nothing. The product screen gets a "On the pack" block and
+the admin panel gets the inputs. **The Legal Metrology wording must come from the
+CA**; until then the block stays absent, which is the current behaviour, not a
+regression.
+
+**A10 — two-level categories (wait for ~300 SKUs).**
+`categories.parent_id` (self-FK, `on delete set null`), a `category_tree` view,
+L1 chips on Home and L2 inside a category. At 34 products this adds navigation
+for no gain, so it is deliberately last. One migration plus test when the shelf
+grows.
+
+**While waiting on a person, the next cheapest honest work** is B3 (show "₹40
+saved" in the cart bar — a label over `discount_paise` that already exists) and
+B4 (a search placeholder that cycles real shelf words), both from
+`COMPETITOR-TEARDOWN.md` §7. Neither changes a promise or a price.
 
 ---
 
 ## 7. Next steps once the laptop is running
 
-0. **Restore the agent tooling** if you want it: `SKILLS.md` §2 (copy the
-   `~/.config/opencode` folder) or §3 (rebuild from sources), then restart
-   OpenCode. Independent of the steps below — the app builds without it.
+0. **Agent tooling is restored** (2026-11-03): `council`, `gstack` and
+   `reverse-engineer-anything` are installed under `~/.config/opencode`; see
+   `SKILLS.md`'s status note for the version differences and the two repointed
+   council models. Independent of the steps below — the app builds without it.
 1. `npm run typecheck && npm run lint && npm run test:db` — all green on Windows.
 2. Open the app on a real Android phone with Expo Go; walk the customer flow
    end to end, then rider, then owner.
 3. Fix the first-device findings (expect some; that is why C4 is a blocker).
-4. Build the cheap pre-launch design gaps in the agreed order: **A5 → A6 →
-   A3-card → A2 → A1** (§6.4). A4 waits on decision 5. Each is small, and each
-   should ship with its own CHANGELOG entry; A1 changes a customer-visible
-   promise, so confirm the numbers with the owner first.
+4. The cheap pre-launch design gaps: **A5, A6, A3-card, A2, A7 and A8 are built**
+   (2026-11-03, §6.4). What remains is **A1** when the owner supplies honest ETA
+   numbers, **A4** after decision 5, and **A9/A10** which need the owner and a CA
+   (§6.5). Each should ship with its own CHANGELOG entry; A1 changes a
+   customer-visible promise, so confirm it first.
 5. Apply the missing migrations to the hosted project and clean the demo data.
 6. Set up OTP/SMS + DLT and prove one real sign-in.
 7. Create an EAS development build; test location consent, a real rider fix,
