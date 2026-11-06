@@ -309,11 +309,12 @@ npm run admin         # Next.js on http://localhost:3000
 npm run dev           # both at once
 
 npm run typecheck     # tsc --noEmit in both apps
-npm run lint          # eslint in both apps + nine chained safety checks
+npm run lint          # eslint in both apps + ten chained safety checks
 npm run check:i18n    # en/kn key parity + every key used in code exists
 npm run check:session # the signed-in session survives an app restart
 npm run check:auth-doors # a release build has no dev login, the review build has one
 npm run check:view    # the address/time helpers all three faces share
+npm run check:delivery # the delivery fee shown, and the free-delivery nudge
 npm run check:persist # only public shop data is written to the device
 npm run check:speech  # the Kannada speech rules and spoken-price formatter
 npm run check:packs   # pack sizes and the money arithmetic that must never round
@@ -325,7 +326,7 @@ npm run test:db        # all database tests against a throwaway PostgreSQL 16
 
 `npm run test:db` works on Windows, macOS and Linux. It starts its own
 PostgreSQL cluster in the OS temp directory on a free localhost port, applies
-every migration in filename order, loads the seed and fixtures, runs all 23 SQL
+every migration in filename order, loads the seed and fixtures, runs all 25 SQL
 test files plus the two-session concurrency race, and deletes the cluster. It never
 touches the PostgreSQL service installed on the machine, and it does not need
 Docker. If PostgreSQL is not installed, it prints the installer link and exits

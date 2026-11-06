@@ -6,6 +6,102 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-06 — Free delivery, said as a number instead of a rule
+
+**What was asked.** Continue the agreed list. The next item needing no `.env`, no
+phone and no owner decision was the **free-delivery "add ₹X more" nudge** —
+`FEATURE-PARITY.md` §2.4, where the app knew the threshold but only ever printed
+it as a rule ("Free delivery above ₹500") at checkout, never as an amount the
+customer could act on while looking at their basket.
+
+**What was built.**
+
+- **`apps/mobile/src/lib/delivery.ts` (new)** — the fee rule moved out of
+  `hooks/use-shop.ts` unchanged (`previewFee`, same precedence as
+  `place_order()`: the zone's fee, else the shop default, free at or above the
+  threshold), plus `freeDeliveryHint(subtotalPaise, thresholdPaise, feeNowPaise)`
+  returning exactly one of `'add-more'` (with `remainingPaise`), `'free'` or
+  `'none'`. The file imports types only — no React, no network — which is what
+  makes it runnable from Node. `use-shop.ts` keeps the queries and points at it.
+- **`apps/mobile/src/app/(tabs)/cart.tsx`** — reads the customer's default
+  address (`useAddresses`, gated on a session) and the zones, works out the fee
+  with `previewFee`, then renders the hint under the total: the exact rupee gap
+  when short, "delivery is free on this order" when it is, and the old neutral
+  "Delivery fee shown at checkout" line when no promise can be made. The
+  minimum-order badge still wins when the basket is too small — adding ₹40 to
+  reach free delivery is useless advice if the shop will not accept the order
+  yet.
+- **`scripts/check-delivery.mjs` (new) + `npm run check:delivery`**, wired into
+  `npm run lint`. **37 assertions.** `previewFee` had never been tested at all
+  before this, despite deciding whether a customer pays ₹0 or ₹35: it is now
+  pinned on zone-beats-shop precedence, a null zone fee, a ₹0 zone fee, whitespace
+  in a pincode, the exact-threshold boundary, a null threshold and three missing
+  inputs. `freeDeliveryHint` is pinned on the honesty cases (see decisions) and,
+  most importantly, on agreement with the fee rule: for every basket tested,
+  adding the amount the nudge asks for makes `previewFee` return 0.
+- **i18n** — `cart.freeDeliveryNudge` and `cart.freeDeliveryFree` in both
+  locales: `"Add {amount} more and delivery is free"` /
+  `"ಇನ್ನೂ {amount} ಸೇರಿಸಿ, ಡೆಲಿವರಿ ಉಚಿತ"`, and
+  `"Delivery is free on this order"` / `"ಈ ಆರ್ಡರ್‌ಗೆ ಡೆಲಿವರಿ ಉಚಿತ"`.
+  639 → **641 keys**, identical in `en.json` and `kn.json`. `KUNIGAL.md` gains a
+  *free delivery* glossary row (and why `ಫ್ರೀ` is wrong) and the cart screen's
+  line in §6 now describes both derived lines.
+
+**Verified.**
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean, zero warnings; `check:i18n` reports **641 keys in both
+  languages**; the new `check:delivery` passes inside the chain.
+- `node scripts/run-db-tests.mjs` (portable PostgreSQL 16.6) — **635 passed, 0
+  failed, 635 total**, `RESULT: all assertions passed`. No migration was added;
+  the run confirms the existing schema is untouched. Zero leftover `postgres`
+  processes and zero `grocery-dbtest-*` directories afterwards.
+- **Not verified: the line on a screen.** Still no `.env` and no device on this
+  laptop, so the icon alignment, the Kannada wrap on a narrow phone and the
+  contrast of accent-on-card in dark mode are unseen.
+
+**Decisions, and why.**
+
+1. **The fee rule moved out of the hook, it was not copied.** Two copies of "zone
+   fee beats shop fee, threshold beats both" is exactly how a screen starts
+   disagreeing with the order. Moving it also bought the test it never had.
+2. **The nudge uses the customer's DEFAULT address.** The fee depends on the
+   pincode, not the basket, so without an address there is nothing true to say —
+   a guest or a customer who has not added an address keeps the old neutral line.
+   The residual gap: a customer who changes address at checkout may land in a
+   zone whose fee differs. The threshold itself is shop-wide, so the wording
+   stays true for any zone that charges a fee; the cart is a preview, and the
+   checkout screen shows the fee for the chosen address.
+3. **Silent in three cases**, all proved by `check:delivery`: an unserved
+   pincode (the shop has promised nothing), an empty basket (there is no
+   delivery to describe), and a pincode whose zone fee is already ₹0 (adding
+   items would save exactly nothing — the one case where a nudge like this is a
+   lie rather than a hint).
+4. **"Free" is stated whenever the fee is zero**, whether because the threshold
+   was reached or because the zone charges nothing. The customer cares about the
+   fact; the reason is the shop's business.
+5. **It lives in the cart, not the Home basket bar.** The bar already carries the
+   basket total and the MRP saving; a third line needs the address query on the
+   home screen and would compete with the shelves. The cart is where the
+   customer is deciding whether to add one more thing.
+6. **Never a percentage, never "almost there".** The number is rupees and it is
+   the exact gap, so the customer can check it against the shelf.
+
+**Open gaps.**
+
+- The free-delivery nudge is not in the spoken basket summary (`basketSpeech`
+  speaks the lines and the total). The visible text is read by a screen reader,
+  but a customer relying on the Listen button does not hear it. Worth closing in
+  the device/TTS pass rather than guessing at the sentence now.
+- The checkout line is still the generic `checkout.freeDeliveryHint`
+  ("Free delivery above ₹X"), which is true and shop-wide. It could now say the
+  exact remaining amount for the chosen address, using the same helper; left
+  alone to keep this change to one screen.
+- The nudge has no tests on a device, like everything else here.
+- The agreed list continues with **B4 — the cycling search placeholder**.
+
+---
+
 ## 2026-11-06 — B3: the basket says what it saved against MRP
 
 **What was asked.** Continue the agreed list. After refund visibility the next

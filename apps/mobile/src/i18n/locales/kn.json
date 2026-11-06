@@ -76,6 +76,8 @@
     "keepForNow": "ಸದ್ಯಕ್ಕೆ ಇಟ್ಟುಕೊಳ್ಳಿ",
     "itemCount": "{count} ಸಾಮಾನು",
     "deliveryAtCheckout": "ಡೆಲಿವರಿ ಶುಲ್ಕ ಆರ್ಡರ್ ಮಾಡುವಾಗ ಕಾಣುತ್ತದೆ",
+    "freeDeliveryNudge": "ಇನ್ನೂ {amount} ಸೇರಿಸಿ, ಡೆಲಿವರಿ ಉಚಿತ",
+    "freeDeliveryFree": "ಈ ಆರ್ಡರ್‌ಗೆ ಡೆಲಿವರಿ ಉಚಿತ",
     "belowMinimum": "ಕನಿಷ್ಠ ಆರ್ಡರ್‌ಗೆ ಇನ್ನೂ {amount} ಸೇರಿಸಿ",
     "subtotal": "ಸಾಮಾನಿನ ಒಟ್ಟು",
     "savedOnMrp": "MRP ಗಿಂತ {amount} ಉಳಿತಾಯ ಆಯಿತು",

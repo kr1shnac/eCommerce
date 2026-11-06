@@ -86,6 +86,7 @@ and why.
 | Checkout | **ಮುಂದುವರಿಸಿ** | "Continue". `ಚೆಕ್‌ಔಟ್` is a hotel word; `ಆರ್ಡರ್ ಮಾಡಿ` is reserved for the final tap. |
 | Place order | **ಆರ್ಡರ್ ಮಾಡಿ** | The action, plainly. |
 | Delivery fee | **ಡೆಲಿವರಿ ಶುಲ್ಕ** | Universally understood. |
+| Free delivery | **ಡೆಲಿವರಿ ಉಚಿತ** | The phrase on the shop's own board and the one already used at checkout. The basket says `ಇನ್ನೂ {amount} ಸೇರಿಸಿ, ಡೆಲಿವರಿ ಉಚಿತ` — "add another {amount}, delivery free" — because the number is the point and it comes first. Never `ಫ್ರೀ`, which is English written in Kannada letters, and never a percentage. |
 | Cash on delivery | **ಬಂದಾಗ ನಗದು** | What the rider is handed. |
 | Out of stock | **ಮುಗಿಯಿತು** | What the shopkeeper says. `ಸ್ಟಾಕ್ ಇಲ್ಲ` is the fallback, not the lede. |
 | Sold out (item) | **ಮುಗಿಯಿತು** | Short enough for a card badge. |
@@ -141,6 +142,9 @@ English, and the English should be improved to match where it is weak:
 - **Cart.** "This is your basket, this is the total, continue when ready." Under
   the total, one quiet line when the shop is cheaper than the packet: how much
   less than MRP. It is a fact about the shelf, not a claim about the shop.
+  Below that, the delivery line: if the bag is short of free delivery the helper
+  says how much more is needed — otherwise the line is silent and the old
+  "shown at checkout" wording stands.
 - **Checkout.** "Where to, how you will pay, any code you have, any word for the
   shop, then ಆರ್ಡರ್ ಮಾಡಿ." The code is the customer's own words; the discount
   that appears is the shop's, and it says how much was saved.

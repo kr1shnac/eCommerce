@@ -16,12 +16,15 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCart, type CartLineView } from '@/hooks/use-cart';
-import { useStore, useStoreSettings } from '@/hooks/use-shop';
+import { useAddresses } from '@/hooks/use-orders';
+import { useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
+import { freeDeliveryHint, previewFee } from '@/lib/delivery';
 import { localizedName } from '@/lib/localized';
 import { formatPaiseForSpeech, formatPaise } from '@/lib/money';
 import { spokenProductLine } from '@/lib/speech';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { useAuthStore } from '@/store/auth-store';
 import { useCartStore } from '@/store/cart-store';
 
 /**
@@ -45,6 +48,9 @@ export default function CartScreen() {
   const cart = useCart();
   const store = useStore();
   const settings = useStoreSettings();
+  const zones = useDeliveryZones();
+  const session = useAuthStore((state) => state.session);
+  const addresses = useAddresses({ enabled: Boolean(session) });
   const setQuantity = useCartStore((state) => state.setQuantity);
   const removeLine = useCartStore((state) => state.remove);
   const hasHydrated = useCartStore((state) => state.hasHydrated);
@@ -142,6 +148,32 @@ export default function CartScreen() {
   const minOrder = settings.data?.min_order_value_paise ?? 0;
   const belowMinimum = cart.subtotalPaise < minOrder;
   const showAdjustments = cart.adjustments.length > 0 && dismissed !== signature;
+
+  /**
+   * The free-delivery line under the total.
+   *
+   * It is worked out for the customer's DEFAULT address, because that is where
+   * the shop will send the bag unless they change it at checkout — and the fee
+   * depends on the pincode (`delivery_zones`), not on the basket alone. A
+   * customer with no address yet gets the old neutral line: no promise can be
+   * made about a place the shop has not been told about.
+   *
+   * Both numbers are for display only. `place_order()` works the fee out again
+   * from the same rows when the order is actually placed (rule 9.1).
+   */
+  const defaultAddress =
+    addresses.data?.find((address) => address.is_default) ?? addresses.data?.[0] ?? null;
+  const fee = previewFee(
+    defaultAddress?.pincode ?? null,
+    zones.data,
+    settings.data,
+    cart.subtotalPaise,
+  );
+  const freeHint = freeDeliveryHint(
+    cart.subtotalPaise,
+    settings.data?.free_delivery_above_paise ?? null,
+    fee.deliveryFeePaise,
+  );
 
   /**
    * The basket, as one spoken Kannada sentence: each item and how many, then the
@@ -293,6 +325,22 @@ export default function CartScreen() {
               label={t('cart.belowMinimum', { amount: formatPaise(minOrder - cart.subtotalPaise) })}
               style={styles.minBadge}
             />
+          ) : freeHint.kind === 'add-more' ? (
+            // The one nudge on this screen, and it is arithmetic the customer
+            // could do themselves: threshold minus what is in the basket.
+            <View style={styles.hintRow}>
+              <Ionicons name="bicycle-outline" size={14} color={theme.accent} />
+              <ThemedText type="caption" style={[styles.hintText, { color: theme.accent }]}>
+                {t('cart.freeDeliveryNudge', { amount: formatPaise(freeHint.remainingPaise) })}
+              </ThemedText>
+            </View>
+          ) : freeHint.kind === 'free' ? (
+            <View style={styles.hintRow}>
+              <Ionicons name="bicycle-outline" size={14} color={theme.successInk} />
+              <ThemedText type="caption" style={[styles.hintText, { color: theme.successInk }]}>
+                {t('cart.freeDeliveryFree')}
+              </ThemedText>
+            </View>
           ) : (
             <ThemedText type="caption" themeColor="textSecondary">
               {t('cart.deliveryAtCheckout')}
@@ -400,5 +448,7 @@ const styles = StyleSheet.create({
   // The total and its Listen button travel together on the right.
   totalRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   minBadge: { alignSelf: 'flex-start' },
+  hintRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  hintText: { flex: 1 },
   checkoutButton: { marginTop: Spacing.two },
 });

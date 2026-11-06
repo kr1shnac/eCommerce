@@ -76,6 +76,8 @@
     "keepForNow": "Keep for now",
     "itemCount": "{count} items",
     "deliveryAtCheckout": "Delivery fee shown at checkout",
+    "freeDeliveryNudge": "Add {amount} more and delivery is free",
+    "freeDeliveryFree": "Delivery is free on this order",
     "belowMinimum": "Add {amount} more to reach minimum order",
     "subtotal": "Subtotal",
     "savedOnMrp": "You saved {amount} on MRP",

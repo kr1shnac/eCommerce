@@ -69,35 +69,6 @@ export function useDeliveryZones() {
   });
 }
 
-export type FeePreview = {
-  /** null when the pincode is not served at all. */
-  deliveryFeePaise: number | null;
-  etaMinutes: number | null;
-  isServed: boolean;
-};
-
-/**
- * What the delivery would cost, for display. Mirrors place_order()'s rule:
- * the zone's own fee, or the shop default when the zone leaves it blank, and
- * free above the free-delivery threshold.
- */
-export function previewFee(
-  pincode: string | null | undefined,
-  zones: DeliveryZone[] | undefined,
-  settings: StoreSettings | undefined,
-  subtotalPaise: number,
-): FeePreview {
-  if (!pincode || !zones || !settings) {
-    return { deliveryFeePaise: null, etaMinutes: null, isServed: false };
-  }
-
-  const zone = zones.find((candidate) => candidate.pincode === pincode.trim());
-  if (!zone) return { deliveryFeePaise: null, etaMinutes: null, isServed: false };
-
-  let fee = zone.delivery_fee_paise ?? settings.delivery_fee_paise;
-  if (settings.free_delivery_above_paise !== null && subtotalPaise >= settings.free_delivery_above_paise) {
-    fee = 0;
-  }
-
-  return { deliveryFeePaise: fee, etaMinutes: zone.eta_minutes, isServed: true };
-}
+// The fee preview and the free-delivery nudge are pure rules, so they live in
+// `lib/delivery.ts` where `check:delivery` can run them without React. Import
+// them from there — this module only owns the queries.

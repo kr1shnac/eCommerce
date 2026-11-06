@@ -111,7 +111,7 @@ Those two are the answer to "what has been left out".
 | --- | --- | --- |
 | One-tap UPI, cards, wallet, COD | `payment_method` is `cod` \| `online` `[CODE]`. Razorpay is deliberately not built (`AGENTS.md` §1) | **DELIBERATELY NOT YET** — Phase 8 |
 | Coupons and discounts | **BUILT** `[CODE]` — migration `20261014000004` | **HAVE** |
-| Free-delivery threshold nudge ("add ₹120 more") | The threshold is enforced server-side and stated as a fixed line at checkout: `checkout.freeDeliveryHint` renders `free_delivery_above_paise` `[CODE]` — `checkout.tsx:379`, `use-shop.ts:98`. It never says *how much more* is needed | **PARTIAL** — an informational line, not a nudge. Cheap to finish |
+| Free-delivery threshold nudge ("add ₹120 more") | **BUILT** 2026-11-06 `[CODE]` — `lib/delivery.ts` (`freeDeliveryHint`) under the cart total, on the customer's default address, with the exact rupee gap. It stays silent for a pincode that already charges nothing, for an unserved pincode and for an empty basket, because in those cases adding items would save nothing. The fee it refers to is still computed by `place_order()`; `check:delivery` proves the nudge and the fee rule agree | **HAVE** |
 | Scheduled delivery ("send it at 6 pm") | No `schedule` or `slot` key `[CODE]` | **MISSING** — genuinely useful here (§3.5) |
 | Double-tap safety on placing an order | **BUILT**, better than most: idempotency key + `place_order()` `[CODE]` — `lib/idempotency.ts` | **HAVE** |
 

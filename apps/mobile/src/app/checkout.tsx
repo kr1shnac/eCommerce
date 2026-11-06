@@ -22,7 +22,8 @@ import {
   usePlaceOrder,
   useValidateCoupon,
 } from '@/hooks/use-orders';
-import { previewFee, useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
+import { previewFee } from '@/lib/delivery';
+import { useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { makeIdempotencyKey } from '@/lib/idempotency';
 import { localizedName } from '@/lib/localized';

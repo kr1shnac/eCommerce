@@ -492,10 +492,11 @@ model.
    (`orders.refund_due_paise` as a generated column, migration
    `20261106000002`, test 26, `src/components/refund-due.tsx`). The owner's
    liability and the customer's screen now read the same number.
-7. **B3 — ₹saved in the basket** — **built 2026-11-06**
-   (`useCart.mrpSavingsPaise`; cart screen caption and a second line in the Home
-   basket bar; no migration, no new promise). Still not built from that list: the
-   free-delivery "add ₹X more" nudge, then the cycling search placeholder (B4).
+7. **B3 — ₹saved in the basket**, and **the free-delivery "add ₹X more" nudge**
+   — **both built 2026-11-06** (`useCart.mrpSavingsPaise` on the cart screen and
+   in the Home basket bar; the nudge in `lib/delivery.ts` with `check:delivery`,
+   under the cart total). No migration, no new promise. Still not built from that
+   list: the cycling search placeholder (B4).
 8. **P6 — partial fulfilment** (needs the owner's decision: short order or
    cancel?).
 9. **P7 — scheduled delivery** (needs the owner's answer about rider days).
@@ -673,11 +674,12 @@ grows.
 saved" in the cart bar) and B4 (a search placeholder that cycles real shelf
 words), both from `COMPETITOR-TEARDOWN.md` §7. **B3 is built (2026-11-06)** as
 `useCart.mrpSavingsPaise` — MRP against shelf price, not the coupon discount —
-surfacing on the cart screen and in the Home basket bar; see the CHANGELOG entry
-for why the draft's `discount_paise` reading was rejected. That leaves **B4**, and
-between them the **free-delivery "add ₹X more" nudge** named in
-`FEATURE-PARITY.md` §2.4, which needs only the threshold the database already
-holds. Neither changes a promise or a price.
+surfacing on the cart screen and in the Home basket bar. **The free-delivery
+nudge named in `FEATURE-PARITY.md` §2.4 is built too** (`lib/delivery.ts`,
+`check:delivery`): the cart says exactly how much more buys free delivery, and
+says nothing when adding items would save nothing. See the CHANGELOG entries for
+the reasoning. That leaves **B4**, which is a copy change over real shelf names
+and needs no decision from anyone. Neither changes a promise or a price.
 
 ---
 

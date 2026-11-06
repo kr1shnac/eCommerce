@@ -222,11 +222,12 @@ npm run admin                     # Next.js on http://localhost:3000
 npm run dev                       # both at once
 
 npm run typecheck                 # tsc --noEmit in both apps
-npm run lint                      # eslint in both apps + nine chained safety checks
+npm run lint                      # eslint in both apps + ten chained safety checks
 npm run check:i18n                # en/kn key parity + every key used in code exists
 npm run check:session             # the signed-in session survives an app restart
 npm run check:auth-doors          # a release build has no dev login; the review build has one
 npm run check:view                # the address/time helpers all three faces share
+npm run check:delivery            # the delivery fee shown, and the free-delivery nudge
 npm run check:persist             # only public shop data is written to the device
 npm run check:speech              # the Kannada speech rules and spoken-price formatter
 npm run check:packs               # pack sizes, and the arithmetic that must never round money
@@ -378,6 +379,16 @@ As of this build, the app is a working end-to-end flow on one shop:
   Shown only to the order's owner, only when positive; no deadline or method is
   invented. Proved by `supabase/tests/26_refund_due_test.sql`, including that the
   day's sum equals `shop_day_totals()` for the same fixed day.
+- **The basket is honest about money.** Two derived lines sit under the cart
+  total and neither one is a promise. `useCart.mrpSavingsPaise` is MRP minus
+  shelf price on the units that can actually be delivered, never the coupon
+  discount (that only exists at checkout). The free-delivery nudge comes from
+  `src/lib/delivery.ts` and states the exact rupee gap to
+  `free_delivery_above_paise` for the customer's default address — and says
+  nothing for a pincode that already pays no fee, an unserved pincode or an empty
+  basket, because in those cases adding items saves nothing. Both are integer
+  paise; `check:delivery` proves the nudge and `previewFee` agree, and the fee
+  actually charged is still `place_order()`'s.
 - **Not built yet**, in the intended order: push notifications → Razorpay → a live
   map / background location. The text-first rider position above *is* built.
   Everything except location still runs in Expo Go; push notifications, Razorpay
