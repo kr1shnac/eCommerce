@@ -6,6 +6,88 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-06 — B3: the basket says what it saved against MRP
+
+**What was asked.** Continue the agreed list. After refund visibility the next
+item that needed no `.env`, no phone and no owner decision was **B3 — ₹saved in
+the cart**, from `COMPETITOR-TEARDOWN.md` §7.
+
+**A correction to the draft, before any code.** The teardown described B3 as
+"showing `discount_paise` in the cart bar — a label change". That is not true of
+this app: `discount_paise` is the **coupon** discount, and a coupon is only
+resolved inside `place_order()` at checkout. Before checkout it does not exist,
+so a cart bar built on it would either show ₹0 for almost everyone or would have
+to invent a preview of a code that may not apply. What a customer can actually
+check, standing in the shop, is the **MRP printed on the packet against the
+shelf price**. That is the number B3 now shows.
+
+**What was built.**
+
+- **`apps/mobile/src/hooks/use-cart.ts`** — `mrpSavingsPaise` added to `UseCart`
+  and computed inside the existing memo, so it can never disagree with
+  `subtotalPaise`: the same loop, the same deliverable units
+  (`min(quantity, stock_qty)` on an active product), `(mrp_paise - price_paise) *
+  usable` summed as **integer paise**. A product with no `mrp_paise`, or priced
+  at or above it, contributes 0 — the number is never negative and never a
+  formatted string. Live rows only; the basket still stores no prices
+  (rule 9.1).
+- **`apps/mobile/src/app/(tabs)/cart.tsx`** — one caption under the subtotal in
+  `theme.successInk`, shown only when the amount is positive.
+- **`apps/mobile/src/app/(tabs)/index.tsx`** — `basketSavingsPaise` memo (same
+  rule over the already-fetched shelf, so the Home bar costs no extra request),
+  a second line inside the sticky basket bar under
+  `cart.basketSummary`, and the bar's `accessibilityLabel` now reads the saving
+  out loud between "N items, ₹X" and "View basket". New `basketText` style
+  (`gap: 1`) so the two lines sit tight without touching the 56 px bar height.
+- **i18n** — `cart.savedOnMrp` in both locales: `"You saved {amount} on MRP"` /
+  `"MRP ಗಿಂತ {amount} ಉಳಿತಾಯ ಆಯಿತು"`. 638 → **639 keys**. `KUNIGAL.md` extends
+  the existing *You saved* glossary row with the exact string and the reason MRP
+  is the yardstick, and the Cart line in §6 now mentions the caption.
+
+**Verified.**
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean, zero warnings; `check:i18n` reports **639 keys in both
+  languages** (473 used literals, 11 dynamic families).
+- `node scripts/run-db-tests.mjs` (portable PostgreSQL 16.6) — **635 passed, 0
+  failed, 635 total**, `RESULT: all assertions passed`. No migration was added,
+  so this run is confirmation that the existing schema is untouched, not new
+  coverage. Zero leftover `postgres` processes and zero `grocery-dbtest-*`
+  directories afterwards.
+- **Not verified: the line on a screen.** Still no `.env` and no device here, so
+  the caption's contrast against the accent-filled basket bar in dark mode, and
+  the Kannada string's width on a small phone, have not been seen.
+
+**Decisions, and why.**
+
+1. **MRP saving, not coupon discount.** See above. Showing a discount that has
+   not been applied yet would be the kind of half-true number that costs trust
+   the first time the total at checkout does not match the bar.
+2. **Computed from the live product rows, never stored.** The basket holds
+   `{productId: quantity}` and nothing else. A saving cached at add-to-cart time
+   would survive a price edit and quietly become a lie.
+3. **One rule, two call sites, no shared helper yet.** `use-cart` and the Home
+   bar both need it, but the Home bar reads the cached shelf instead of a second
+   query. Two four-line sums of the same expression are acceptable here; if a
+   third caller appears, it moves into `lib/money.ts` beside `discountPercent`.
+4. **Silent when zero.** No "You saved ₹0.00". A shop that is not discounting
+   says nothing rather than congratulating the customer on nothing.
+5. **Paise all the way, formatted once.** `formatPaise` at the two render sites
+   only, exactly as `AGENTS.md` §2 requires.
+
+**Open gaps.**
+
+- The number is per-basket and per-line only; there is no "you have saved ₹X this
+  month" anywhere, and no order-history figure. That would need a query, not a
+  label, and is not claimed.
+- The cart screen's caption is not in the spoken basket summary beyond the
+  subtotal; the Home bar's accessibility label does include it. Worth evening out
+  when the TTS pass happens on a device.
+- The agreed list continues with the **free-delivery "add ₹X more" nudge**
+  (`FEATURE-PARITY.md` §2.4), then **B4 — the cycling search placeholder**.
+
+---
+
 ## 2026-11-06 — Refund visibility: the customer learns what the shop owes
 
 **What was asked.** Continue the agreed list one item at a time. This was the

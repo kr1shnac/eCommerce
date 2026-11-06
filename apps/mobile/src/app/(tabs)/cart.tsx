@@ -276,6 +276,16 @@ export default function CartScreen() {
             </View>
           </View>
 
+          {/* Less than MRP, said plainly. This is the printed packet price against
+              the shelf price on the units we can actually deliver — the same
+              number the product cards show as a percentage. A coupon is a
+              checkout thing and is not counted here. */}
+          {cart.mrpSavingsPaise > 0 ? (
+            <ThemedText type="caption" style={{ color: theme.successInk }}>
+              {t('cart.savedOnMrp', { amount: formatPaise(cart.mrpSavingsPaise) })}
+            </ThemedText>
+          ) : null}
+
           {belowMinimum ? (
             <Badge
               tone="warning"

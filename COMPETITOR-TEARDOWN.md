@@ -652,7 +652,16 @@ A10 ✗. `HANDOFF.md` §6.4 has the evidence and §6.5 the plan for what is left
   `product_sku_limit` flag. What we still lack is showing it *before* checkout —
   A3.
 - **B2 Section order/visibility the owner can change without a build.** Not a widget engine (§2.5) — one `store_settings.home_sections jsonb` column and a `RENDERERS` map.
-- **B3 Cart button that shows rupees saved** (`bachatItemCount`). We already compute `discount_paise`; showing "₹40 saved" in the cart bar is a label change.
+- **B3 Cart button that shows rupees saved** (`bachatItemCount`) — **built
+  2026-11-06**, with one deliberate correction to the draft. Theirs counts the
+  discount engine's rupee write-off; we have no such engine in the basket, so the
+  number is **MRP minus shelf price** on the units in the basket
+  (`useCart.mrpSavingsPaise`), shown under the subtotal on the cart screen and as
+  a second line in the Home basket bar. It is computed from live `mrp_paise` on
+  each product, never from a stored price (rule 9.1), and it is integer paise
+  throughout. The coupon `discount_paise` is not folded in: it only exists at
+  checkout, and mixing the two would produce a number the customer cannot
+  reconcile with any packet in their bag.
 - **B4 Search placeholder that cycles** with real shelf items ("ಅಕ್ಕಿ", "ಹಾಲು") — a copy change, and it teaches what search can do to someone who has never used search.
 - **B5 Birthday capture** (one optional field, one message). Theirs is a bottom sheet, server-driven; ours can be a row in the account screen.
 - **B6 Cap the add-to-cart flourish at 3** — *if and when* we add one. Recorded so nobody ships an uncapped animation later.

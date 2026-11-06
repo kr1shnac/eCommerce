@@ -41,6 +41,13 @@ export type UseCart = {
   lines: CartLineView[];
   adjustments: CartAdjustment[];
   subtotalPaise: number;
+  /**
+   * How much less than MRP this basket costs, in paise. Computed from the
+   * `mrp_paise` printed on each available product, never from a client field,
+   * and never negative (a product with no MRP, or priced at/above it, adds 0).
+   * Coupon discounts are a checkout concept and are not included here.
+   */
+  mrpSavingsPaise: number;
   unitCount: number;
   lineCount: number;
   isLoading: boolean;
@@ -84,10 +91,11 @@ export function useCart(): UseCart {
     return map;
   }, [query.data]);
 
-  const { lines, adjustments, subtotalPaise } = useMemo(() => {
+  const { lines, adjustments, subtotalPaise, mrpSavingsPaise } = useMemo(() => {
     const nextLines: CartLineView[] = [];
     const nextAdjustments: CartAdjustment[] = [];
     let subtotal = 0;
+    let savings = 0;
 
     for (const [productId, quantity] of Object.entries(items)) {
       const product = byId.get(productId) ?? null;
@@ -115,10 +123,25 @@ export function useCart(): UseCart {
       }
 
       // Only count what we could actually deliver.
-      if (product && isActive) subtotal += product.price_paise * usable;
+      if (product && isActive) {
+        subtotal += product.price_paise * usable;
+
+        // The saving is the gap between the printed MRP and the shelf price, on
+        // the same deliverable units the subtotal uses. Integer paise only; a
+        // product without an MRP, or priced at/above it, contributes nothing.
+        const mrp = product.mrp_paise;
+        if (mrp !== null && mrp > product.price_paise) {
+          savings += (mrp - product.price_paise) * usable;
+        }
+      }
     }
 
-    return { lines: nextLines, adjustments: nextAdjustments, subtotalPaise: subtotal };
+    return {
+      lines: nextLines,
+      adjustments: nextAdjustments,
+      subtotalPaise: subtotal,
+      mrpSavingsPaise: savings,
+    };
   }, [items, byId, language]);
 
   const applyAdjustments = () => {
@@ -150,6 +173,7 @@ export function useCart(): UseCart {
     lines,
     adjustments,
     subtotalPaise,
+    mrpSavingsPaise,
     unitCount: useCartStore(selectCartCount),
     lineCount: Object.keys(items).length,
     isLoading: hasHydrated && idsKey.length > 0 && query.isLoading,

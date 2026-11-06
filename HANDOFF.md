@@ -491,14 +491,15 @@ model.
 6. **Refund visibility to the customer** — **built 2026-11-06**
    (`orders.refund_due_paise` as a generated column, migration
    `20261106000002`, test 26, `src/components/refund-due.tsx`). The owner's
-   liability and the customer's screen now read the same number. Still not built:
-   the loop 4 item in the agreed order below — **₹saved in the cart (B3)**,
-   then the free-delivery "add ₹X more" nudge, then the cycling search
-   placeholder (B4).
-7. **P6 — partial fulfilment** (needs the owner's decision: short order or
+   liability and the customer's screen now read the same number.
+7. **B3 — ₹saved in the basket** — **built 2026-11-06**
+   (`useCart.mrpSavingsPaise`; cart screen caption and a second line in the Home
+   basket bar; no migration, no new promise). Still not built from that list: the
+   free-delivery "add ₹X more" nudge, then the cycling search placeholder (B4).
+8. **P6 — partial fulfilment** (needs the owner's decision: short order or
    cancel?).
-8. **P7 — scheduled delivery** (needs the owner's answer about rider days).
-9. **Decide whether `apps/admin` earns its keep, or retire it.** It is *not*
+9. **P7 — scheduled delivery** (needs the owner's answer about rider days).
+10. **Decide whether `apps/admin` earns its keep, or retire it.** It is *not*
    behind on packs — corrected 2026-11-03: it reads and writes `sold_by`,
    `pack_size` and `pack_unit` (grep-verified), so the old "two shelf tools
    disagree" worry is gone. The remaining question is whether a second shelf tool
@@ -668,10 +669,15 @@ L1 chips on Home and L2 inside a category. At 34 products this adds navigation
 for no gain, so it is deliberately last. One migration plus test when the shelf
 grows.
 
-**While waiting on a person, the next cheapest honest work** is B3 (show "₹40
-saved" in the cart bar — a label over `discount_paise` that already exists) and
-B4 (a search placeholder that cycles real shelf words), both from
-`COMPETITOR-TEARDOWN.md` §7. Neither changes a promise or a price.
+**While waiting on a person, the next cheapest honest work** was B3 (show "₹40
+saved" in the cart bar) and B4 (a search placeholder that cycles real shelf
+words), both from `COMPETITOR-TEARDOWN.md` §7. **B3 is built (2026-11-06)** as
+`useCart.mrpSavingsPaise` — MRP against shelf price, not the coupon discount —
+surfacing on the cart screen and in the Home basket bar; see the CHANGELOG entry
+for why the draft's `discount_paise` reading was rejected. That leaves **B4**, and
+between them the **free-delivery "add ₹X more" nudge** named in
+`FEATURE-PARITY.md` §2.4, which needs only the threshold the database already
+holds. Neither changes a promise or a price.
 
 ---
 

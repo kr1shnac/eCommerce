@@ -78,6 +78,7 @@
     "deliveryAtCheckout": "ಡೆಲಿವರಿ ಶುಲ್ಕ ಆರ್ಡರ್ ಮಾಡುವಾಗ ಕಾಣುತ್ತದೆ",
     "belowMinimum": "ಕನಿಷ್ಠ ಆರ್ಡರ್‌ಗೆ ಇನ್ನೂ {amount} ಸೇರಿಸಿ",
     "subtotal": "ಸಾಮಾನಿನ ಒಟ್ಟು",
+    "savedOnMrp": "MRP ಗಿಂತ {amount} ಉಳಿತಾಯ ಆಯಿತು",
     "emptyTitle": "ಬುಟ್ಟಿ ಖಾಲಿಯಾಗಿದೆ",
     "emptyHint": "ಆರ್ಡರ್ ಮಾಡಲು ಅಂಗಡಿಯಿಂದ ಸಾಮಾನು ಸೇರಿಸಿ.",
     "errorTitle": "ಬುಟ್ಟಿ ತೆರೆಯಲಿಲ್ಲ",

@@ -100,6 +100,7 @@ Those two are the answer to "what has been left out".
 | Search across the whole shop | **BUILT**, client-side over the cached catalogue so it works on one bar `[CODE]` — `(tabs)/index.tsx:103` | **HAVE** |
 | Category tiles, offers row, pack-size chips ("also in 1 kg") | **BUILT** `[CODE]` — `pack-options.tsx`, migration `20261021000004` | **HAVE** |
 | Out-of-stock items shown but not addable | **BUILT** — filtered by `stock_qty > 0` `[CODE]` — `(tabs)/index.tsx:132` | **HAVE** |
+| "₹X saved" shown while the basket is open | **BUILT** `[CODE]` — `useCart.mrpSavingsPaise`, shown under the subtotal on the cart screen and as a second line in the Home basket bar. It is MRP minus shelf price on the units in the basket, not a coupon figure | **HAVE** |
 | When one item is unavailable, the shop substitutes or removes it and the order continues at the corrected total | **Nothing.** An unavailable item can only fail the *whole* order `[CODE]` — `order_status.failed` | **MISSING — the most underrated gap here.** See §3.4 |
 | Search filters and sort (price, brand, discount) | Nothing `[CODE]` | **MISSING, and should stay missing** — 34 products (§4) |
 | Search autocomplete and recent searches | Nothing `[CODE]` | **MISSING, low value at this catalogue size** |

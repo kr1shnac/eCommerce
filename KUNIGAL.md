@@ -98,7 +98,7 @@ and why.
 | Discount | **ರಿಯಾಯಿತಿ** | The word on every shop board. |
 | Offer / deal | **ಆಫರ್** | The word on every banner and in speech. `ವಿಶೇಷ` works as an adjective, but `ಆಫರ್` alone is what a customer says. |
 | Coupon code | **ಕೋಡ್** | "Code" is understood; `ರಿಯಾಯಿತಿ ಕೋಡ್` in full when a sentence needs it. Not `ಕೂಪನ್`, which is catalogue-speak. |
-| You saved | **ಉಳಿತಾಯ ಆಯಿತು** | "A saving happened" — plain, already-done. Not `ನೀವು ಉಳಿಸಿದ್ದೀರಿ`, which sounds like a bank. |
+| You saved | **ಉಳಿತಾಯ ಆಯಿತು** | "A saving happened" — plain, already-done. Not `ನೀವು ಉಳಿಸಿದ್ದೀರಿ`, which sounds like a bank. The basket says `MRP ಗಿಂತ {amount} ಉಳಿತಾಯ ಆಯಿತು` — the printed packet price is the yardstick, because that is the number on the shelf the customer can check against. A coupon is a separate word (`ರಿಯಾಯಿತಿ`) and is never mixed into this line. |
 | Placed (status) | **ಆರ್ಡರ್ ಆಗಿದೆ** | Reads as a sentence, as a chip. |
 | Confirmed | **ಅಂಗಡಿ ಒಪ್ಪಿಕೊಂಡಿದೆ** | "The shop accepted it." Reassures. |
 | Packing | **ಸಿದ್ಧವಾಗುತ್ತಿದೆ** | "It is getting ready." |
@@ -138,7 +138,9 @@ English, and the English should be improved to match where it is weak:
   The address pill names the customer's own area, not a generic town. Live offers
   appear before the shelves — a code is the reason to fill a basket — but never
   while the customer is searching.
-- **Cart.** "This is your basket, this is the total, continue when ready."
+- **Cart.** "This is your basket, this is the total, continue when ready." Under
+  the total, one quiet line when the shop is cheaper than the packet: how much
+  less than MRP. It is a fact about the shelf, not a claim about the shop.
 - **Checkout.** "Where to, how you will pay, any code you have, any word for the
   shop, then ಆರ್ಡರ್ ಮಾಡಿ." The code is the customer's own words; the discount
   that appears is the shop's, and it says how much was saved.

@@ -100,6 +100,21 @@ export default function HomeScreen() {
     return sum;
   }, [cartItems, products.data]);
 
+  // The bar's "you saved" number. Same rule as the cart screen: MRP minus shelf
+  // price, on the units in the basket, integer paise, never negative. It is
+  // deliberately not the coupon discount — that is only known at checkout.
+  const basketSavingsPaise = useMemo(() => {
+    let sum = 0;
+    for (const [productId, quantity] of Object.entries(cartItems)) {
+      const product = (products.data ?? []).find((candidate) => candidate.id === productId);
+      const mrp = product?.mrp_paise ?? null;
+      if (product && mrp !== null && mrp > product.price_paise) {
+        sum += (mrp - product.price_paise) * quantity;
+      }
+    }
+    return sum;
+  }, [cartItems, products.data]);
+
   const query = term.trim().toLowerCase();
   const isSearching = query.length > 0;
 
@@ -489,10 +504,18 @@ export default function HomeScreen() {
           <Pressable
             onPress={() => router.push('/(tabs)/cart')}
             accessibilityRole="button"
-            accessibilityLabel={`${t('cart.basketSummary', {
-              count: basketCount,
-              amount: formatPaise(basketPaise),
-            })} — ${t('cart.viewBasket')}`}
+            accessibilityLabel={[
+              t('cart.basketSummary', {
+                count: basketCount,
+                amount: formatPaise(basketPaise),
+              }),
+              basketSavingsPaise > 0
+                ? t('cart.savedOnMrp', { amount: formatPaise(basketSavingsPaise) })
+                : '',
+              t('cart.viewBasket'),
+            ]
+              .filter(Boolean)
+              .join(' — ')}
             style={({ pressed }) => [
               styles.basket,
               Elevation.floating,
@@ -505,9 +528,18 @@ export default function HomeScreen() {
                   {basketCount}
                 </ThemedText>
               </View>
-              <ThemedText type="smallBold" style={{ color: theme.onAccent }}>
-                {t('cart.basketSummary', { count: basketCount, amount: formatPaise(basketPaise) })}
-              </ThemedText>
+              <View style={styles.basketText}>
+                <ThemedText type="smallBold" style={{ color: theme.onAccent }}>
+                  {t('cart.basketSummary', { count: basketCount, amount: formatPaise(basketPaise) })}
+                </ThemedText>
+                {basketSavingsPaise > 0 ? (
+                  <ThemedText
+                    type="caption"
+                    style={{ color: theme.onAccent, opacity: 0.9 }}>
+                    {t('cart.savedOnMrp', { amount: formatPaise(basketSavingsPaise) })}
+                  </ThemedText>
+                ) : null}
+              </View>
             </View>
             <View style={styles.basketRight}>
               <ThemedText type="smallBold" style={{ color: theme.onAccent }}>
@@ -753,6 +785,7 @@ const styles = StyleSheet.create({
     borderRadius: Radii.lg,
   },
   basketLeft: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  basketText: { gap: 1 },
   basketRight: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   basketBadge: {
     minWidth: 26,

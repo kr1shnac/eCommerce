@@ -78,6 +78,7 @@
     "deliveryAtCheckout": "Delivery fee shown at checkout",
     "belowMinimum": "Add {amount} more to reach minimum order",
     "subtotal": "Subtotal",
+    "savedOnMrp": "You saved {amount} on MRP",
     "emptyTitle": "Your cart is empty",
     "emptyHint": "Add items from Home to place an order.",
     "errorTitle": "Could not load your cart",
