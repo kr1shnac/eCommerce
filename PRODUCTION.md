@@ -384,6 +384,10 @@ worth recording because they are the kind that ship silently:
 2. **There was no refund liability at all.** A customer who paid online and never
    got their order was invisible on the screen. `refund_due_paise` now shows that
    money, kept deliberately separate from takings — the shop holds it and owes it.
+   Since 2026-11-06 the same rule is a **generated column** on `orders`
+   (migration `20261106000002`, test 26), so the customer's own order screen shows
+   the amount owed without the app knowing the rule. Marking the payment
+   `refunded` clears it; nothing a client sends can set it.
 
 Both functions refuse anyone who is not staff, checked before a single row is
 read, so the publishable key cannot be used to read the shop's money.

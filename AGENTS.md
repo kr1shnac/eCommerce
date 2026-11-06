@@ -367,6 +367,17 @@ As of this build, the app is a working end-to-end flow on one shop:
   (no update/delete policy), only the order's own customer may write it and only
   after `delivered`, and erasing the account erases it. The question lives in
   `src/components/order-feedback.tsx` on the order screen.
+- **The customer is told when the shop owes them money.** The owner's Today tab
+  has reported `refund_due_paise` since migration `20261021000002`; the person
+  owed it saw nothing. Migration `20261106000002` makes the same rule a
+  **generated stored column** on `orders` — `total_paise` while an online payment
+  is still `paid` on a cancelled/failed/returned order, else 0 — so the customer
+  card (`src/components/refund-due.tsx`) renders the database's own answer rather
+  than a second implementation of the rule. The app cannot write it (a direct
+  insert or update raises `428C9`), and `payment_status = 'refunded'` clears it.
+  Shown only to the order's owner, only when positive; no deadline or method is
+  invented. Proved by `supabase/tests/26_refund_due_test.sql`, including that the
+  day's sum equals `shop_day_totals()` for the same fixed day.
 - **Not built yet**, in the intended order: push notifications → Razorpay → a live
   map / background location. The text-first rider position above *is* built.
   Everything except location still runs in Expo Go; push notifications, Razorpay

@@ -404,6 +404,11 @@
     "error": "Could not save your answer.",
     "retry": "Try again"
   },
+  "refund": {
+    "title": "Money to come back to you",
+    "amountLine": "The shop is holding {amount}",
+    "hint": "You paid online, but this order was not delivered. This money goes back to you — call the shop to arrange it."
+  },
   "support": {
     "call": "Call the shop"
   },

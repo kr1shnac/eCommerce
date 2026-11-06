@@ -488,10 +488,17 @@ model.
    (`order_feedback`, migration `20261106000001`, test 25, the card on
    `order/[id]`). The record exists; aggregating it for the owner is a later,
    smaller step. No client decision was needed.
-6. **P6 — partial fulfilment** (needs the owner's decision: short order or
+6. **Refund visibility to the customer** — **built 2026-11-06**
+   (`orders.refund_due_paise` as a generated column, migration
+   `20261106000002`, test 26, `src/components/refund-due.tsx`). The owner's
+   liability and the customer's screen now read the same number. Still not built:
+   the loop 4 item in the agreed order below — **₹saved in the cart (B3)**,
+   then the free-delivery "add ₹X more" nudge, then the cycling search
+   placeholder (B4).
+7. **P6 — partial fulfilment** (needs the owner's decision: short order or
    cancel?).
-7. **P7 — scheduled delivery** (needs the owner's answer about rider days).
-8. **Decide whether `apps/admin` earns its keep, or retire it.** It is *not*
+8. **P7 — scheduled delivery** (needs the owner's answer about rider days).
+9. **Decide whether `apps/admin` earns its keep, or retire it.** It is *not*
    behind on packs — corrected 2026-11-03: it reads and writes `sold_by`,
    `pack_size` and `pack_unit` (grep-verified), so the old "two shelf tools
    disagree" worry is gone. The remaining question is whether a second shelf tool

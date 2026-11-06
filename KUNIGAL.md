@@ -108,6 +108,7 @@ and why.
 | After-delivery check | **ಎಲ್ಲಾ ಸರಿಯಾಗಿ ಬಂದಿದೆಯಾ?** | The question the shop helper asks at the door. Not `ನಿಮ್ಮ ಅನುಭವ ಹೇಗಿತ್ತು?` ("how was your experience"), which is a form, and not a star rating, which says nothing. |
 | All fine | **ಎಲ್ಲಾ ಸರಿ** | Two words, already-done. Not `ಸಂತೃಪ್ತಿ` (satisfaction), which nobody says out loud. |
 | What went wrong (six choices) | **ಒಂದು ಸಾಮಾನು ಬಂದಿಲ್ಲ** · **ಸಾಮಾನು ಹಾಳಾಗಿದೆ** · **ತುಂಬಾ ತಡವಾಗಿ ಬಂದಿದೆ** · **ಬೇರೆ ಕಡೆ ಹೋಗಿದೆ** · **ಬೇರೆ ಸಾಮಾನು ಬಂದಿದೆ** · **ಬೇರೆ ಏನೋ** | Each states the fact in counter words. `ಕಾಣೆಯಾಗಿದೆ` ("is missing") sounds like a police complaint, `ತಪ್ಪು ಉತ್ಪನ್ನ` is catalogue-speak, and a free-text box would be unreadable to a third of customers — the phone call that follows carries the detail. |
+| Money to come back | **ವಾಪಸ್ ಬರಬೇಕಾದ ಹಣ** | The helper says "ವಾಪಸ್ ಕೊಡುತ್ತೇವೆ" (we will give it back). `ರಿಫಂಡ್` alone is understood but sounds like a bank, and `ಮರುಪಾವತಿ` is collection-office Kannada nobody says. Deliberately no "3–5 ದಿನ" — that is a promise the shop has not made. |
 
 ## 5. Improvisations (deliberate, not literal)
 
@@ -145,6 +146,9 @@ English, and the English should be improved to match where it is weak:
   number to read out, then reorder.
 - **After delivery.** "Did everything come right?" One tap for yes; if not, one
   of six plain reasons. It is a record the owner can act on, not a score.
+- **Money owed back.** When an online payment sits on an order that is not
+  being delivered, the order screen says the shop is holding the amount and
+  that it comes back. No deadline is printed, because the shop has not set one.
 - **Rider.** Brisk and practical, like a work instruction on a bike phone mount.
 - **Admin.** The owner is busy standing at the counter: it is a board, not a
   dashboard. Every label is an action.

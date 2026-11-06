@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CallShop } from '@/components/call-shop';
 import { OfflineBanner } from '@/components/offline-banner';
 import { OrderFeedbackCard } from '@/components/order-feedback';
+import { RefundDueCard } from '@/components/refund-due';
 import { OrderSkeleton } from '@/components/screen-skeletons';
 import { StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
@@ -202,6 +203,14 @@ export default function OrderDetailScreen() {
               </ThemedText>
             </Card>
           ) : null}
+
+          {/*
+            Money the shop is holding but owes. It sits directly under the
+            failure/cancel state because it is the consequence of that state,
+            and it renders only for the customer who actually paid — staff see
+            the order, not the customer's money.
+          */}
+          <RefundDueCard amountPaise={data.refund_due_paise} isOwner={isOwner} />
 
           {/*
             After a delivered order, one question. It goes above the rider card

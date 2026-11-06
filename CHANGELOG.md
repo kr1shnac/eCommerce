@@ -6,6 +6,82 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-06 — Refund visibility: the customer learns what the shop owes
+
+**What was asked.** Continue the agreed list one item at a time. This was the
+next item: the owner's books already reported a refund liability, but the person
+owed the money had no way to see it.
+
+**What was built.**
+
+- **`supabase/migrations/20261106000002_refund_due.sql`** — adds
+  `orders.refund_due_paise` as a **generated stored column**:
+  `total_paise` when `payment_method = 'online'`, `payment_status = 'paid'` and
+  `status in ('cancelled','failed','returned')`, otherwise `0`. The rule is
+  copied from `shop_day_totals()` rather than that 300-line function being
+  rewritten for one expression; the test proves the two agree on a fixed day.
+  Because it is generated, the app cannot send it and a client cannot fake it.
+  `payment_status = 'refunded'` zeroes it by itself, which makes the column
+  mean "still owed", not "was ever paid".
+- **`supabase/tests/26_refund_due_test.sql`** — 18 assertions on a quiet fixed
+  day (`2020-02-20`, which no other suite uses): the three refundable shapes
+  (cancelled / failed / returned, online and paid), the four zero shapes
+  (delivered, COD, unpaid, already refunded), the sum equalling
+  `shop_day_totals()` for the same day, both direct-write refusals (`428C9` for
+  INSERT and UPDATE), the shop clearing it by marking the payment refunded, and
+  read scoping (the order's own customer sees it; another customer does not).
+- **`apps/mobile/src/types/database.ts`** — `refund_due_paise` on `Order`, with
+  the rule and the "generated" note, so a future screen cannot treat it as a
+  client field.
+- **`apps/mobile/src/components/refund-due.tsx`** — a warning-toned card shown
+  on `order/[id]` only to the order's owner and only when the amount is
+  positive. It states what is true (you paid online, this order is not being
+  delivered, the shop is holding the amount and it comes back) and points at the
+  existing Call-shop button. **No deadline and no refund method is printed** —
+  neither is known here, and inventing one would turn a fact into a promise.
+- **i18n** — `refund.title`, `refund.amountLine`, `refund.hint` in both locales;
+  635 → **638 keys**, identical in `en.json` and `kn.json`. **`KUNIGAL.md`**
+  gained the "money to come back" glossary row (and why `ಮರುಪಾವತಿ` is wrong
+  here) plus a screen line.
+
+**Verified.**
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean, zero warnings; `check:i18n` reports **638 keys in both
+  languages**.
+- `node scripts/run-db-tests.mjs` (portable PostgreSQL 16.6) — **635 passed, 0
+  failed, 635 total** (617 before), `RESULT: all assertions passed`. Zero leftover
+  `postgres` processes and zero `grocery-dbtest-*` directories afterwards.
+- **Not verified: the card on a screen.** Still no `.env` and no device on this
+  laptop, so layout, contrast in dark mode and the Kannada wrap are unseen.
+
+**Decisions, and why.**
+
+1. **A generated column, not app arithmetic.** The refund rule now exists in
+   exactly one place per row, computed by Postgres. A second copy in
+   `order/[id].tsx` would be the kind of code that silently disagrees with the
+   books after the next status is added.
+2. **`shop_day_totals()` was not rewritten.** Carrying a 300-line
+   `security definer` function through a migration for a one-expression change
+   risks more than it fixes. Instead the test asserts the two implementations
+   produce the same figure for the same day, so drift fails a gate.
+3. **Staff do not see the customer's card.** The owner reads the same fact in
+   the Today tab; this card is addressed to the person who paid.
+4. **No promise text.** No "3–5 working days", no "we will UPI it". The shop has
+   not decided those things. The card says who is holding the money and leaves
+   the arrangement to the phone call that already exists.
+
+**Open gaps.**
+
+- The card is one-way information: the shop still has to mark
+  `payment_status = 'refunded'` by hand (Today tab / admin). There is no
+  "refund sent" confirmation flow, and no payment processor exists yet
+  (Razorpay is still a later phase).
+- The agreed list continues with **B3 — ₹saved in the cart**, then the
+  free-delivery nudge, then **B4 — the cycling search placeholder**.
+
+---
+
 ## 2026-11-06 — P5: the customer's one answer after the bag arrives
 
 **What was asked.** Proceed through the agreed feature list one at a time,
