@@ -25,6 +25,11 @@
     "orders": "Orders",
     "account": "Account"
   },
+  "navigate": {
+    "navigate": "Show the way",
+    "openInMaps": "See on a map",
+    "navigateFailed": "Could not open the maps app."
+  },
   "home": {
     "title": "Kunigal Grocery",
     "subtitle": "Groceries & essentials in 10 minutes",
@@ -385,7 +390,13 @@
     "riderComing": "Your rider is on the way.",
     "callRider": "Call the rider",
     "riderNote": "The rider will call before arriving. Keep your phone near you.",
-    "failureOnlyWhenOut": "A delivery can only fail once the bag has left the shop."
+    "failureOnlyWhenOut": "A delivery can only fail once the bag has left the shop.",
+    "codeTitle": "Your delivery code",
+    "codeHint": "Read these 4 digits to the rider when the bag reaches your hand.",
+    "codePrivacy": "Do not tell the code before the bag is with you.",
+    "codeA11y": "Your delivery code is {code}",
+    "codeNotAvailable": "The code is not showing right now. Refresh this screen.",
+    "codeError": "Could not load your code. Check your connection and try again."
   },
   "feedback": {
     "title": "Was everything right?",
@@ -463,8 +474,7 @@
   "action": {
     "confirm": "Accept order",
     "pack": "Start packing",
-    "out": "Out for delivery",
-    "deliver": "Mark delivered"
+    "out": "Out for delivery"
   },
   "rider": {
     "title": "Deliveries",
@@ -509,6 +519,19 @@
     "failKeepTrying": "Go back",
     "failError": "Could not save this. Try again.",
     "markReturned": "The bag came back to the shop",
+    "codeTitle": "Ask the customer for the code",
+    "codeHint": "Type the 4 digits the customer reads out. The order closes only with the right code.",
+    "codePlaceholder": "4 digits",
+    "codeLabel": "Customer's 4-digit code",
+    "codeSubmit": "Complete delivery",
+    "codeWrong_one": "Wrong code. {count} try left.",
+    "codeWrong_other": "Wrong code. {count} tries left.",
+    "codeLocked": "This code is locked after five wrong tries. Call the shop — the owner can close the delivery.",
+    "codeInvalid": "Type all 4 digits.",
+    "codeMissing": "No code for this order. Call the shop.",
+    "codeAlreadyDone": "This order is already closed.",
+    "codeNotFound": "This order is no longer here. Refresh.",
+    "codeError": "Could not save this. Check your internet and try again.",
     "failReasons": {
       "not_home": "Nobody was home",
       "wrong_address": "Could not find the address",

@@ -223,14 +223,41 @@ select test_result.refused(
   '42501'
 );
 
-select test_result.touches(
-  'the rider can mark it delivered with the time',
+-- The handover is the customer's code (migration 20261106000003). Updating the
+-- row is no longer enough, even with a timestamp: that was the whole gap.
+select test_result.refused(
+  'a rider cannot mark delivered by updating the row, even with the time',
   $$
   update public.orders
      set status = 'delivered', delivered_at = now()
    where id = '70000000-0000-4000-8000-000000000001'
   $$,
-  1
+  '42501'
+);
+
+-- The owner may read the code to help on the phone; the rider deliberately
+-- cannot, which is what makes the code a proof rather than a formality.
+select test_result.sign_in('33333333-3333-3333-3333-333333333333');
+select set_config(
+  'test.otp_09',
+  public.my_delivery_code('70000000-0000-4000-8000-000000000001') ->> 'code',
+  false
+);
+
+select test_result.sign_in('44444444-4444-4444-4444-444444444444');
+select test_result.eq(
+  'the rider completes it with the customer''s code',
+  (public.complete_delivery(
+     '70000000-0000-4000-8000-000000000001',
+     current_setting('test.otp_09')) ->> 'ok'),
+  'true'
+);
+
+select test_result.eq(
+  'and it is delivered with the time recorded',
+  (select (status = 'delivered' and delivered_at is not null)::text
+     from public.orders where id = '70000000-0000-4000-8000-000000000001'),
+  'true'
 );
 
 select test_result.refused(

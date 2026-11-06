@@ -6,6 +6,239 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-06 — A rider cannot close a bag without the four digits
+
+**What was asked.** The biggest hole against the measured teardown
+(`COMPETITOR-TEARDOWN.md` §7 A-list) and the thing the owner asked for first: the
+rider taps "delivered" and nobody ever asked whether the right bag reached the
+right door. The biggest stated gap was **delivery handover via OTP**.
+
+**What was built.**
+
+- **`supabase/migrations/20261106000003_delivery_otp.sql`** — the whole handover.
+  - `order_delivery_codes` (order_id primary key, 4-digit `code`, `attempts`
+    0–5, `created_at`). RLS on, **no policies, privileges revoked** — the same
+    locked shape as `rider_positions`: the row is reachable only through the
+    functions below. Proved by test: a customer and a rider both get zero rows
+    from a direct `select`.
+  - `new_delivery_code()` — server-only, `security definer`, `revoke` from the
+    `authenticated`/`anon` roles. Zero-padded (`to_char(..., 'FM0000')`), so it
+    is always exactly four digits and can never be `0001` or `123`.
+  - `orders_issue_delivery_code` — an `after insert or update of status` trigger:
+    **issue on entering `out_for_delivery`, delete on leaving**. The code's life
+    is exactly the window in which a rider is standing at a door, and it is
+    destroyed on the way out — the backfill also picked up any live order at the
+    moment the migration ran. Nothing can be read after the order closes.
+  - `my_delivery_code(p_order_id)` → `{ok, code}` / `{ok:false, error}`. A
+    customer may read **only their own** order's code; a rider gets `42501` and
+    the app says nothing; an admin may read (the documented escape hatch).
+  - `complete_delivery(p_order_id, p_code)` → the only road to `delivered` for a
+    rider. Locks the order first (`for update`), then the code row, so two riders
+    cannot both close. Sets a **transaction-local proof bound to the order id** —
+    `set_config('delivery.otp_verified', order_id, true)` — and updates the
+    status. A non-4-digit input is refused as `invalid_code` **without burning an
+    attempt** (a fat finger is not a wrong guess). The fifth wrong guess locks the
+    code: the rider must call the shop, not keep guessing.
+  - `guard_delivery_code` + `orders_guard_delivery_code` trigger — a rider moving
+    an order to `delivered` without the matching flag is refused, with or without
+    `delivered_at`, with or without the columns the app happens to send. Admin is
+    exempt. This is why the old one-tap "delivered" button is gone for a rider:
+    it is not a convention the app could forget.
+- **`supabase/tests/27_delivery_otp_test.sql`** — 40 assertions against real
+  PostgreSQL: issuance on the way in, format, the direct-table denial, customer
+  read, admin read, rider refusal, wrong code (and the attempts that remain), the
+  lock at five, a short code not burning an attempt, the flag being worthless for
+  a *different* order, a direct update to `delivered` refused, the successful
+  close, the code being destroyed afterwards, and the admin escape hatch still
+  working. 635 → **675 assertions**.
+- **`supabase/tests/09_rider_assignment_test.sql`** — the delivered path now reads
+  the code as the admin and closes through `complete_delivery`, because the plain
+  rider update is refused by design.
+- **App, customer side.** `apps/mobile/src/components/delivery-code-card.tsx` on
+  the order screen, shown only to the order's owner and only while the order is
+  `out_for_delivery`: four digit boxes, a screen-reader label, a retry on failure
+  and an explicit "not available" state instead of a blank card. Read through
+  `useDeliveryCode` (`orderKeys.deliveryCode(id)`), which throws on the server's
+  `{ok:false}` rather than showing a raw key.
+- **App, rider side.** `apps/mobile/src/components/delivery-code-entry.tsx` on the
+  "My deliveries" card in place of the old big button: a 54 px tall, digit-only,
+  four-character field (big spaced digits — this is read at arm's length on a
+  bike mount), disabled until four digits, and every server refusal mapped to a
+  sentence the rider can act on ("2 tries left", "this code is locked — call the
+  shop"), never a Postgres code. `ACTION_KEY.out_for_delivery` is now `null` and
+  `useAdvanceOrder` no longer sets `delivered_at` at all; the RPC does it.
+- **`useCompleteDelivery`** wraps the RPC and throws a typed
+  `CompleteDeliveryRejected` carrying `code` **and** `attemptsLeft`, so the panel
+  can say how many tries are left without parsing a message.
+- **i18n** — `order.codeTitle/codeHint/codePrivacy/codeA11y/codeNotAvailable/
+  codeError` and `rider.codeTitle/codeHint/codePlaceholder/codeLabel/codeSubmit/
+  codeWrong_one/codeWrong_other/codeLocked/codeInvalid/codeMissing/codeAlreadyDone/
+  codeNotFound/codeError`, both locales, 642 → **657 keys**. `action.deliver` is
+  deleted from both (nothing renders it any more). (`check:i18n` now reports
+  **660** — 642 + 18 new − 2 removed; the earlier 657 count ignored the two
+  deletions.)
+- **`apps/mobile/src/types/database.ts`** — the new table, the two result types and
+  the two function signatures, mirroring the migration by hand as the rules say.
+
+**Decisions, and why.**
+
+- **The code is plaintext, not hashed.** The customer reads it out over the
+  phone; a hash would make the handover impossible. The table is therefore locked
+  down (RLS, no policies, no grants) instead of by hashing, and it lives for
+  minutes, not months.
+- **Five attempts, then locked, not deleted.** A locked code with a visible
+  "call the shop" is a rider who knows what to do. A silently deleted code reads
+  as a broken app at the door.
+- **A rider can never read the code.** If a rider could, the code would prove
+  nothing at all. That is an `42501`, not a filtered row.
+- **One escape hatch, not two.** The admin may update `delivered` directly (tests
+  24 and the escape hatch in the docs); the rider must always go through
+  `complete_delivery`. `complete_delivery` itself is rider-only.
+- **`guard_delivery_code` is a no-op unless the status changes to `delivered`,**
+  so it costs nothing on every other update and cannot start refusing updates the
+  rest of the app makes.
+- **No countdown timer on the customer's card.** A countdown implies the customer
+  must hurry and implies a secret that expires silently; the code is destroyed
+  when the rider closes the order, which is the honest boundary.
+
+**Verified.**
+
+- `npm run typecheck` — 0 errors, both apps.
+- `npm run lint` — 0 errors, 0 warnings (the chained checks include i18n parity,
+  auth doors, packs, tracking, storage, location…).
+- `npm run test:db` against a throwaway PostgreSQL 16 — **675 passed | 0 failed |
+  675 total** (was 635). Afterwards: 0 leftover `postgres` processes, 0
+  `grocery-dbtest-*` temp directories.
+- **Not verified on a device** — as ever, nothing has been run on a real phone.
+
+**Bugs found and open gaps.**
+
+- The rider screen imported `DeliveryCodeEntry` for one round of the gate without
+  rendering it (lint would have caught it); that was fixed by inserting the panel
+  for `out_for_delivery` orders only.
+- An order that leaves `out_for_delivery` (failed, returned, owner moves it back)
+  has its code deleted unread. That is intentional, but it means an owner who
+  re-enters `out_for_delivery` hands the customer a **different** code — if the
+  customer already read the old one, they will read a wrong code off their
+  screen. The card is keyed off the live query so it re-fetches; worth a real-device
+  check.
+- `rider_position` / ETA / distance is still null everywhere because
+  `orders.delivery_address` has no `lat`/`lng` snapshot and `addresses.lat/lng` is
+  never captured. Unrelated to OTP, unchanged today.
+
+---
+
+## REA is installed and registered for OpenCode
+
+- The **REA skill** was already present under
+  `~/.config/opencode/skills/reverse-engineer-anything`; it only supplies
+  instructions. What was missing was the **MCP registration**, which is what
+  actually adds the tools. `npx rea-agents@latest setup --client opencode --yes`
+  wrote the `rea` server into `~/.config/opencode/opencode.jsonc` (backup at
+  `opencode.jsonc.rea.backup`), and `rea doctor --client opencode --json` reports
+  `registration:opencode` **aligned** and `skill` aligned (v49, 229 tools).
+- REA uses `cmd.exe /d /c npx -y rea-agents@6.8.0 mcp`, which means the tools need
+  `rea-agents` reachable from `npx` at session start. No analysis engines are
+  installed (Hopper/Ghidra/IDA/JADX/Kuna all report `missing_analysis_engine`);
+  **none are needed** for browser and static-JS work, which is the route available
+  here — there is no APK, ASAR or HAR artifact on this machine.
+- The `rea` tools appeared in this session **without a restart**. If a future
+  session finds them missing, restart opencode and re-run `rea doctor --client
+  opencode`.
+
+**What was then measured with it, and what was not.** See
+`COMPETITOR-TEARDOWN.md` §10, which is the record.
+
+- **Blinkit, Zepto, BigBasket, JioMart and Swiggy Instamart are blocked from
+  this network** — Cloudflare challenge, HTTP 429, Akamai "Access Denied",
+  "We'll be back shortly". Nothing was interfered with; the requests were simply
+  refused. The 2026-10-26 Blinkit/Zepto measurements (§1–§4) are still the only
+  ones for those two.
+- **Flipkart web, guest, desktop, is reachable**, and it is the first measured
+  cart in the file: shelf-page card anatomy (rating + count on the card, no ADD
+  on the PLP), the PDP (pack chips carrying ₹/kg, expiry printed over the image,
+  reviews, Q&A, 44 px CTAs), the add-to-cart transition (no navigation; the header
+  label becomes "Cart 1 Cart" and the button becomes "Go to cart"), and the cart
+  itself (a **₹10 "Platform Fee"** itemised above the total, "Save for later"
+  beside "Remove", a date not an ETA, a trust row, a sticky "Place order 210").
+- **No checkout, payment or tracking screen was reached anywhere.** Flipkart's
+  cart ends at "Login to Proceed"; I did not log in and did not obtain a phone
+  number.
+- **New gap rows A11–A13** were added to §7 with the evidence, and A12 carries an
+  explicit warning: it is permission to itemise a fee the shop decides to charge,
+  never permission to fold a margin into item prices (rule 9.1).
+
+---
+
+## 2026-11-06 — "Show the way", with no map and no key (T6.5)
+
+**What was asked.** The tracking list in `SCALE-AND-TRACKING.md` puts a live map
+last, because an embedded map needs an SDK and a **billing API key**, and a key in
+a shipped app is a key anyone can lift (rule 9.6). The owner has not made that
+decision. The part that needs *no* decision is the thing a rider and a customer
+each asked for: *take me there*.
+
+**What was built.**
+
+- **`apps/mobile/src/lib/navigation-links.ts` (new)** — builds exactly two URL
+  shapes and refuses to build a broken one:
+  `https://www.google.com/maps/dir/?api=1&destination=<fix-or-address>&travelmode=two_wheeler`
+  (rider; **no `origin`**, so the phone starts from its own GPS) and
+  `.../maps/search/?api=1&query=<lat>,<lng>` (customer; the rider's fix is a
+  *place*, not a route from wherever the customer stands). A fix outside WGS-84
+  bounds, `NaN`, `Infinity` or a string returns `null` — the caller renders no
+  button rather than a link that opens an error. A blank address is `null` too.
+  A 5 000-character address is capped at 300. The module contains no SDK, no
+  WebView, no tile URL and no `key=`.
+- **`scripts/check-navigation.mjs` (new, in the lint chain as `check:navigation`)**
+  — 30 assertions: the exact comma pair, every broken-fix case, Kannada
+  percent-encoded rather than raw, no fragment splitting the URL, the cap, HTTPS
+  and one origin, `api=1`, no origin on directions, `two_wheeler` reachable, a
+  place link without a fix is null.
+- **`apps/mobile/src/components/navigate-button.tsx` (new)** — the button.
+  Renders nothing when the target is empty. On a phone with no maps app and no
+  internet it shows one translated sentence
+  (`ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ` / "See on a map"),
+  never a raw error or a crash.
+- **`apps/mobile/src/lib/order-view.ts`** — `snapshotAddressLine()` joins
+  landmark first then the rest, which is what the rider card already shows, so
+  what the rider reads and what the maps app searches are one string. It
+  deliberately does **not** reuse `formatSnapshotAddress`, whose English "Near"
+  prefix would make a Kannada landmark search *worse*.
+- **`apps/mobile/src/app/rider/index.tsx`** — "ದಾರಿ ತೋರಿಸಿ" on the delivery card,
+  next to Call. `actionsRow` now wraps, so a long Kannada label cannot squeeze a
+  tap target under 44 px (rule 9.9).
+- **`apps/mobile/src/app/order/[id].tsx`** — "ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ" under the rider's
+  age/distance/ETA block, carrying that order's own `lat`/`lng`.
+- **i18n** — `navigate.navigate` / `navigate.openInMaps` / `navigate.navigateFailed`
+  in both locales; 660 → **663 keys**.
+- **`KUNIGAL.md` §4** — two new glossary rows with their reasons: "Show the way"
+  rather than `ನ್ಯಾವಿಗೇಟ್` (English in Kannada letters, the move the glossary
+  refuses for `ಫ್ರೀ`), and "ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ" rather than "ಮ್ಯಾಪ್‌ನಲ್ಲಿ ನೋಡಿ",
+  because `ನಕ್ಷೆ` is the word people already use and the customer is looking at a
+  *place*, not at an app.
+- **`SCALE-AND-TRACKING.md` §6.5.1** — what shipped, why it is not option 3, and
+  the one honest limit: the destination is a **text** query, because the order
+  snapshot has no `lat`/`lng` and `addresses` never captures them.
+
+**Decision, and why.** Text destination, not a coordinate. Geocoding a Kannada
+landmark ourselves is the one way to send a bag to the wrong house, so the module
+hands the maps app the sentence the rider is already reading and lets it show
+choices. The honest cost is that the rider may have to pick the right match.
+
+**Verified.** `npm run typecheck` (0 errors), `npm run lint` (0 errors, 0
+warnings — `check:navigation` now runs in the chain), `npm run check:i18n` (663
+keys, parity), `npm run test:db` against a throwaway PostgreSQL — **675 passed |
+0 failed | 675 total**, unchanged because this feature touches no table; 0 stray
+`postgres` processes and 0 `grocery-dbtest-*` directories afterwards.
+
+**Open gaps.** Not run on a device (as ever). `Linking.openURL` is untested
+against a real maps app. `orders.delivery_address` still has no `lat`/`lng`, so
+the rider's destination is text; capturing the drop point when an address is
+chosen is the next step and is listed in §7.
+
+---
+
 ## 2026-11-06 — The search box shows a real thing from the shelf
 
 **What was asked.** Finish the agreed list. The last item needing no `.env`, no

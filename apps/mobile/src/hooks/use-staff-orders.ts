@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
-import type { FailureReason, OrderStatus } from '@/types/database';
+import type { CompleteDeliveryResult, FailureReason, OrderStatus } from '@/types/database';
 import type { OrderWithItems } from '@/hooks/use-orders';
 
 /**
@@ -146,12 +146,17 @@ export function useClaimOrder() {
   });
 }
 
-/** placed -> confirmed -> packing -> out_for_delivery -> delivered. */
+/**
+ * placed -> confirmed -> packing -> out_for_delivery -> (the delivery code does
+ * the last step). `out_for_delivery` has no next rung on purpose: a rider may
+ * not say "delivered" without the customer's four digits, and that proof lives
+ * behind `complete_delivery()` (migration 20261106000003), not in this ladder.
+ */
 export const NEXT_STATUS: Record<OrderStatus, OrderStatus | null> = {
   placed: 'confirmed',
   confirmed: 'packing',
   packing: 'out_for_delivery',
-  out_for_delivery: 'delivered',
+  out_for_delivery: null,
   delivered: null,
   cancelled: null,
   // The honest end states are reached through `useFailOrder`, not this ladder.
@@ -172,11 +177,56 @@ export function useAdvanceOrder() {
       const to = NEXT_STATUS[input.from];
       if (!to) throw new Error('nothing-to-advance');
 
-      const patch: { status: OrderStatus; delivered_at?: string } = { status: to };
-      if (to === 'delivered') patch.delivered_at = new Date().toISOString();
-
-      const { error } = await supabase.from('orders').update(patch).eq('id', input.orderId);
+      const { error } = await supabase
+        .from('orders')
+        .update({ status: to })
+        .eq('id', input.orderId);
       if (error) throw error;
+    },
+    onSuccess: () => invalidateOrders(queryClient),
+  });
+}
+
+/**
+ * The refusal from `complete_delivery()`, as a thrown error.
+ *
+ * A wrong code is an ordinary answer — the rider needs to see "two tries left",
+ * not a crash — but the screen still wants `try/catch` and `isPending` to
+ * behave like every other mutation. The machine-readable `error` travels with
+ * the exception so the panel can pick the right translated sentence.
+ */
+export class CompleteDeliveryRejected extends Error {
+  readonly code: Extract<CompleteDeliveryResult, { ok: false }>['error'];
+  readonly attemptsLeft: number | null;
+
+  constructor(result: Extract<CompleteDeliveryResult, { ok: false }>) {
+    super(result.error);
+    this.name = 'CompleteDeliveryRejected';
+    this.code = result.error;
+    this.attemptsLeft = result.attempts_left ?? null;
+  }
+}
+
+/**
+ * Close a delivery with the customer's code.
+ *
+ * The only write path to `delivered` for a rider. `guard_delivery_code`
+ * (migration 20261106000003) refuses a plain update even with a timestamp, so
+ * this is not a convention the app could forget — it is the only door.
+ */
+export function useCompleteDelivery() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { orderId: string; code: string }) => {
+      const { data, error } = await supabase.rpc('complete_delivery', {
+        p_order_id: input.orderId,
+        p_code: input.code,
+      });
+      if (error) throw error;
+      if (!data || typeof data !== 'object') throw new Error('bad-complete-delivery-response');
+      if (!data.ok) throw new CompleteDeliveryRejected(data);
+      return data;
     },
     onSuccess: () => invalidateOrders(queryClient),
   });

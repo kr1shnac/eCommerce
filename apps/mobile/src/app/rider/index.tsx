@@ -14,6 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { DeliveryCodeEntry } from '@/components/delivery-code-entry';
+import { NavigateButton } from '@/components/navigate-button';
 import { RiderAddressBlock } from '@/components/rider-address-block';
 import { LocationConsentCard } from '@/components/location-consent-card';
 import { LoadingState, StateMessage } from '@/components/state-message';
@@ -41,7 +43,7 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
-import { formatClock, isSameDay, readSnapshotAddress } from '@/lib/order-view';
+import { formatClock, isSameDay, readSnapshotAddress, snapshotAddressLine } from '@/lib/order-view';
 import { hasLocationConsent, recordLocationConsent } from '@/lib/location-consent';
 import { orderStatusStyle } from '@/lib/order-status';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -63,12 +65,16 @@ import type { OrderWithItems } from '@/hooks/use-orders';
  * reads it without stopping to squint.
  */
 
-/** placed -> "Accept order", confirmed -> "Start packing", ... One tap, one step. */
+/**
+ * placed -> "Accept order", confirmed -> "Start packing", ... One tap, one step.
+ * `out_for_delivery` has no button: the last rung is the customer's code, which
+ * the rider types into the panel on the card (migration 20261106000003).
+ */
 const ACTION_KEY: Record<OrderStatus, string | null> = {
   placed: 'action.confirm',
   confirmed: 'action.pack',
   packing: 'action.out',
-  out_for_delivery: 'action.deliver',
+  out_for_delivery: null,
   delivered: null,
   cancelled: null,
   // The honest end states are reached through the "could not deliver" panel,
@@ -457,6 +463,16 @@ export default function RiderScreen() {
                       disabled={!address.phone}
                       onPress={() => onCall(address.phone)}
                     />
+                    {/*
+                      Take me there, without a map key. The address snapshot is
+                      handed to the phone's own maps app as a text query — the
+                      same sentence the rider is reading, so the two cannot
+                      disagree. No SDK, no vendor, no billing account.
+                    */}
+                    <NavigateButton
+                      target={{ label: snapshotAddressLine(address) }}
+                      style={styles.flex}
+                    />
                     {order.assigned_to === userId &&
                     order.picked_up_at === null &&
                     order.status !== 'placed' &&
@@ -481,6 +497,15 @@ export default function RiderScreen() {
                       />
                     ) : null}
                   </View>
+
+                  {/*
+                    The last rung of the ladder is not a button. The bag is closed
+                    by the four digits the customer reads out, and the database
+                    refuses any other road to `delivered` for a rider.
+                  */}
+                  {order.status === 'out_for_delivery' ? (
+                    <DeliveryCodeEntry orderId={order.id} />
+                  ) : null}
 
                   {/*
                     The honest way out. A rider who reaches a locked house must
@@ -701,6 +726,10 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Call, Show the way and the next step all live on one row; on a small
+    // phone with a long Kannada label that row wraps rather than squeezing a
+    // tap target below 44 px (rule 9.9).
+    flexWrap: 'wrap',
     gap: Spacing.two,
     marginTop: Spacing.two,
   },

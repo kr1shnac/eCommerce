@@ -341,6 +341,19 @@ export type OrderFeedback = {
 };
 
 /**
+ * One live handover code, as stored (migration 20261106000003). The app never
+ * touches this table: it is a mirror for the migration, not a read path.
+ */
+export type OrderDeliveryCode = {
+  order_id: string;
+  /** Four digits, leading zeros kept. Plaintext by design, so it can be read back. */
+  code: string;
+  /** Wrong guesses so far. 5 means locked; only the owner can then close it. */
+  attempts: number;
+  created_at: string;
+};
+
+/**
  * Orders are written by `place_order()` and `cancel_order()` in the database,
  * never by the app. Both come back as one jsonb value so the server can explain
  * a refusal in a form the app can translate.
@@ -432,6 +445,39 @@ export type PlaceOrderResult =
 export type CancelOrderResult =
   | { ok: true; order_id: string; order_number: string }
   | { ok: false; error: 'not_logged_in' | 'order_not_found' | 'cannot_cancel'; status?: OrderStatus };
+
+/**
+ * The customer's own handover code (`my_delivery_code`, migration
+ * 20261106000003). Only the order's customer (or the owner, helping on the
+ * phone) can read it, and only while the bag is out for delivery — so
+ * `not_available` is an ordinary answer, not a failure.
+ *
+ * The rider is refused outright (`42501`), which is what makes the code a
+ * proof rather than a formality.
+ */
+export type DeliveryCodeResult =
+  | { ok: true; code: string }
+  | { ok: false; error: 'not_available' | 'order_not_found' };
+
+/**
+ * What the rider's `complete_delivery(order_id, code)` says back. A wrong or
+ * locked code is a normal answer (the screen has to say "2 tries left"), so it
+ * comes back as data; a permission failure raises.
+ */
+export type CompleteDeliveryResult =
+  | { ok: true; delivered_at: string }
+  | {
+      ok: false;
+      error:
+        | 'wrong_code'
+        | 'locked'
+        | 'invalid_code'
+        | 'no_code'
+        | 'not_out_for_delivery'
+        | 'order_not_found';
+      /** Only on `wrong_code` and `invalid_code`. */
+      attempts_left?: number;
+    };
 
 /**
  * The counts of what `delete_my_account()` actually did. Returned so the app can
@@ -559,6 +605,26 @@ type TableRowMap = {
       },
     ]
   >;
+  /**
+   * One live handover code per out-for-delivery order (migration
+   * 20261106000003). No client role has a privilege on this table, so it is
+   * `never` on every side: the code is read through `my_delivery_code()` and
+   * spent through `complete_delivery()`, never by touching the row.
+   */
+  order_delivery_codes: Table<
+    OrderDeliveryCode,
+    never,
+    never,
+    [
+      {
+        foreignKeyName: 'order_delivery_codes_order_id_fkey';
+        columns: ['order_id'];
+        isOneToOne: true;
+        referencedRelation: 'orders';
+        referencedColumns: ['id'];
+      },
+    ]
+  >;
 };
 
 export type Database = {
@@ -600,6 +666,26 @@ export type Database = {
       cancel_order: {
         Args: { p_order_id: string };
         Returns: CancelOrderResult;
+      };
+      /**
+       * The caller's own four-digit handover code. Only the order's customer
+       * (or the owner, helping on the phone) may read it, and only while the
+       * bag is out for delivery. The assigned rider is refused outright, which
+       * is what makes the code proof of a handover. See migration
+       * 20261106000003.
+       */
+      my_delivery_code: {
+        Args: { p_order_id: string };
+        Returns: DeliveryCodeResult;
+      };
+      /**
+       * Close an out-for-delivery order with the customer's code. Assigned
+       * rider only; five wrong tries lock the code and the owner finishes the
+       * order directly. A wrong code is data, not a crash.
+       */
+      complete_delivery: {
+        Args: { p_order_id: string; p_code: string };
+        Returns: CompleteDeliveryResult;
       };
       /**
        * Read-only coupon check for the checkout preview. The database computes

@@ -81,7 +81,7 @@ fields — see §6.
 
 Everything below is in `master` and passes the gates in §3.
 
-### 2.1 Database (26 migrations)
+### 2.1 Database (29 migrations)
 
 - One store, 8 categories, 34 products, 4 delivery zones, 2 coupons, settings.
 - Every table has RLS and explicit policies. Customers read their own addresses
@@ -114,6 +114,14 @@ Everything below is in `master` and passes the gates in §3.
   older than 10 minutes are never shown, and only the assigned rider can write.
 - `rider_directory` exposes only the rider's name/photo/phone to that order's
   customer — never a whole profile row.
+- **Delivery handover OTP** (`order_delivery_codes` + `my_delivery_code()` +
+  `complete_delivery()`, migration `20261106000003`): a four-digit code exists
+  only while an order is `out_for_delivery`, only the order's customer can read
+  it, a rider can never read it, five wrong guesses lock it, and a rider moving
+  an order to `delivered` without the matching proof is refused by a trigger.
+  The admin keeps the documented direct-update escape hatch.
+- **Post-delivery feedback** (`order_feedback`, migration `20261106000001`) and
+  **refund due** as a generated stored column (`20261106000002`).
 
 ### 2.2 Customer app
 
@@ -129,7 +137,11 @@ Everything below is in `master` and passes the gates in §3.
   document, privacy notice in both languages.
 - Rider name/photo and a **Call the rider** button on the order screen.
 - Text-first delivery tracking: age, distance, ETA, and a fifth "Picked up" stop.
-  **No map and no dot** — deliberate (`SCALE-AND-TRACKING.md` §6.2).
+  **No map and no dot** — deliberate (`SCALE-AND-TRACKING.md` §6.2). The one map
+  affordance that ships is a plain HTTPS link to the phone's own maps app
+  ("ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ") — no SDK, no API key (§6.5.1).
+- **The four-digit handover code** on the order screen while the order is out for
+  delivery, read out to the rider. Only the order's own customer can read it.
 - Kannada text-to-speech on product/cart, hidden when the phone has no Kannada
   voice, so it never reads Kannada text in an English voice.
 - Light and dark themes (System / Light / Dark), persisted.
@@ -146,6 +158,11 @@ Everything below is in `master` and passes the gates in §3.
 - Honest terminal states: `failed` with a required translated reason and optional
   note, and `returned`. `failed` can never be reopened as `delivered`.
 - "I have the bag" (`picked_up_at`).
+- **The last rung is the customer's code, not a button.** For
+  `out_for_delivery` the rider types the four digits the customer reads out
+  (`components/delivery-code-entry.tsx`); `complete_delivery()` is the only door
+  to `delivered`, and the every-refusal-is-actionable rule applies here too
+  ("2 tries left", "this code is locked — call the shop").
 - One-time location consent in Kannada; foreground-only watcher; throttled writes
   (movement/interval rules in `src/lib/tracking-rules.ts`); one final fix when
   the app backgrounds, then the subscription stops. No background permission.
@@ -167,11 +184,10 @@ Everything below is in `master` and passes the gates in §3.
 
 - TypeScript everywhere; TanStack Query for server state; Zustand for device
   state; Expo Router with `Stack.Protected` role gates.
-- 613 i18n keys in `en.json` and `kn.json`, parity enforced; every placeholder is
+- 660 i18n keys in `en.json` and `kn.json`, parity enforced; every placeholder is
   single-brace `{name}`; plurals are `_one`/`_other`.
-- 23 SQL test files + a two-session concurrency suite = **590 assertions**,
-  against a real throwaway PostgreSQL, on every `npm run test:db`.
-- Nine pure-JS guard scripts run inside `npm run lint`: i18n, order view,
+- 27 SQL test files + a two-session concurrency suite = **675 assertions**,
+  against a real throwaway PostgreSQL, on every `npm run test:db`.- Nine pure-JS guard scripts run inside `npm run lint`: i18n, order view,
   persistence allowlist, speech, packs, auth doors, storage, location, tracking.
 - CI (`.github/workflows/checks.yml`) runs typecheck, lint, the session check,
   the database suite and `expo-doctor` on every push. The one `expo-doctor`
@@ -624,6 +640,20 @@ CA; A10 waits for ~300 SKUs. §6.5 is the concrete plan for those four.
 Only A4 depends on decision 5. A5, A6, A3-card, A2, A7 and A8 are **built** and
 needed none of the five; A1 needs the owner's numbers but not a design decision.
 What remains needs a person, not a laptop: A1, A4, A9, A10.
+
+**Added 2026-11-06 (REA, `COMPETITOR-TEARDOWN.md` §10) — A11–A13.** Blinkit,
+Zepto, BigBasket, JioMart and Swiggy Instamart are **blocked from this network**
+(Cloudflare challenge / 429 / Akamai Access Denied / "We'll be back shortly"), so
+§1–§4 (2026-10-26) is still the only measured Blinkit/Zepto evidence. Flipkart
+web is reachable to a signed-out guest, and §10 measures its shelf page, PDP,
+add-to-cart and **cart** — the first cart in the file. It adds three rows to §7:
+**A11** rating + count on the shelf card (only computable from `order_feedback`;
+product page first, never invent a number), **A12** an itemised fee line *if and
+only if the shop decides to charge one* (Flipkart's "Platform Fee ₹10" — permission
+to itemise, never to fold a margin into prices, rule 9.1), **A13** "Save for
+later" beside Remove in the cart. All three need an owner decision; A12 and A13
+need no new migration shape beyond what already exists. No checkout, payment or
+tracking screen was reached anywhere.
 
 ### 6.5 The plan for what remains — A1, A4, A9, A10
 

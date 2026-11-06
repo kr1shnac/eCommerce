@@ -7,6 +7,7 @@ import type {
   Address,
   CancelOrderResult,
   CouponValidationResult,
+  DeliveryCodeResult,
   Order,
   OrderItem,
   PlaceOrderError as PlaceOrderErrorCode,
@@ -60,6 +61,7 @@ export type OrderWithItems = Order & { order_items: OrderItem[] };
 export const orderKeys = {
   list: ['orders'] as const,
   detail: (id: string) => ['orders', id] as const,
+  deliveryCode: (id: string) => ['orders', id, 'delivery-code'] as const,
 };
 
 const ORDER_SELECT = '*, order_items(*)';
@@ -215,6 +217,33 @@ export function useOrder(id: string | null) {
         .single();
       if (error) throw error;
       return data as OrderWithItems;
+    },
+  });
+}
+
+/**
+ * The customer's own four-digit handover code.
+ *
+ * Deliberately a separate query from the order: the code lives in a table no
+ * client can read (migration 20261106000003) and is only meaningful while the
+ * bag is out for delivery, so the card asks for it separately and shows
+ * nothing when the server answers `not_available`. The rider is refused by the
+ * function itself; this hook is only ever mounted for the order's own customer.
+ */
+export function useDeliveryCode(orderId: string | null, options?: { enabled?: boolean }) {
+  return useQuery<DeliveryCodeResult>({
+    queryKey: orderKeys.deliveryCode(orderId ?? 'none'),
+    enabled: Boolean(orderId) && (options?.enabled ?? true),
+    // The code is spent the moment the order is delivered, so a cached answer
+    // would show a dead code. Always ask the server.
+    staleTime: 0,
+    queryFn: async () => {
+      const { data, error } = await supabase.rpc('my_delivery_code', {
+        p_order_id: orderId as string,
+      });
+      if (error) throw error;
+      if (!data || typeof data !== 'object') throw new Error('bad-delivery-code-response');
+      return data as DeliveryCodeResult;
     },
   });
 }

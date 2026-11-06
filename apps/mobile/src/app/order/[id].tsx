@@ -7,6 +7,8 @@ import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CallShop } from '@/components/call-shop';
+import { DeliveryCodeCard } from '@/components/delivery-code-card';
+import { NavigateButton } from '@/components/navigate-button';
 import { OfflineBanner } from '@/components/offline-banner';
 import { OrderFeedbackCard } from '@/components/order-feedback';
 import { RefundDueCard } from '@/components/refund-due';
@@ -177,6 +179,17 @@ export default function OrderDetailScreen() {
             <Row label={t('order.payment')} value={t(`order.pay.${data.payment_method}`)} />
             <Row label={t('order.paymentStatus')} value={t(`order.payStatus.${data.payment_status}`)} />
           </Card>
+
+          {/*
+            The handover code. Only the order's own customer sees it, and only
+            while the bag is on its way: it is the four digits they read to the
+            rider, and the rider closes the delivery with them (migration
+            20261106000003). Staff who open this screen see the order, not the
+            customer's proof.
+          */}
+          {isOwner && data.status === 'out_for_delivery' ? (
+            <DeliveryCodeCard orderId={data.id} isOwner={isOwner} />
+          ) : null}
 
           {/*
             A delivery that did not happen is neither delivered nor cancelled.
@@ -645,6 +658,13 @@ function RiderPositionBlock({ position }: { position: OrderRiderPosition | null 
           {t('order.eta', { minutes: eta })}
         </ThemedText>
       ) : null}
+      {/*
+        The one map in the app, and it has no map in it: a plain HTTPS link the
+        phone hands to its own maps app (SCALE-AND-TRACKING.md §6.2). No SDK, no
+        tile, no API key — and the position is the rider's own fix, so it is a
+        place, not a route from wherever the customer is standing.
+      */}
+      <NavigateButton target={{ lat: position.lat, lng: position.lng }} mode="place" />
     </View>
   );
 }

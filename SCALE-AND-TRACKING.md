@@ -415,6 +415,41 @@ acceptable — so the pilot draws a **straight line** and labels it as a directi
 not a path. Drawing a fake road route is exactly the sort of confident lie
 `PRODUCTION.md` §2 is built to avoid.
 
+### 6.5.1 As built 2026-11-06 — "show the way" without a map SDK
+
+The piece of the map decision that needed no vendor and no key is now shipped.
+`apps/mobile/src/lib/navigation-links.ts` builds two plain **HTTPS Google Maps
+URLs** and the phone hands them to its own maps app:
+
+- **Rider — "ದಾರಿ ತೋರಿಸಿ"** (`components/navigate-button.tsx` on the delivery
+  card): `maps/dir/?api=1&destination=<address>&travelmode=two_wheeler`. No
+  `origin` parameter, so the maps app starts from the rider's own GPS at the
+  moment they tap it.
+- **Customer — "ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ"** (under the rider's position on the order
+  screen): `maps/search/?api=1&query=<lat>,<lng>` — the rider's own fix, so it is
+  a *place* to look at, not a route from wherever the customer is standing.
+
+**Why this and not option 3.** Options 2 and 3 need either a server-composed
+image or a key in a shipped binary (`AGENTS.md` §9.6). This needs neither: no
+SDK, no WebView, no tile, no dot, no billing account, nothing to embed. It is
+also the form the customer asked for at the door — "where is he?" — answered by
+opening the app that already exists on the phone.
+
+**What is still not built, and is not claimed:** the embedded live map, the
+polyline, and any routing. Those remain options 2 and 3 above and still wait for
+the owner's decision. The link is text; if the maps app is missing or the phone
+is offline, the failure is a translated sentence, not a crash
+(`scripts/check-navigation.mjs` asserts the URL contract: a coordinate that is
+not a coordinate is refused, a Kannada address is percent-encoded rather than
+sent raw, and no `key=` can ever appear in the module).
+
+**One honest limit worth naming:** the destination is a *text* query, not a
+coordinate, because the order snapshot has no `lat`/`lng` and `addresses` never
+captures them (see §7). The maps app geocodes the sentence the rider is already
+reading — landmark first, which is what finds the house — and shows choices when
+the sentence is ambiguous. Inventing a coordinate from a Kannada landmark would
+be the one way to send a bag to the wrong house, so the module refuses to try.
+
 ### 6.6 The privacy and safety rules (non-negotiable)
 
 Tracking a person's location is the riskiest thing in this app. Rules:
@@ -453,7 +488,8 @@ it here rather than claiming it is done.
 | --- | --- | --- |
 | Cold-start round-trip count and time are `[UNVERIFIED]` (no device available on this machine) | Measure with the app on a real cheap Android on 2G throttled; count requests in the dashboard | Dev (needs device) |
 | Realtime connection ceiling is reasoned, not measured | Know the Supabase plan; watch Realtime logs during the pilot | Dev + client |
-| No map SDK chosen | Decide when the tracking phase starts; text-first means this can wait | Dev + client |
+| No map SDK chosen | **Partly resolved 2026-11-06:** the no-key deep link ships (T6.5); an embedded map still waits for the owner | Dev + client |
+| Addresses never capture `lat`/`lng` | pin the drop point when the address is chosen, or accept a text-query destination | Dev + owner |
 | Background-location battery behaviour `[UNVERIFIED]` | Device test with the rider build | Dev (needs device) |
 | Whether a free routing API is usable `[UNVERIFIED]` | Check licence + quota before drawing any road route | Dev |
 | Rider consent wording in Kannada | **Built in both locales** (2026-10-26); still needs a Kunigal read-through per `KUNIGAL.md` | Owner |
@@ -475,6 +511,7 @@ that make it honest.
 | T4 | `rider_positions` table + `record_my_position()` + narrow read view + migration + **test with forbidden cases** | `npm run test:db` — **DONE 2026-10-26**, see `CHANGELOG.md` |
 | T5 | Rider consent screen (both languages) + write throttle wired to the rule module | **CODE DONE 2026-10-26**; device test still owed (needs EAS dev build) |
 | T6 | Customer text-first tracking block on `order/[id].tsx` (age + distance + ETA) | **CODE DONE 2026-10-26**; device test still owed (needs EAS dev build) |
+| T6.5 | "Show the way" maps deep links — no SDK, no key (`lib/navigation-links.ts`, `check:navigation`): rider directions to the snapshot address, customer place view of the rider's fix | typecheck + lint + `check:navigation` (no DB change) — **DONE 2026-11-06**, see `CHANGELOG.md` |
 | T7 | Optional static route image, then optional live map, behind a tap | owner's data-budget decision |
 
 **Every phase ends the same way**, per `AGENTS.md` §9.10: `npm run typecheck`

@@ -16,7 +16,11 @@ numbers.
 > integer-paise ₹/kg · ₹/L rate behind every pack (`src/lib/unit-price.ts`, with
 > `check:unit-price` in the lint chain). **A1, A4 and A7–A10 are not started.**
 > A1 needs the owner's honest ETA numbers, A4 needs decision 5, A9 needs the owner
-> and a CA, and A10 waits for ~300 SKUs. The five decisions in §8 remain open.
+> and a CA, and A10 waits for ~300 SKUs. §10 adds three items measured on
+> Flipkart's web on 2026-11-06 with REA (A11 rating on the card, A12 an
+> itemised fee line, A13 "save for later") — all three need an owner decision
+> before build, and A12 must not be read as a licence to hide a margin.
+> The five decisions in §8 remain open.
 > `HANDOFF.md` §6.4 has the item-by-item audit, plus three corrections to this
 > file: A2's file target was wrong for this repo (it now lives in its own module,
 > not `pack.ts`), A3's real gap was the card rather than the product page, and A5
@@ -730,15 +734,222 @@ node harvest.js  zepto-api   https://www.zeptonow.com/ 'bff-gateway\.zepto\.com'
 node css-tokens.js        # colour/type/radius/shadow frequency + every CSS custom property
 ```
 
-`Rea` note: the `reverse-engineer-anything` skill is installed at
-`~/.config/opencode/skills/reverse-engineer-anything/`, but its MCP server was
-**not run** — it requires Node ≥ 22.23.4 (this machine is 22.22.0) and an
-`opencode` MCP registration that does not exist. What was used is the skill's
-method: evidence tags, "what this cannot see" stated first, and no claim without
-a source. See `FEATURE-PARITY.md` §0 for why no binary was opened.
+`Rea` note: the `reverse-engineer-anything` skill was installed at
+`~/.config/opencode/skills/reverse-engineer-anything/` on 2026-10-26, when its
+MCP server could not be run (Node 22.22.0 < 22.23.4, and no `opencode` MCP
+registration existed). **That changed on 2026-11-06:** Node is now 24.22.1 and
+`rea setup --client opencode` registered the `rea` server in
+`~/.config/opencode/opencode.jsonc` (`rea doctor --client opencode` reports the
+registration *aligned*). §10 was captured with it. See
+`FEATURE-PARITY.md` §0 for why no binary was opened.
 
 **Next capture, when someone can log in:** cart, checkout, live-tracking and
 order-history screens; the ADD → stepper transition (measure the tap target and
 the state change); and one Zepto `get_page` during a festival, to see
 `festivalUITheme` in effect. None of these are reachable without a phone number
 and I did not attempt to obtain one.
+
+---
+
+## 10. Flipkart web, measured 2026-11-06 (REA)
+
+The cart/checkout screens listed as `[UNKNOWN]` above are behind Blinkit's and
+Zepto's phone-OTP wall. Blinkit and Zepto are **still not reachable from this
+network** — see §10.6. Flipkart, by contrast, serves its cart **to a signed-out
+guest**, which makes it the one measured cart in this file. Tags keep the
+meaning of §0.
+
+### 10.1 How this was captured
+
+- `rea capture_browser_scenario` (REA 6.8.0, MCP server `rea`, provider
+  `rea-playwright-browser-scenario`), real Chrome 156, **launch mode with a
+  provider-owned temporary profile**, 1280 × 720 light `en-US`, **headless**.
+  Every capture ended in the same three artifacts: DOM, accessibility tree,
+  final URL. Nothing was clicked except the one "Add to cart" in §10.3.
+- No login, no phone number, no attempt at any protection mechanism, no request
+  forged by the tool: the page made its own requests and the browser accepted
+  them or refused them.
+- Requests were made by the page itself; the tool only drove navigation and one
+  click. The DOM and accessibility texts of every capture were exported with
+  `rea export_evidence_bundle` to a scratch directory **outside this repo** and
+  read from there. The numbers below come from those texts.
+
+### 10.2 The shelf page, measured
+
+`https://www.flipkart.com/search?q=toor+dal+1kg` — desktop, grocery
+marketplace, signed out.
+
+- 40 results of 1 366, plus a **Filter rail on the left** (category tree,
+  price min/max dropdowns, brand search box, ratings buckets, offers,
+  availability, packaging, "Country Of Origin", "Type", "flavour", "Organic",
+  "Discount") and a **Sort bar** over the grid (Relevance · Popularity · Price
+  low→high · high→low · Newest first). Ours has category chips only.
+- The card anatomy, verbatim from the accessibility tree, in this order:
+  image → **name → pack line ("1 kg") → rating + count ("4.3 (39)") →
+  ₹price ₹MRP 27% off → trust line ("Only few left")**. There is **no ADD
+  button on this page at all** — a marketplace card is browsed, not added.
+- One card said "Top Discount of the Sale" — a merchandising line we have no
+  concept of and should not want.
+- Type: 20 px product names, 14 px everything else, black on white, no card
+  chrome, no colour.
+
+**Against ours** (`[CODE]` `product-card.tsx`): our card carries a name, pack,
+price, MRP, discount, low-stock badge, the ADD button and — since A5/A6 — a
+₹/kg line. The measured gap is **rating + rating count on the card**; Flipkart
+has it and it is the cheapest trust signal there is. For a one-shop grocery
+this is optional, but it is the only item in §10 that could be lifted without
+new data: `order_feedback` (migration `20261106000001`) already stores
+`was_ok` plus six reasons, and an aggregate of it is what would render. See
+**A11**.
+
+### 10.3 The product page, measured
+
+`https://www.flipkart.com/value-toor-arhar-dal/p/itm307c2f0742516?pid=PLSFUUSEYMC3K8UR`
+
+Anatomically, top to bottom:
+
+1. Marketplace dropdown, search, Login, Cart.
+2. Breadcrumbs: Home / Food Products / Pulses / Dal / Unbranded Dal.
+3. Image carousel with **"Key Highlights"** overlay cards and one hard fact
+   printed over the images: **"Expiry 19 Dec 2026"**.
+4. **Pack variants as links, with the unit price written into the chip**:
+   `500 g` and `1 kg (₹200/1kg)`, plus "Selected Quantity: 1 kg". This is A5,
+   done the Flipkart way — the ₹/kg lives on the variant chip rather than under
+   the price. Ours does both; theirs is denser.
+5. H1 `Value Toor/Arhar Dal (1 kg)` — **the pack is part of the title**, not a
+   separate line.
+6. `4.2 | 20,608` as a link to its own ratings page.
+7. Price `₹200`, then "Buy at ₹190 — Apply offers for maximum savings",
+   "Delivery details", "Location not set", **"Delivery by Monday, 9 Nov"** (a
+   date, not a minutes estimate), seller name with `4.5 · 4 years with
+   Flipkart`, "See other sellers", "Cancellation upto 24hrs", "No returns".
+8. A reviews block: five-star rows, review photos with `+29`, "Verified Buyer"
+   under each name, helpful counts, **"Show all reviews"**.
+9. **Questions and Answers** with real Q&A pairs ("How is the quality of the
+   product") and "Show all questions & answers".
+10. `Add to cart` and `Buy now`, both **44 px tall** — the same tap target
+    `AGENTS.md` §9.9 demands.
+11. "Similar Products" rail, whose cards carry the pack inside the name
+    ("Tata Sampann Unpolished Kabuli Chana 1 kg 1% OFF ₹226 ₹223").
+
+**Against ours** (`[CODE]` `product/[id].tsx`): we have 1, 2 (as pack chips), 3,
+the price block and the pack-option chips. We do **not** have expiry on the
+image, the seller/return-policy block, reviews, or Q&A. Of those the honest
+ones for one shop are: **expiry** (it is a food-safety fact the owner already
+knows) and the **return/replacement window** as a single sentence — both are
+A9 rows. Reviews and Q&A need volume we do not have; A11 is the cheap version.
+
+### 10.4 Add to cart, measured
+
+Clicking "Add to cart" (REA `click` on the 44 px button) **did not navigate**:
+
+- The header's cart link changed from `Cart Cart` to **`Cart 1 Cart`** — the
+  count is in the accessible name, so a screen reader says "Cart, 1 item, Cart".
+- The button itself became **"Go to cart"**. There is no ADD → stepper
+  transition on desktop Flipkart, which corrects an assumption in §9 of this
+  file: for them the stepper lives in the cart, not on the PDP.
+- The URL never changed. Everything happened in place, 8 s before the capture.
+
+**Against ours** (`[CODE]` `hooks/use-cart.ts`, `components/product-card.tsx`):
+ours already does the ADD → stepper on the card, and the Home basket bar carries
+the live count. Nothing to do.
+
+### 10.5 The cart, measured — the first cart in this file
+
+`https://www.flipkart.com/viewcart?marketplace=FLIPKART`, guest, one item.
+Verbatim text of the live region:
+
+```
+Login to Proceed        No location added
+Qty: 1   Value Toor/Arhar Dal 1 kg   4.2 • (20,608)   ₹200   Delivery by Mon Nov 9
+Save for later    Remove
+Buy this now
+Price Details
+  Price (1 item)        ₹200
+  Platform Fee          ₹10
+  Total Amount          ₹210
+Safe and secure payments. Easy returns. 100% Authentic products.
+Place order 210
+```
+
+Seven things, in the order they matter:
+
+1. **A "Platform Fee" is its own line** in the price breakdown — ₹10, charged
+   even on a ₹200 order, above the total. Our breakdown is subtotal +
+   delivery fee − discount `[CODE]` `cart/[id].tsx`. If the shop ever charges a
+   handling fee, **the model already exists**: add it as an explicit, itemised,
+   integer-paise row computed in Postgres, never as a margin folded into the
+   item price. See **A12**.
+2. **"Save for later" alongside "Remove"** — two exits per line. Our cart has
+   remove only. "Save for later" is the one that keeps a customer from
+   re-finding a product they hesitated over; it is one table and a query.
+3. **Delivery by a date, not an ETA** — because Flipkart's grocery promise is
+   next-day, not ten minutes. Their ETA model is `[MEASURED]` §3 of this file
+   and ours is the honest one for Kunigal; no change.
+4. **The trust row**: "Safe and secure payments. Easy returns. 100% Authentic
+   products." Three claims a customer can check, sitting directly above the
+   button. Ours says nothing about payment at all, because we take no payments
+   (COD only) — which makes the row **wrong** for us and a good example of why
+   this section is measured evidence, not a to-do list. What we *can* say
+   honestly is already on the order screen (shop identity, FSSAI when supplied).
+5. **A sticky Place order carrying the total** — the amount is on the button.
+   Ours is `cart`'s checkout row; the number should be on the label, not only
+   beside it.
+6. **"Login to Proceed" / "No location added"** as two quiet prompts, not
+   gates — the cart is usable while signed out.
+7. The item line repeats **rating + count + delivery date** inside the cart, so
+   the customer does not go back to the PDP to remember what they picked.
+
+**Against ours**, the honest take-aways are **A12 (itemised fee, if and only if
+the shop ever charges one)**, **"Save for later"**, and the total on the
+checkout button label. Everything else in §10.5 is Flipkart's marketplace
+reality, not ours.
+
+### 10.6 What is still not measured — state it plainly
+
+- **Blinkit, Zepto, BigBasket, JioMart and Swiggy Instamart are all blocked
+  from this network.** 2026-11-06, same headless Chrome, same tool:
+  `blinkit.com` served a Cloudflare challenge page ("access denied … you have
+  been blocked"), `zeptonow.com` and `www.zepto.com` returned **HTTP 429**,
+  `www.bigbasket.com` and `www.jiomart.com` returned **Akamai "Access
+  Denied"**, `swiggy.com/instamart` returned "We'll be back shortly". No
+  protection mechanism was interfered with; the requests were simply refused.
+  §1–§3 remain the only measured Blinkit/Zepto evidence and it is from
+  2026-10-26.
+- **No checkout, payment or order-tracking screen was reached on any site.**
+  Flipkart's cart ends at "Login to Proceed" and I did not log in.
+- **One headless desktop session, 1280 × 720, one moment, one city (no location
+  set).** Flipkart's own payload shows a mobile UA attempt (`FKUA/msite/…/
+  Mobile`) while the page served the desktop layout; the measured card
+  therefore is the desktop card, and its spacing is not a phone's spacing.
+- **No screenshot was interpreted** — no vision on this model. A screenshot was
+  captured (Playwright PNG) and is available to a human; every claim here is
+  DOM or accessibility-text evidence.
+- Screenshots are only captured on request and are withheld entirely when any
+  secret value is in play; none were needed.
+
+### 10.7 What this adds to §7
+
+**A11 — rating on the shelf card (optional, cheap).** Flipkart carries rating +
+count on every card `[MEASURED]` §10.2. We can only compute one from
+`order_feedback` (migration `20261106000001`), so it is a derived column plus a
+cart-join, not a copy of theirs. For 34 products a sparse rating is worse than
+none: **start with the aggregate on the product page only**, never invent a
+number, and never show "0". Needs a decision before build.
+
+**A12 — an itemised fee line in the price breakdown (only if the shop charges
+one).** Flipkart's "Platform Fee ₹10" `[MEASURED]` §10.5 exists because they
+charge one. **We do not, and must not start by hiding a margin in prices.** If
+and when the owner charges a handling/packing fee, the shape is fixed now:
+`*_paise` integer column, stored on the order by `place_order()`, its own row in
+the breakdown, and a check that it cannot be sent by the client.
+
+**A13 — "Save for later" in the cart.** Measured on Flipkart's cart line. Two
+exits per row is what keeps a hesitant customer from re-searching. One table,
+one query, no new money.
+
+**Refuse, with the measurement:** their trust row ("Safe and secure payments.
+Easy returns…") is not transferable to a COD-only shop with no return window;
+copying it would be writing a claim we cannot honour. Ours lives on the order
+screen already (migration `20261021000005`).
+

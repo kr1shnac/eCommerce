@@ -86,6 +86,24 @@ export function hasLandmark(address: SnapshotAddress): boolean {
   return Boolean(address.landmark?.trim());
 }
 
+/**
+ * One line of address to hand to a maps app (`components/navigate-button.tsx`).
+ *
+ * The landmark leads, because that is what actually finds the house in a town
+ * with no street numbering — the same order the rider's card shows, so what the
+ * rider reads and what the maps app searches for are one string.
+ *
+ * Note what this is **not**: it is not `formatSnapshotAddress`, which prefixes
+ * the landmark with the English word "Near". That word belongs in a sentence a
+ * customer reads; dropped in front of a Kannada landmark inside a Google Maps
+ * query it only makes the search worse. No language is chosen here — the
+ * customer's own words are passed through untouched.
+ */
+export function snapshotAddressLine(address: SnapshotAddress): string {
+  const { landmark, rest } = splitSnapshotAddress(address);
+  return [landmark, rest].filter(Boolean).join(', ').trim();
+}
+
 /** The phone number in a shape `tel:` accepts — digits only, 10+ of them. */
 export function dialablePhone(phone: string | null | undefined): string | null {
   if (!phone) return null;

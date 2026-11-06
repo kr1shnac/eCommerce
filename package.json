@@ -25,7 +25,8 @@
     "check:storage": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-storage.mjs",
     "check:tracking": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-tracking.mjs",
     "check:location": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-location.mjs",
-    "lint": "npm run lint --workspaces --if-present && npm run check:i18n && npm run check:view && npm run check:delivery && npm run check:persist && npm run check:speech && npm run check:packs && npm run check:unit-price && npm run check:auth-doors && npm run check:storage && npm run check:location && npm run check:tracking",
+    "check:navigation": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-navigation.mjs",
+    "lint": "npm run lint --workspaces --if-present && npm run check:i18n && npm run check:view && npm run check:delivery && npm run check:persist && npm run check:speech && npm run check:packs && npm run check:unit-price && npm run check:auth-doors && npm run check:storage && npm run check:location && npm run check:tracking && npm run check:navigation",
     "check:i18n": "node scripts/check-i18n.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"
