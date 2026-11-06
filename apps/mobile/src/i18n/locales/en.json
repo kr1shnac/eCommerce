@@ -30,6 +30,20 @@
     "openInMaps": "See on a map",
     "navigateFailed": "Could not open the maps app."
   },
+  "map": {
+    "title": "The rider on the map",
+    "riderHere": "The rider is here",
+    "doorHere": "Delivery point",
+    "routeByRoad": "By road: {distance}",
+    "directionOnly": "Straight line: {distance} — a direction, not a route",
+    "riderOnly": "The rider's place. The door has no pin yet, so there is no line.",
+    "recentre": "Centre on the rider",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomLimits": "Zoom goes from {min} to {max}.",
+    "attribution": "© OpenStreetMap contributors",
+    "offline": "No map pictures yet — the position is still written below."
+  },
   "home": {
     "title": "Kunigal Grocery",
     "subtitle": "Groceries & essentials in 10 minutes",

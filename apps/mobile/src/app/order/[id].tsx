@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Fragment, useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import { CallShop } from '@/components/call-shop';
 import { DeliveryCodeCard } from '@/components/delivery-code-card';
 import { NavigateButton } from '@/components/navigate-button';
 import { OfflineBanner } from '@/components/offline-banner';
+import { RiderMap } from '@/components/rider-map';
 import { OrderFeedbackCard } from '@/components/order-feedback';
 import { RefundDueCard } from '@/components/refund-due';
 import { OrderSkeleton } from '@/components/screen-skeletons';
@@ -77,6 +78,25 @@ export default function OrderDetailScreen() {
   // jsonb column read the same way in all three places, so a rider and a customer
   // can never be shown two different versions of one address.
   const address = readSnapshotAddress(data ?? { delivery_address: null });
+
+  /**
+   * The door's pin, if the order carries one. Nothing captures it yet —
+   * `addresses.lat/lng` exist but no screen writes them (`SCALE-AND-TRACKING.md`
+   * §7), so today this is `null` and the map draws the rider alone, with no
+   * invented line to a guessed position. It is read from the snapshot rather
+   * than hard-coded to null so that the day the address screen drops a pin and
+   * `place_order()` snapshots it, the route appears with no change here.
+   */
+  const doorFix = useMemo<{ lat: number; lng: number } | null>(() => {
+    const snapshot = (data?.delivery_address ?? null) as Record<string, unknown> | null;
+    if (!snapshot) return null;
+    const lat = typeof snapshot.lat === 'number' ? (snapshot.lat as number) : null;
+    const lng = typeof snapshot.lng === 'number' ? (snapshot.lng as number) : null;
+    // The null island is what a failed fix reports; never draw a door in it.
+    if (lat === null || lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    if (lat === 0 && lng === 0) return null;
+    return { lat, lng };
+  }, [data?.delivery_address]);
 
   const onCancel = async () => {
     if (!orderId || cancelOrder.isPending) return;
@@ -179,6 +199,31 @@ export default function OrderDetailScreen() {
             <Row label={t('order.payment')} value={t(`order.pay.${data.payment_method}`)} />
             <Row label={t('order.paymentStatus')} value={t(`order.payStatus.${data.payment_status}`)} />
           </Card>
+
+          {/*
+            The map. Behind a tap, never by default: the text block above is the
+            thing that works on 2G and on a cheap phone, and a map is the thing
+            that answers "which street is he on" (SCALE-AND-TRACKING.md §6.5.1).
+            No SDK and no API key — OpenStreetMap tiles, drawn here.
+          */}
+          {data.status === 'out_for_delivery' && position.data ? (
+            <Card style={styles.mapCard}>
+              <View style={styles.mapHead}>
+                <Ionicons name="map-outline" size={18} color={theme.accent} />
+                <ThemedText type="smallBold" style={styles.flex}>
+                  {t('map.title')}
+                </ThemedText>
+              </View>
+              <RiderMap
+                rider={{ lat: position.data.lat, lng: position.data.lng }}
+                destination={doorFix}
+              />
+              <NavigateButton
+                target={{ lat: position.data.lat, lng: position.data.lng }}
+                mode="place"
+              />
+            </Card>
+          ) : null}
 
           {/*
             The handover code. Only the order's own customer sees it, and only
@@ -708,6 +753,14 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
   },
   section: { gap: Spacing.one },
+  mapCard: { gap: Spacing.two, padding: 0, overflow: 'hidden' },
+  mapHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.three,
+    paddingTop: Spacing.three,
+  },
   sectionTitle: { marginTop: Spacing.three },
   failureHead: {
     flexDirection: 'row',

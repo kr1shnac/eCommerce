@@ -415,40 +415,55 @@ acceptable — so the pilot draws a **straight line** and labels it as a directi
 not a path. Drawing a fake road route is exactly the sort of confident lie
 `PRODUCTION.md` §2 is built to avoid.
 
-### 6.5.1 As built 2026-11-06 — "show the way" without a map SDK
+### 6.5.1 As built 2026-11-06 — a real map, still with no SDK and no key
 
-The piece of the map decision that needed no vendor and no key is now shipped.
-`apps/mobile/src/lib/navigation-links.ts` builds two plain **HTTPS Google Maps
-URLs** and the phone hands them to its own maps app:
+**The decision is taken, and it is: OpenStreetMap raster tiles, composited in
+React Native by `components/rider-map.tsx`.** What the famous apps use, and why
+we copy their behaviour and not their plumbing:
 
-- **Rider — "ದಾರಿ ತೋರಿಸಿ"** (`components/navigate-button.tsx` on the delivery
-  card): `maps/dir/?api=1&destination=<address>&travelmode=two_wheeler`. No
-  `origin` parameter, so the maps app starts from the rider's own GPS at the
-  moment they tap it.
-- **Customer — "ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ"** (under the rider's position on the order
-  screen): `maps/search/?api=1&query=<lat>,<lng>` — the rider's own fix, so it is
-  a *place* to look at, not a route from wherever the customer is standing.
+| They use | Why we do not |
+| --- | --- |
+| Google Maps SDK / Mapbox SDK — Blinkit, Zepto, Swiggy, Zomato, Flipkart are all Google | A **billing API key** compiled into the shipped app, and a key in a shipped app is a key anyone can lift (`AGENTS.md` §9.6). The owner should not have to open a billing account for a pilot. |
+| Their own routing service for the polyline | Same reason. We use **OSRM's public endpoint** (`router.project-osrm.org`) — the engine OSM's own site runs, no key, no account, GeoJSON out. |
+| A WebView + Leaflet/MapLibre GL | Works, but a WebView on a ₹7 000 Android phone is a memory event, and the app's image layer is already tuned for those phones. |
 
-**Why this and not option 3.** Options 2 and 3 need either a server-composed
-image or a key in a shipped binary (`AGENTS.md` §9.6). This needs neither: no
-SDK, no WebView, no tile, no dot, no billing account, nothing to embed. It is
-also the form the customer asked for at the door — "where is he?" — answered by
-opening the app that already exists on the phone.
+What we kept from them, because it is the part that makes a map feel like a map
+app rather than a form with a picture on it:
 
-**What is still not built, and is not claimed:** the embedded live map, the
-polyline, and any routing. Those remain options 2 and 3 above and still wait for
-the owner's decision. The link is text; if the maps app is missing or the phone
-is offline, the failure is a translated sentence, not a crash
-(`scripts/check-navigation.mjs` asserts the URL contract: a coordinate that is
-not a coordinate is refused, a Kannada address is percent-encoded rather than
-sent raw, and no `key=` can ever appear in the module).
+- **Two-finger pinch to zoom** and **double-tap to zoom in**, with the point
+  between the fingers held still. Built on `react-native-gesture-handler` +
+  `react-native-reanimated`, both already in the app.
+- **One-finger drag to pan**, and the map **follows the rider on every new fix**
+  until the customer touches it, after which a "centre on the rider" button
+  appears. That is the Uber/Swiggy pattern, and it is the single biggest
+  difference between a tracking map and a decoration.
+- **A route line that follows roads** — dashed, grey and labelled
+  "straight line — a direction, not a route" when the router could not be
+  reached. Patchy 4G makes that the normal case here, not the exception, and the
+  screen never blocks on the call.
+- **44 px controls on a solid surface**, theme colours, dark mode, and the OSM
+  attribution on screen at all times, because their licence requires it.
+- Tiles fade in over a grey square instead of popping.
 
-**One honest limit worth naming:** the destination is a *text* query, not a
-coordinate, because the order snapshot has no `lat`/`lng` and `addresses` never
-captures them (see §7). The maps app geocodes the sentence the rider is already
-reading — landmark first, which is what finds the house — and shows choices when
-the sentence is ambiguous. Inventing a coordinate from a Kannada landmark would
-be the one way to send a bag to the wrong house, so the module refuses to try.
+Two plain **HTTPS Google Maps links** also still exist
+(`lib/navigation-links.ts`, `check:navigation`) and are unchanged: the rider's
+"ದಾರಿ ತೋರಿಸಿ" opens turn-by-turn in the phone's own maps app, and the customer's
+"ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ" opens the rider's fix as a place. Those need no key either,
+and they answer the question the in-app map cannot — actual navigation.
+
+**What is still not built, and is not claimed:** marker clustering, a map style
+of our own, tilt, rotation, an offline tile region, or turn-by-turn inside the
+app. The arithmetic lives in `lib/map-tiles.ts` and is proved by
+`scripts/check-map-tiles.mjs` (55 assertions) on every lint run; route parsing
+lives in `lib/route.ts` and is proved by `scripts/check-route.mjs` (45
+assertions) — including the assertion that OSRM takes **longitude first**, the
+one swap that would silently put a rider in the wrong district.
+
+**The honest limit, unchanged:** there is still **no pin on the door**.
+`addresses.lat/lng` exist but nothing writes them, so the map draws the rider
+alone and no route line appears. When the address screen drops a pin and
+`place_order()` snapshots it, the route appears with no change to this file — the
+order screen already reads `lat`/`lng` from the snapshot.
 
 ### 6.6 The privacy and safety rules (non-negotiable)
 
@@ -488,8 +503,9 @@ it here rather than claiming it is done.
 | --- | --- | --- |
 | Cold-start round-trip count and time are `[UNVERIFIED]` (no device available on this machine) | Measure with the app on a real cheap Android on 2G throttled; count requests in the dashboard | Dev (needs device) |
 | Realtime connection ceiling is reasoned, not measured | Know the Supabase plan; watch Realtime logs during the pilot | Dev + client |
-| No map SDK chosen | **Partly resolved 2026-11-06:** the no-key deep link ships (T6.5); an embedded map still waits for the owner | Dev + client |
-| Addresses never capture `lat`/`lng` | pin the drop point when the address is chosen, or accept a text-query destination | Dev + owner |
+| No map SDK chosen | **Partly resolved 2026-11-06:** the no-key deep link ships and the in-app map ships on OSM tiles; an *embedded Google/Mapbox* map still waits for the owner's decision and probably always will | Dev + client |
+| Addresses never capture `lat`/`lng` | pin the drop point when the address is chosen, so the map can draw a route | Dev + owner |
+| Five-wrong-OTP lockout is untested on a device | the DB suite proves it; a phone should be asked for the customer's view of it | Dev (needs device) |
 | Background-location battery behaviour `[UNVERIFIED]` | Device test with the rider build | Dev (needs device) |
 | Whether a free routing API is usable `[UNVERIFIED]` | Check licence + quota before drawing any road route | Dev |
 | Rider consent wording in Kannada | **Built in both locales** (2026-10-26); still needs a Kunigal read-through per `KUNIGAL.md` | Owner |
@@ -512,7 +528,8 @@ that make it honest.
 | T5 | Rider consent screen (both languages) + write throttle wired to the rule module | **CODE DONE 2026-10-26**; device test still owed (needs EAS dev build) |
 | T6 | Customer text-first tracking block on `order/[id].tsx` (age + distance + ETA) | **CODE DONE 2026-10-26**; device test still owed (needs EAS dev build) |
 | T6.5 | "Show the way" maps deep links — no SDK, no key (`lib/navigation-links.ts`, `check:navigation`): rider directions to the snapshot address, customer place view of the rider's fix | typecheck + lint + `check:navigation` (no DB change) — **DONE 2026-11-06**, see `CHANGELOG.md` |
-| T7 | Optional static route image, then optional live map, behind a tap | owner's data-budget decision |
+| T7 | **The in-app map** (`components/rider-map.tsx`): OSM raster tiles, pinch/pan/double-tap on the app's own gesture stack, road-snapped route from OSRM with an honest straight-line fallback, follow-the-rider centre, OSM attribution. Rider-side map still waits on the door pin. | typecheck + lint + `check:map-tiles` + `check:route` + `test:db` — **CODE DONE 2026-11-06**; device test still owed |
+| T8 | Door pin: the address screen drops a pin on this same map, `place_order()` snapshots it, and the route appears on both faces | migration + test + a screen |
 
 **Every phase ends the same way**, per `AGENTS.md` §9.10: `npm run typecheck`
 passes, `npm run lint` passes, `supabase/tests/` passes against real PostgreSQL,

@@ -111,7 +111,8 @@ and why.
 | What went wrong (six choices) | **ಒಂದು ಸಾಮಾನು ಬಂದಿಲ್ಲ** · **ಸಾಮಾನು ಹಾಳಾಗಿದೆ** · **ತುಂಬಾ ತಡವಾಗಿ ಬಂದಿದೆ** · **ಬೇರೆ ಕಡೆ ಹೋಗಿದೆ** · **ಬೇರೆ ಸಾಮಾನು ಬಂದಿದೆ** · **ಬೇರೆ ಏನೋ** | Each states the fact in counter words. `ಕಾಣೆಯಾಗಿದೆ` ("is missing") sounds like a police complaint, `ತಪ್ಪು ಉತ್ಪನ್ನ` is catalogue-speak, and a free-text box would be unreadable to a third of customers — the phone call that follows carries the detail. |
 | Money to come back | **ವಾಪಸ್ ಬರಬೇಕಾದ ಹಣ** | The helper says "ವಾಪಸ್ ಕೊಡುತ್ತೇವೆ" (we will give it back). `ರಿಫಂಡ್` alone is understood but sounds like a bank, and `ಮರುಪಾವತಿ` is collection-office Kannada nobody says. Deliberately no "3–5 ದಿನ" — that is a promise the shop has not made. |
 | Navigate (rider button) | **ದಾರಿ ತೋರಿಸಿ** | "Show the way." `ನ್ಯಾವಿಗೇಟ್` / `ನ್ಯಾವಿಗೇಶನ್` is English written in Kannada letters — the same move the glossary refuses for `ಫ್ರೀ`. The button opens the phone's own maps app, so "show the way" is also literally true. |
-| See on a map (customer) | **ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ** | "Look on the map." Not `ಮ್ಯಾಪ್‌ನಲ್ಲಿ ನೋಡಿ`: `ನಕ್ಷೆ` is the Kannada word people already use for a map, and the customer is looking at a place, not at an app. |
+| See on a map (customer) | **ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ** | "Look on the map." Not `ಮ್ಯಾಪ್‌ನಲ್ಲಿ ನೋಡಿ`: `ನಕ್ಷೆ` is the Kannada word people already use for a map, and the customer is looking at a *place*, not at an app. |
+| A road route (the line on the map) | **ರಸ್ತೆ ಮಾರ್ಗ** | "The road route." Used where the line follows real roads. When the router could not answer, the screen says **`ನೇರ ರೇಷೆ — ಇದು ದಿಕ್ಸೂಚಿ ಮಾತ್ರ, ಮಾರ್ಗವಲ್ಲ`** ("straight line — a direction, not a route"), because a road we invented is a lie about the way home. |
 
 ## 5. Improvisations (deliberate, not literal)
 

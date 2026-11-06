@@ -239,7 +239,101 @@ chosen is the next step and is listed in §7.
 
 ---
 
-## 2026-11-06 — The search box shows a real thing from the shelf
+## 2026-11-06 — The map, chosen and built: OpenStreetMap, no SDK, no key (T7)
+
+**What was asked.** "We need map." `SCALE-AND-TRACKING.md` §6.5 had put an
+embedded map last, behind an owner decision, because the obvious choice is a
+Google/Mapbox SDK and a **billing API key**, and a key does not belong in a
+shipped app (rule 9.6). So the choice had to be re-made from what is available
+without one.
+
+**The decision, and the alternatives measured against it.**
+
+| Option | Verdict |
+| --- | --- |
+| Google Maps SDK / Mapbox SDK (what Blinkit, Zepto, Swiggy, Zomato, Flipkart all use) | **Refused.** Needs a billing key in the binary. The owner would have to open a billing account for a pilot in one town. |
+| WebView + Leaflet/MapLibre GL | Rejected for the phone we actually ship to: a WebView on a ₹7 000 Android is a memory event, and the app's image layer is already tuned for those phones. |
+| **OpenStreetMap raster tiles, composited by us** (`components/rider-map.tsx`) | **Built.** No SDK, no WebView, no key, no billing account, no native config. `expo-image` (already in the app) draws the tiles; `react-native-gesture-handler` + `react-native-reanimated` (already in the app) do the gestures; one new dependency, `react-native-svg`, for the route line. |
+| OSRM public router for the road-snapped route | Same engine OSM's own site runs, no key, no account, GeoJSON out. The self-hosted router stays the upgrade path at scale. |
+
+**What was built.**
+
+- **`apps/mobile/src/lib/map-tiles.ts` (new)** — pure Web-Mercator arithmetic:
+  projection, tile grid, marker positions, zoom-holding-an-anchor, direction
+  sampling, metres-per-pixel. Imports nothing from React Native so
+  `scripts/check-map-tiles.mjs` can run it under bare Node.
+- **`scripts/check-map-tiles.mjs` (new, in the lint chain as `check:map-tiles`,
+  55 assertions)** — known points land where a map puts them, zoom doubles the
+  world exactly, tiles are cut on 256 px boundaries and never asked for outside
+  the world, a marker sits under its own coordinate, zooming holds the anchor
+  still, no `key=` and no SDK may ever appear in the module. The two bugs it
+  caught while being written are in "bugs found" below.
+- **`apps/mobile/src/lib/route.ts` (new)** — OSRM URL building, response parsing
+  and validation, the straight-line fallback, and a bearing helper. **Refused**
+  shapes return `null` rather than half a line.
+- **`scripts/check-route.mjs` (new, `check:route`, 45 assertions)** — the
+  assertion that matters most: **OSRM takes `lng,lat` while everything else in
+  this app takes `lat,lng`**, and one swap silently draws a rider in the wrong
+  district. Also: garbage bodies degrade to `null`, the fallback is labelled
+  `direction`, and no key/token is in the file.
+- **`apps/mobile/src/components/rider-map.tsx` (new)** — the map: two-finger
+  pinch, double-tap zoom (both holding the point under the fingers still),
+  one-finger pan, zoom buttons, a **recentre button that appears once the
+  customer has panned away**, the map **following the rider on every new fix**
+  until they touch it, a bike marker, the route polyline (solid accent for a
+  road, dashed grey for a direction), theme colours in light and dark, and the
+  OSM attribution on screen at all times.
+- **`apps/mobile/src/app/order/[id].tsx`** — the map card on the order screen,
+  over the text-first position block that stays exactly as it was. The rider's
+  fix is passed in; the door's fix is read from the order snapshot, which means
+  the route appears the day something writes it, with no change here.
+- **`apps/mobile/src/app/_layout.tsx`** — `GestureHandlerRootView` around the
+  tree (Android requires it above anything that recognises a gesture).
+- **i18n** — 12 new `map.*` keys in both locales (663 → **675 keys**), including
+  the honest label for the fallback: *"straight line — a direction, not a route"*
+  / *"ನೇರ ರೇಖೆ — ಇದು ದಿಕ್ಸೂಚಿ ಮಾತ್ರ, ಮಾರ್ಗವಲ್ಲ"*.
+- **`SCALE-AND-TRACKING.md` §6.5.1** — rewritten as the decision record: what the
+  famous apps use, what was kept from their design, what was refused and why.
+  T7 is now marked CODE DONE (device test owed); T8 is the door pin.
+- **`KUNIGAL.md` §4** — two rows for the map's own words ("see on a map" uses
+  `ನಕ್ಷೆ`, not `ಮ್ಯಾಪ್`).
+
+**Bugs found, while writing the checks.**
+
+1. `zoomAround` projected the old centre **at the new zoom** on the first pass,
+   which drifts the map by half a screen per zoom press. The assertion
+   "the anchor keeps its place" caught it; the fix is to find the point under
+   the anchor at the *old* zoom first. The component's `zoomToHoldingAnchor` is
+   the state wrapper of the same arithmetic.
+2. `(0, 0)` was accepted as a fix. It is what a failed GPS reports, and putting
+   a rider's dot in the Gulf of Guinea is worse than showing nothing —
+   the same rule `rider_positions` enforces in SQL. `isValidLatLng` now refuses
+   it and the check asserts it.
+3. `metresPerPixel` expectation was wrong by a factor of four when first
+   written (16 km/px in my head, 4.7 m/px on the page at z15). The check was
+   wrong, not the code — but it is exactly the sort of error a check that
+   merely restates the formula would have missed.
+
+**Verified.** `npm run typecheck` (0 errors), `npm run lint` (0 errors, 0
+warnings — `check:navigation`, `check:map-tiles` and `check:route` all run in the
+chain), `npm run check:i18n` (675 keys, parity), `npm run test:db` against a
+throwaway PostgreSQL — **675 passed | 0 failed | 675 total** (no schema change).
+No leftover `postgres` processes or `grocery-dbtest-*` directories.
+
+**Not verified, and it is the big one:** **the map has never been rendered.**
+Everything about it — pinch, tile layout, OSRM reachability from a phone, the
+recentre button, the dark theme — is code that passes checks, not a screen a
+person has looked at. `npx expo install react-native-svg` was run, so the
+project needs one `npm install` refresh before `npm run mobile` (already done in
+this workspace).
+
+**Open gaps.** No pin on the door yet (T8), so no route line appears in
+practice. OSRM's public endpoint is rate-limited by design; the fallback is the
+straight direction and the label says so. Tile usage policy: a single-shop pilot
+is inside OSM's spirit, a 10 000-user app would need its own tile service.
+
+---
+
 
 **What was asked.** Finish the agreed list. The last item needing no `.env`, no
 phone and no owner decision was **B4 — a search placeholder that cycles real

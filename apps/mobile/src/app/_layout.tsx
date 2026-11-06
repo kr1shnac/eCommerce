@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo } from 'react';
 import { ActivityIndicator, AppState, StyleSheet, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useProfile } from '@/hooks/use-profile';
 import { RealtimeOrdersProvider } from '@/hooks/use-realtime-orders';
@@ -135,12 +136,17 @@ function RootLayout() {
     // paint, so a customer opening the app in a dead spot sees the shelves rather
     // than a spinner. Only public shop data is written — see query-persistence.ts.
     <PersistQueryClientProvider client={queryClient} persistOptions={persistOptions}>
-      <ThemeProvider value={navTheme}>
-        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-        <RealtimeOrdersProvider>
-          <RootNavigator />
-        </RealtimeOrdersProvider>
-      </ThemeProvider>
+      {/* The rider map (components/rider-map.tsx) is built on the gesture
+          handler, and Android requires its root view above anything that
+          recognises a gesture. */}
+      <GestureHandlerRootView style={styles.root}>
+        <ThemeProvider value={navTheme}>
+          <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+          <RealtimeOrdersProvider>
+            <RootNavigator />
+          </RealtimeOrdersProvider>
+        </ThemeProvider>
+      </GestureHandlerRootView>
     </PersistQueryClientProvider>
   );
 }
@@ -203,4 +209,5 @@ export default wrapWithCrashReporting(RootLayout);
 
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  root: { flex: 1 },
 });
