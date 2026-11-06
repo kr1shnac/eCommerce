@@ -492,11 +492,13 @@ model.
    (`orders.refund_due_paise` as a generated column, migration
    `20261106000002`, test 26, `src/components/refund-due.tsx`). The owner's
    liability and the customer's screen now read the same number.
-7. **B3 — ₹saved in the basket**, and **the free-delivery "add ₹X more" nudge**
-   — **both built 2026-11-06** (`useCart.mrpSavingsPaise` on the cart screen and
-   in the Home basket bar; the nudge in `lib/delivery.ts` with `check:delivery`,
-   under the cart total). No migration, no new promise. Still not built from that
-   list: the cycling search placeholder (B4).
+7. **B3 — ₹saved in the basket**, **the free-delivery "add ₹X more" nudge**,
+   and **B4 — the cycling search placeholder** — **all three built 2026-11-06**
+   (`useCart.mrpSavingsPaise` on the cart screen and in the Home basket bar; the
+   nudge in `lib/delivery.ts` with `check:delivery`, under the cart total; the
+   placeholder in `components/home-search.tsx`, rotating real in-stock shelf
+   names in the customer's language). No migration and no new promise in any of
+   them.
 8. **P6 — partial fulfilment** (needs the owner's decision: short order or
    cancel?).
 9. **P7 — scheduled delivery** (needs the owner's answer about rider days).
@@ -671,15 +673,16 @@ for no gain, so it is deliberately last. One migration plus test when the shelf
 grows.
 
 **While waiting on a person, the next cheapest honest work** was B3 (show "₹40
-saved" in the cart bar) and B4 (a search placeholder that cycles real shelf
-words), both from `COMPETITOR-TEARDOWN.md` §7. **B3 is built (2026-11-06)** as
+saved" in the cart bar), B4 (a search placeholder that cycles real shelf words)
+and the free-delivery nudge, all from `COMPETITOR-TEARDOWN.md` §7 and
+`FEATURE-PARITY.md` §2.4. **All three are built (2026-11-06).** B3 is
 `useCart.mrpSavingsPaise` — MRP against shelf price, not the coupon discount —
-surfacing on the cart screen and in the Home basket bar. **The free-delivery
-nudge named in `FEATURE-PARITY.md` §2.4 is built too** (`lib/delivery.ts`,
-`check:delivery`): the cart says exactly how much more buys free delivery, and
-says nothing when adding items would save nothing. See the CHANGELOG entries for
-the reasoning. That leaves **B4**, which is a copy change over real shelf names
-and needs no decision from anyone. Neither changes a promise or a price.
+on the cart screen and in the Home basket bar. The nudge is
+`lib/delivery.ts` with `check:delivery`: the cart says exactly how much more
+buys free delivery, and says nothing when adding items would save nothing. B4 is
+`components/home-search.tsx`: the placeholder rotates one real, in-stock shelf
+name at a time, in the customer's own language. See the CHANGELOG entries for
+the reasoning. None of them changes a promise or a price.
 
 ---
 

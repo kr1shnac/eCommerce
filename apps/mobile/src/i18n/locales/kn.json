@@ -46,6 +46,7 @@
     "empty": "ಈ ವಿಭಾಗದಲ್ಲಿ ಇನ್ನೂ ಸಾಮಾನು ಇಲ್ಲ.",
     "outOfStock": "ಮುಗಿಯಿತು",
     "searchPlaceholder": "ಅಕ್ಕಿ, ಹಾಲು, ಎಣ್ಣೆ ಹುಡುಕಿ…",
+    "searchPlaceholderItem": "{name} ಹುಡುಕಿ…",
     "clearSearch": "ಹುಡುಕಾಟ ಅಳಿಸಿ",
     "noResults": "ನೀವು ಹುಡುಕಿದ ಸಾಮಾನು ಸಿಗಲಿಲ್ಲ",
     "closedTitle": "ಅಂಗಡಿ ಈಗ ಮುಚ್ಚಿದೆ",

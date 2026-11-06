@@ -2,19 +2,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  FlatList,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-} from 'react-native';
+import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToCart } from '@/components/add-to-cart';
 import { CategoryChip } from '@/components/category-chip';
+import { HomeSearch } from '@/components/home-search';
 import { LanguageSwitch } from '@/components/language-switch';
 import { OfflineBanner } from '@/components/offline-banner';
 import { ProductCard } from '@/components/product-card';
@@ -24,7 +17,6 @@ import { ThemedText } from '@/components/themed-text';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { SectionHeader } from '@/components/ui/section-header';
-import { kannadaInputFont } from '@/constants/fonts';
 import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useCategories, useProducts } from '@/hooks/use-catalog';
 import { useFavourites } from '@/hooks/use-favourites';
@@ -131,6 +123,27 @@ export default function HomeScreen() {
     }
     return categoryId ? list.filter((product) => product.category_id === categoryId) : list;
   }, [products.data, categoryId, isSearching, query]);
+
+  // The words the search placeholder rotates through (register B4). Real names
+  // from the shelf this customer is looking at, in their own language, short
+  // enough to fit one line on a small phone, and de-duplicated. In-stock only:
+  // an example that finds nothing is worse than no example at all.
+  const searchWords = useMemo(() => {
+    const seen = new Set<string>();
+    const names: string[] = [];
+
+    for (const product of products.data ?? []) {
+      if (product.stock_qty <= 0) continue;
+      const name = localizedName(product, language).trim();
+      if (name.length === 0 || name.length > 18 || seen.has(name)) continue;
+      seen.add(name);
+      names.push(name);
+    }
+
+    // Shortest first: the first example is the one most likely to be seen, and a
+    // placeholder is a single line that must not be clipped.
+    return names.sort((a, b) => a.length - b.length).slice(0, 6);
+  }, [products.data, language]);
 
   const emojiByCategory = useMemo(() => {
     const map = new Map<string, string>();
@@ -423,33 +436,7 @@ export default function HomeScreen() {
           </View>
         </View>
 
-        <View
-          style={[
-            styles.searchBar,
-            { backgroundColor: theme.backgroundElement, borderColor: theme.border },
-          ]}>
-          <Ionicons name="search" size={20} color={theme.textSecondary} />
-          <TextInput
-            value={term}
-            onChangeText={setTerm}
-            placeholder={t('home.searchPlaceholder')}
-            placeholderTextColor={theme.textTertiary}
-            style={[styles.searchInput, kannadaInputFont(language), { color: theme.text }]}
-            returnKeyType="search"
-            autoCorrect={false}
-            autoCapitalize="none"
-            accessibilityLabel={t('home.searchPlaceholder')}
-          />
-          {term.length > 0 ? (
-            <Pressable
-              onPress={() => setTerm('')}
-              accessibilityRole="button"
-              accessibilityLabel={t('home.clearSearch')}
-              hitSlop={10}>
-              <Ionicons name="close-circle" size={20} color={theme.textSecondary} />
-            </Pressable>
-          ) : null}
-        </View>
+        <HomeSearch value={term} onChangeText={setTerm} words={searchWords} />
       </View>
 
       <FlatList
@@ -727,16 +714,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: Radii.pill,
   },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.two,
-    minHeight: 52,
-    paddingHorizontal: Spacing.three,
-    borderRadius: Radii.md,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  searchInput: { flex: 1, fontSize: 16, paddingVertical: 0 },
   sectionTitle: { marginTop: Spacing.four, marginBottom: Spacing.two },
   chipsRow: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
   dealsRow: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },

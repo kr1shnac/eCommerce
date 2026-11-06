@@ -662,7 +662,7 @@ A10 ✗. `HANDOFF.md` §6.4 has the evidence and §6.5 the plan for what is left
   throughout. The coupon `discount_paise` is not folded in: it only exists at
   checkout, and mixing the two would produce a number the customer cannot
   reconcile with any packet in their bag.
-- **B4 Search placeholder that cycles** with real shelf items ("ಅಕ್ಕಿ", "ಹಾಲು") — a copy change, and it teaches what search can do to someone who has never used search.
+- **B4 Search placeholder that cycles** with real shelf items ("ಅಕ್ಕಿ", "ಹಾಲು") — a copy change, and it teaches what search can do to someone who has never used search. **Built 2026-11-06** as `components/home-search.tsx`: one real, in-stock shelf name at a time, in the customer's language, taken from the same rows the shelf is drawn from (so every example finds something), pausing on focus and swapping without a fade. The static `home.searchPlaceholder` is kept as the fallback and the screen-reader label.
 - **B5 Birthday capture** (one optional field, one message). Theirs is a bottom sheet, server-driven; ours can be a row in the account screen.
 - **B6 Cap the add-to-cart flourish at 3** — *if and when* we add one. Recorded so nobody ships an uncapped animation later.
 - **B7 Home page TTL** (`pageReloadTime: 900000`). Our `SHELF_STALE_MS` is 5 min `[CODE]`; theirs is 15. Ours is more conservative; leave it.

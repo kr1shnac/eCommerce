@@ -6,6 +6,86 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-06 — The search box shows a real thing from the shelf
+
+**What was asked.** Finish the agreed list. The last item needing no `.env`, no
+phone and no owner decision was **B4 — a search placeholder that cycles real
+shelf items** (`COMPETITOR-TEARDOWN.md` §7).
+
+**What was built.**
+
+- **`apps/mobile/src/components/home-search.tsx` (new)** — the Home search field
+  moved out of the screen into its own component, because it now owns state
+  (which word is showing, whether it has focus) rather than being a styled
+  `TextInput`. The placeholder rotates through **one real, in-stock shelf name at
+  a time**, every 4 s, in the customer's own language (Kannada names come from
+  `name_kn`, so they cannot drift from the shelf), and falls back to the existing
+  static `home.searchPlaceholder` when there is nothing to show. The clear button
+  moved with it.
+- **`apps/mobile/src/app/(tabs)/index.tsx`** — builds the word list from the same
+  `useProducts()` rows the shelf is drawn from: in-stock only, trimmed,
+  de-duplicated, no longer than 18 characters (a placeholder is one line on a
+  small phone and must not be clipped), shortest first, at most 6. Shortest-first
+  because the first word is the one most likely to be seen. Everything else about
+  searching (it covers the whole shop, ignores the category chip) is unchanged.
+- **i18n** — `home.searchPlaceholderItem` in both locales:
+  `"Search for {name}…"` / `"{name} ಹುಡುಕಿ…"`. `home.searchPlaceholder` is kept:
+  it is the fallback when the shelf is empty/loading, and the **static**
+  screen-reader label. 641 → **642 keys**, identical in `en.json` and `kn.json`.
+- **Docs** — `KUNIGAL.md` §6 Home now describes what the placeholder does and why
+  it stops changing on touch; `FEATURE-PARITY.md` §2.3's search row and
+  `COMPETITOR-TEARDOWN.md` B4 record it as built; `HANDOFF.md` §6.2 item 7 and
+  §6.4 close out the three-item list (B3, the nudge, B4).
+
+**Verified.**
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — clean, zero warnings; `check:i18n` reports **642 keys in both
+  languages, 476 used literals**, and all eleven chained check scripts pass.
+- `node scripts/run-db-tests.mjs` (portable PostgreSQL 16.6) — **635 passed, 0
+  failed, 635 total**. No schema change; the run confirms that.
+- **Not verified: the placeholder on a screen.** There is still no `.env` and no
+  device on this laptop. Whether a long Kannada shelf name fits one line at the
+  seed's font size, and whether a 4 s interval feels right, are guesses until the
+  device pass.
+
+**Decisions, and why.**
+
+1. **The names come from the catalogue, not from a curated list.** A hand-written
+   list ("rice", "milk", "oil") can go stale the day an item is pulled; a name
+   taken from an in-stock row is guaranteed to find something, which is the whole
+   point of an example.
+2. **In-stock only.** An example that returns an empty result teaches the
+   customer that search is broken.
+3. **The rotation pauses on focus, and stops when there is text.** Text changing
+   under somebody's thumb while they decide what to type is a nuisance; and once
+   there is a query the placeholder is hidden anyway, so the interval would be
+   invisible work.
+4. **No fade.** A `TextInput` placeholder cannot be animated cross-platform
+   without overlaying our own text over the input, which puts a fake element over
+   the real tap target. A quiet swap in a field that never moves is honest and
+   costs nothing.
+5. **The screen-reader label stays fixed** (`home.searchPlaceholder`). A label
+   that changes every four seconds is noise for somebody listening, and the
+   rotating text is decorative — the accessible name should say what the control
+   does, not what it is currently advertising.
+6. **At most 6 words, 18 characters each.** More words do not add meaning, and a
+   longer one is clipped, which looks like a bug rather than an example.
+
+**Open gaps.**
+
+- The placeholder is Home-only. The owner's shelf/photos screens have search
+  fields of their own with fixed placeholders; a staff search that named a real
+  product would help there too, but that is a different screen and a different
+  change.
+- The list is rebuilt whenever the product query or the language changes, which
+  is correct but untested at a larger catalogue (34 products today). Sorting six
+  names out of 300 is still trivial, but the 18-character rule may need revisiting
+  when more long names arrive.
+- Like everything else in this app, it has never been seen on a phone.
+
+---
+
 ## 2026-11-06 — Free delivery, said as a number instead of a rule
 
 **What was asked.** Continue the agreed list. The next item needing no `.env`, no

@@ -138,7 +138,10 @@ English, and the English should be improved to match where it is weak:
 - **Home.** "The shop is open, here is what we have, what do you want?"
   The address pill names the customer's own area, not a generic town. Live offers
   appear before the shelves — a code is the reason to fill a basket — but never
-  while the customer is searching.
+  while the customer is searching. The search field does not print a generic
+  example: its placeholder takes turns showing one real thing from the shelf in
+  front of the customer, in their language, so the example is a word that will
+  actually find something. It stops changing the moment they touch it.
 - **Cart.** "This is your basket, this is the total, continue when ready." Under
   the total, one quiet line when the shop is cheaper than the packet: how much
   less than MRP. It is a fact about the shelf, not a claim about the shop.

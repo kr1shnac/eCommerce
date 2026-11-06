@@ -97,7 +97,7 @@ Those two are the answer to "what has been left out".
 
 | Blinkit / Zepto behaviour | This app today | Verdict |
 | --- | --- | --- |
-| Search across the whole shop | **BUILT**, client-side over the cached catalogue so it works on one bar `[CODE]` — `(tabs)/index.tsx:103` | **HAVE** |
+| Search across the whole shop | **BUILT**, client-side over the cached catalogue so it works on one bar `[CODE]` — `(tabs)/index.tsx`. Its placeholder cycles real, in-stock shelf names in the customer's own language (`components/home-search.tsx`, register B4), so every example is a word that actually finds something | **HAVE** |
 | Category tiles, offers row, pack-size chips ("also in 1 kg") | **BUILT** `[CODE]` — `pack-options.tsx`, migration `20261021000004` | **HAVE** |
 | Out-of-stock items shown but not addable | **BUILT** — filtered by `stock_qty > 0` `[CODE]` — `(tabs)/index.tsx:132` | **HAVE** |
 | "₹X saved" shown while the basket is open | **BUILT** `[CODE]` — `useCart.mrpSavingsPaise`, shown under the subtotal on the cart screen and as a second line in the Home basket bar. It is MRP minus shelf price on the units in the basket, not a coupon figure | **HAVE** |

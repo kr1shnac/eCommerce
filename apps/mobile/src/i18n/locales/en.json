@@ -46,6 +46,7 @@
     "empty": "No products in this category yet.",
     "outOfStock": "Out of stock",
     "searchPlaceholder": "Search rice, milk, oil…",
+    "searchPlaceholderItem": "Search for {name}…",
     "clearSearch": "Clear search",
     "noResults": "No items match your search",
     "closedTitle": "The shop is closed right now",
