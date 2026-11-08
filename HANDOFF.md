@@ -525,9 +525,14 @@ model.
 3. **Razorpay** (Phase 5): online payment as a second method beside COD; the
    order is placed only after the server verifies the signature. Needs an EAS
    development build. COD stays the default.
-4. **Live map / background location** (Phase 6), only after the text-first
-   tracking has been used on a phone. Choose the map vendor last; keep the screen
-   replaceable.
+4. **The map is built** (`df71cd5` + `433e611`): OSM raster tiles composited by
+   the app, no SDK, no API key, no billing account, with an OSRM road route and
+   an honest straight-line fallback. The door pin now exists, so the route and
+   the ETA work. What remains of Phase 6 is the **live follow-the-rider view on
+   the rider's own card** (T9) and **background location**, both of which wait on
+   a device run rather than on a decision. The vendor is chosen and it is
+   OpenStreetMap; the map is `components/rider-map.tsx` and is replaceable, as
+   planned.
 5. **P5 — post-delivery "was everything right?"** — **built 2026-11-06**
    (`order_feedback`, migration `20261106000001`, test 25, the card on
    `order/[id]`). The record exists; aggregating it for the owner is a later,
@@ -770,8 +775,9 @@ the reasoning. None of them changes a promise or a price.
 5. Apply the missing migrations to the hosted project and clean the demo data.
 6. Set up OTP/SMS + DLT and prove one real sign-in.
 7. Create an EAS development build; test location consent, a real rider fix,
-   the customer's text tracker, and native crash reporting.
-8. Then push notifications, then Razorpay, then the map.
+   the customer's text tracker, the map and the door pin, and native crash
+   reporting.
+8. Then push notifications, then Razorpay.
 9. Only then start the Play closed test; the calendar is the launch gate.
 
 ---
