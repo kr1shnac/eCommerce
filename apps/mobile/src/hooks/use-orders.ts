@@ -102,6 +102,15 @@ export type NewAddress = {
   city: string;
   pincode: string;
   is_default?: boolean;
+  /**
+   * The door pin, dropped on the map (`addresses.lat/lng`, migration
+   * 20261107000001). Optional because an address is still perfectly good
+   * without one — the landmark text has worked for years — and because the
+   * column is nullable: an update carrying `null` deliberately clears the pin,
+   * which is what "remove this" means.
+   */
+  lat?: number | null;
+  lng?: number | null;
 };
 
 /**

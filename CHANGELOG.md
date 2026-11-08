@@ -6,6 +6,126 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-08 — The door has a pin: the map finally has a route, and the ETA finally has a door
+
+**What was asked.** "Done with implementation? If not, go for it." The map
+(`df71cd5`) was built and committed, and it was honest about its one gap:
+**no pin on the door**, so it drew a rider alone with no route line and
+`order_rider_position` still returned `distance_m = NULL, eta_minutes = NULL`
+for every order the shop has ever placed. That is T8 in `SCALE-AND-TRACKING.md`
+§8, and it is what this session closed.
+
+**The decision.** Not geocoding, not a column dedupe, not a live join.
+
+* The order's **snapshot** carries the pin, not the live address. `place_order()`
+  copies `addresses.lat/lng` into `delivery_address` when the saved address has
+  a usable pair. A snapshot is what stops a customer who moves house next year
+  from rewriting where their 2026 order went — the same rule the shop already
+  applies to the street and the landmark.
+* The keys are **absent, never null.** `jsonb_build_object` will happily store
+  `"lat": null`, and then every reader has to distinguish "no pin" from "a pin
+  of null". Not writing the key makes the absence the answer, and the test
+  asserts it (`delivery_address ? 'lat'` is false, and `->>` is null).
+* `public.is_usable_fix(lat, lng)` is now the **one SQL definition** of "a
+  coordinate that is a place": both present, inside the earth, and **not the null
+  island**. `rider_positions` already enforced exactly that with a CHECK and
+  `src/lib/map-tiles.ts` already enforced it in TypeScript; the third copy is in
+  SQL because the write path needs it and a snapshot is written by Postgres, not
+  by the app.
+* `order_rider_position` now measures to **the snapshot's door first, the saved
+  address second**. It was wrong in one direction each way: a moved pin would
+  put the ETA on a different door from the map, and every address saved before
+  this feature existed would have stayed NULL forever even after the customer
+  dropped a pin.
+
+**What was built.**
+
+- `supabase/migrations/20261107000001_door_pin.sql` (new, 30th migration) —
+  `is_usable_fix()`, `place_order()` re-created with the pin in the snapshot,
+  the column comment, and `order_rider_position` re-pointed. The re-created
+  `place_order` is a copy of the **6-argument current version** (coupons + the
+  stock-movement flag), not the 5-argument original — copying the old one would
+  have dropped coupon support; getting the signature wrong would have left two
+  overloads and made every RPC call ambiguous.
+- `supabase/tests/28_door_pin_test.sql` (new, **39 assertions**) — the pin is
+  snapshotted; a missing pin writes no keys at all; moving the pin afterwards
+  changes nothing already placed while a later order picks up the later pin; a
+  customer cannot insert or update an order any other way; the address table
+  itself refuses latitude 91 and the null island; the ETA measures **1404.9 m to
+  the snapshot's door and emphatically not the 3702.4 m the moved address would
+  give**; and with no pin anywhere, distance and ETA stay NULL rather than
+  guessed.
+- `src/lib/order-view.ts` — `snapshotFix()`, the one place that turns the two
+  jsonb keys into a fix the map can draw, plus `lat`/`lng` on `SnapshotAddress`.
+- `components/rider-map.tsx` — no longer rider-only: `pin`/`placeable`/
+  `onPinChange`, a **long-press that moves the pin** (with `maxDistance`, so a
+  drag is a pan and never an accidental relocation), and a subject of
+  `rider ?? pin ?? destination` so the same component serves the tracking card
+  and the address screen.
+- `src/lib/location.ts` — `currentFix()`, the one-shot answer to "where am I
+  standing", foreground and single, asked at the moment the customer taps.
+- `src/app/address.tsx` — the door-pin card: the map, long-press to move,
+  "use my current location", and a remove button. A missing pin is still a
+  perfectly valid address.
+- `src/app/order/[id].tsx` — `snapshotFix` replaces a hand-rolled
+  `typeof snapshot.lat === 'number'` check, and the map card now also renders
+  when there is no live rider fix but the order carries a door.
+- `src/app/rider/index.tsx` — the door map on "my deliveries", and the
+  directions link now carries **coordinates** when the order has them and the
+  landmark sentence when it does not.
+- `scripts/check-order-view.mjs` — a new §5 of 20 assertions for `snapshotFix`
+  (a string latitude, a NaN, a 999 and the null island are all `null`), and one
+  shared `isUsableFix` definition in `navigation-links.ts` so the link, the
+  marker and the tile maths cannot disagree.
+- `scripts/check-location.mjs` — `currentFix()` degrades to `null` under Node.
+- **i18n 675 → 683 keys**, both locales, including the honest label for the
+  fallback and the Kannada voice for a pin: **`ಬುಟ್ಟಿ ಎಲ್ಲಿಗೆ ತರಬೇಕು?`** ("where
+  should the bag be brought") rather than the device word for a pin. Four new
+  `KUNIGAL.md` glossary rows record why.
+
+**Bugs found.**
+
+1. The first `place_order` I wrote used the **old 5-argument signature**, which
+   the test suite caught immediately as `function public.place_order(unknown,
+   unknown, unknown, unknown) is not unique` — every RPC call in the app would
+   have failed at runtime. Migrations are append-only, so re-creating a function
+   means copying the *current* one, and the current one had two later
+   amendments (coupons, stock flag) that this session had to carry verbatim.
+2. Test 28's own `format($$update …$$)` inside a `do $$ … $$` block is a
+   dollar-quote collision — the inner `$$` terminates the outer one. Caught by
+   psql before it ever ran; rewritten as a subquery.
+3. `test_result.refused()` is the wrong helper for an RLS **UPDATE**: RLS makes
+   someone else's row invisible, so the statement *succeeds with zero rows*
+   rather than raising. The "customer cannot rewrite a snapshot" assertion is
+   `touches(…, 0)`, which is the trap the harness file itself warns about.
+4. The distance I first asserted by hand (1405.6) was 0.7 m off — so the exact
+   value now comes from the haversine formula, and the *interesting* number
+   (the 3702.4 m the moved address would give) is asserted too, because "it is
+   the right door" is the claim and "not the wrong one" is what actually proves
+   it.
+
+**Verified.** `npm run typecheck` (0 errors, both apps), `npm run lint` (0
+errors, 0 warnings — all fourteen chains, including `check:navigation`,
+`check:map-tiles`, `check:route` and the extended `check:view` and
+`check:location`), `npm run check:i18n` (683 keys, parity), and
+`npm run test:db` against a throwaway PostgreSQL — **714 passed | 0 failed |
+714 total** (675 before; +39 new). No leftover `postgres` processes and no
+`grocery-dbtest-*` directories.
+
+**Not verified, and it is the big one.** **Nothing here has been rendered.** The
+map, the pin drop, the long-press, the tile layout and OSRM's reachability from
+a phone are all checked code, not a looked-at screen. `npx expo install
+react-native-svg` was run in the previous session, so the workspace is ready;
+what is missing is a device.
+
+**Open gaps.** OSRM's public endpoint has published limits and a single-shop
+pilot is inside OSM's spirit, but a 10 000-user app needs its own tile service.
+A pin is the customer's own claim about their own door — the database
+guarantees it is *a place*, not the right one, so the landmark text stays the
+rider's primary instruction. `A11–A13` and P6 still wait on owner decisions.
+
+---
+
 ## 2026-11-06 — A rider cannot close a bag without the four digits
 
 **What was asked.** The biggest hole against the measured teardown

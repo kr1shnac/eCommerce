@@ -81,7 +81,7 @@ fields — see §6.
 
 Everything below is in `master` and passes the gates in §3.
 
-### 2.1 Database (29 migrations)
+### 2.1 Database (30 migrations)
 
 - One store, 8 categories, 34 products, 4 delivery zones, 2 coupons, settings.
 - Every table has RLS and explicit policies. Customers read their own addresses
@@ -122,6 +122,13 @@ Everything below is in `master` and passes the gates in §3.
   The admin keeps the documented direct-update escape hatch.
 - **Post-delivery feedback** (`order_feedback`, migration `20261106000001`) and
   **refund due** as a generated stored column (`20261106000002`).
+- **The door pin** (migration `20261107000001`): `place_order()` copies
+  `addresses.lat/lng` into the order's own `delivery_address` snapshot — as two
+  jsonb keys that are *absent, never null*, when the address has no pin —
+  `is_usable_fix()` is the one SQL definition of "a coordinate that is a place",
+  and `order_rider_position` measures the distance and ETA to the snapshot's
+  door first and the saved address second. Until this migration, `distance_m`
+  and `eta_minutes` were NULL for every order ever placed.
 
 ### 2.2 Customer app
 
@@ -130,16 +137,20 @@ Everything below is in `master` and passes the gates in §3.
 - Search, category chips, product detail, favourites, "buy again", offers rail.
 - Cart persisted on the device, quantity clamped to stock, basket bar.
 - Addresses with a landmark (the town has no reliable house numbers), one default
-  enforced by a partial unique index.
+  enforced by a partial unique index, and a **door pin** dropped on the same OSM
+  map the tracking screen uses (long-press, or "use my current location").
 - Checkout with COD, coupon code (the app sends only the code; Postgres decides
   the discount), delivery fee from the zone, idempotent `place_order()`.
 - Order history, detail, tracker, cancel-while-placed, reorder, invoice/transaction
   document, privacy notice in both languages.
 - Rider name/photo and a **Call the rider** button on the order screen.
 - Text-first delivery tracking: age, distance, ETA, and a fifth "Picked up" stop.
-  **No map and no dot** — deliberate (`SCALE-AND-TRACKING.md` §6.2). The one map
-  affordance that ships is a plain HTTPS link to the phone's own maps app
-  ("ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ") — no SDK, no API key (§6.5.1).
+  The distance and ETA now work because the order carries a door pin
+  (migration `20261107000001`). The tracking card stays text-first, and the map
+  behind it is **OpenStreetMap tiles composited by the app itself** — no SDK, no
+  API key, no billing account — with a road-snapped route from OSRM that falls
+  back to a dashed line labelled "a direction, not a route" when the router does
+  not answer (`SCALE-AND-TRACKING.md` §6.5.1).
 - **The four-digit handover code** on the order screen while the order is out for
   delivery, read out to the rider. Only the order's own customer can read it.
 - Kannada text-to-speech on product/cart, hidden when the phone has no Kannada
@@ -166,6 +177,9 @@ Everything below is in `master` and passes the gates in §3.
 - One-time location consent in Kannada; foreground-only watcher; throttled writes
   (movement/interval rules in `src/lib/tracking-rules.ts`); one final fix when
   the app backgrounds, then the subscription stops. No background permission.
+- **The door on the map**, on "my deliveries": the order's snapshot pin, drawn
+  on the same key-free OSM tiles, plus a directions link that now carries the
+  coordinates when the order has them and the landmark sentence when it does not.
 
 ### 2.4 Owner app
 
@@ -184,11 +198,12 @@ Everything below is in `master` and passes the gates in §3.
 
 - TypeScript everywhere; TanStack Query for server state; Zustand for device
   state; Expo Router with `Stack.Protected` role gates.
-- 660 i18n keys in `en.json` and `kn.json`, parity enforced; every placeholder is
+- 683 i18n keys in `en.json` and `kn.json`, parity enforced; every placeholder is
   single-brace `{name}`; plurals are `_one`/`_other`.
-- 27 SQL test files + a two-session concurrency suite = **675 assertions**,
-  against a real throwaway PostgreSQL, on every `npm run test:db`.- Nine pure-JS guard scripts run inside `npm run lint`: i18n, order view,
-  persistence allowlist, speech, packs, auth doors, storage, location, tracking.
+- 28 SQL test files + a two-session concurrency suite = **714 assertions**,
+  against a real throwaway PostgreSQL, on every `npm run test:db`.- Twelve pure-JS guard scripts run inside `npm run lint`: i18n, order view,
+  persistence allowlist, speech, packs, unit price, auth doors, storage,
+  location, tracking, navigation, map tiles, route.
 - CI (`.github/workflows/checks.yml`) runs typecheck, lint, the session check,
   the database suite and `expo-doctor` on every push. The one `expo-doctor`
   exemption (Metro `disableHierarchicalLookup`) is argued in `PRODUCTION.md`.
@@ -545,6 +560,14 @@ model.
   its own shape in the erasure path plus a test. Customers are unaffected.
 - The feedback card is code-complete but has never been seen on a phone, like
   every other screen here.
+- **The map has never been rendered anywhere.** Tiles, pinch, the OSRM call, the
+  door pin and the recentre button are all proved as code and as pure arithmetic
+  (`check:map-tiles`, 55 assertions; `check:route`, 45; the DB suite, 39 new
+  assertions for the pin), and none of it has been looked at by a person.
+- **A pin is the customer's own claim about their own door.** The database
+  guarantees a pin is *a place* (`is_usable_fix`: inside the earth, not the null
+  island); it cannot guarantee it is the right place. The landmark text remains
+  the rider's primary instruction, and the pin sits beside it, not instead of it.
 - `common.off` is an unused i18n key and `expo-localization` is only a config
   plugin; both are deliberately left for a future "follow the device" option.
 
@@ -572,8 +595,8 @@ decisions.
   superfamily, and their five-service-tier model.
 - **Kept and defended:** full dark mode (neither web app has one), the 12.5 px
   floor with 1.5× line height, Kannada-first voice, text-first rider tracking
-  (no map, no dot), packs not fractions (integer paise), and money/RLS in
-  Postgres.
+  with a key-free OSM map behind it, packs not fractions (integer paise), and
+  money/RLS in Postgres.
 - **Agreed build order for the cheap six:** A5 → A6 → A4 → A3 → A2 → A1.
   **A5, A6, A3-card and A2 are built** (2026-11-03). A7–A10 come after that; A9
   needs the owner and a CA.

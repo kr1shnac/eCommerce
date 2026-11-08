@@ -30,7 +30,14 @@
  *   would send a bag to the wrong house.
  * - No distance or ETA of its own. `tracking-rules.ts` owns those numbers so
  *   the app and the database cannot disagree.
+ *
+ * WHAT IT BORROWS
+ * ---------------
+ * "Is this coordinate a place" is `isValidLatLng` from `lib/map-tiles.ts`. See
+ * the comment on `isUsableFix`.
  */
+
+import { isValidLatLng } from '@/lib/map-tiles';
 
 /** One place a maps link can point at. */
 export interface NavigationTarget {
@@ -57,26 +64,24 @@ const MAPS_ORIGIN = 'https://www.google.com/maps/';
  */
 const MAX_LABEL_CHARS = 300;
 
-/** WGS-84 bounds. A fix outside them is a bug, not a place. */
-const LAT_MIN = -90;
-const LAT_MAX = 90;
-const LNG_MIN = -180;
-const LNG_MAX = 180;
 
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-/** True only for a fix this module is willing to put in a URL. */
+/**
+ * True only for a fix this module is willing to put in a URL.
+ *
+ * It delegates to `isValidLatLng` in `lib/map-tiles.ts` rather than repeating
+ * the bounds. There are three layers that answer "is this coordinate a place" —
+ * the SQL write guard (`public.is_usable_fix`), this one, and the tile maths —
+ * and the reason this one borrows the map's is that a coordinate rejected here
+ * and accepted by the database, or vice versa, would leave one screen drawing a
+ * marker that another screen refuses to link to. One definition, two callers.
+ *
+ * The null island is refused for the same reason the map refuses it: `(0, 0)`
+ * is what a device reports when it has no idea where it is, and a maps link to
+ * the Gulf of Guinea is worse than no link.
+ */
 export function isUsableFix(lat?: number | null, lng?: number | null): boolean {
-  return (
-    isFiniteNumber(lat) &&
-    isFiniteNumber(lng) &&
-    lat >= LAT_MIN &&
-    lat <= LAT_MAX &&
-    lng >= LNG_MIN &&
-    lng <= LNG_MAX
-  );
+  if (lat == null || lng == null) return false;
+  return isValidLatLng({ lat, lng });
 }
 
 /** True when there is at least one thing a maps app could act on. */

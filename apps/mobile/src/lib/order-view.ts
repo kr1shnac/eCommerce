@@ -6,6 +6,8 @@
  * show, so the rider, the owner and the customer read the same address the same
  * way. Three screens used to join it by hand; they drifted.
  */
+import { isValidLatLng } from '@/lib/map-tiles';
+
 export type SnapshotAddress = {
   full_name?: string;
   phone?: string;
@@ -14,6 +16,14 @@ export type SnapshotAddress = {
   landmark?: string;
   city?: string;
   pincode?: string;
+  /**
+   * The door pin, when the address had one and `place_order()` copied it
+   * (migration 20261107000001). ABSENT — not null — when there is no pin, which
+   * is why these are optional rather than `number | null`: reading a missing key
+   * and reading a null value must not be two different code paths.
+   */
+  lat?: number;
+  lng?: number;
 };
 
 /**
@@ -84,6 +94,33 @@ export function splitSnapshotAddress(address: SnapshotAddress): {
 /** True when there is a landmark worth leading with. */
 export function hasLandmark(address: SnapshotAddress): boolean {
   return Boolean(address.landmark?.trim());
+}
+
+/**
+ * The door pin in a snapshot, as a fix the map can draw — or `null`.
+ *
+ * THE RULE THIS OWNS
+ * ------------------
+ * A snapshot is `jsonb` written by a database function, and the app reads it
+ * back as `Record<string, unknown>`. Anything in it could be a string, a null,
+ * or an out-of-range number, and a map that draws a door at `lat: "12.5"` or
+ * `lat: 999` is not a broken screen — it is a **rider sent to the wrong house**,
+ * with no error anywhere. So this function is the only place that turns those
+ * two keys into a marker, and it refuses anything that is not a place.
+ *
+ * The same rule exists twice more, deliberately, in the two other layers that
+ * need it: `public.is_usable_fix()` in SQL (migration 20261107000001) guards the
+ * write, and `isValidLatLng` in `lib/map-tiles.ts` guards the drawing. This
+ * function uses the map's version rather than re-writing the bounds, because
+ * the numbers have to be the same ones the tile maths uses — a pin at latitude
+ * 89 would pass a "is it a coordinate" test and still fail to project.
+ *
+ * A missing key and a null value both give `null`. There is no third answer.
+ */
+export function snapshotFix(address: SnapshotAddress): { lat: number; lng: number } | null {
+  const { lat, lng } = address;
+  if (typeof lat !== 'number' || typeof lng !== 'number') return null;
+  return isValidLatLng({ lat, lng }) ? { lat, lng } : null;
 }
 
 /**

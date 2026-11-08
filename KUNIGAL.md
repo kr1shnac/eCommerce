@@ -113,6 +113,9 @@ and why.
 | Navigate (rider button) | **ದಾರಿ ತೋರಿಸಿ** | "Show the way." `ನ್ಯಾವಿಗೇಟ್` / `ನ್ಯಾವಿಗೇಶನ್` is English written in Kannada letters — the same move the glossary refuses for `ಫ್ರೀ`. The button opens the phone's own maps app, so "show the way" is also literally true. |
 | See on a map (customer) | **ನಕ್ಷೆಯಲ್ಲಿ ನೋಡಿ** | "Look on the map." Not `ಮ್ಯಾಪ್‌ನಲ್ಲಿ ನೋಡಿ`: `ನಕ್ಷೆ` is the Kannada word people already use for a map, and the customer is looking at a *place*, not at an app. |
 | A road route (the line on the map) | **ರಸ್ತೆ ಮಾರ್ಗ** | "The road route." Used where the line follows real roads. When the router could not answer, the screen says **`ನೇರ ರೇಷೆ — ಇದು ದಿಕ್ಸೂಚಿ ಮಾತ್ರ, ಮಾರ್ಗವಲ್ಲ`** ("straight line — a direction, not a route"), because a road we invented is a lie about the way home. |
+| A door pin | **ಬುಟ್ಟಿ ಎಲ್ಲಿಗೆ ತರಬೇಕು?** | The question the address screen asks before showing a map. Not `ಪಿನ್ ಹಾಕಿ` ("insert a pin"): a customer who may not read the word "pin" is asked the shop's own question — where should the bag be brought — and the map is the answering space. |
+| Moving the pin | **ನಕ್ಷೆಯ ಮೇಲೆ ಒತ್ತಿ ಹಿಡಿಯಿರಿ** | "Press and hold on the map." Written as an instruction in the helper's voice, with the *effect* in the verb (`ಬೀಳುತ್ತದೆ` — "falls into place"), not a device gesture name. |
+| Use my current location | **ನಾನು ಇರುವ ಸ್ಥಾನವನ್ನೇ ಬಳಸಿ** | "Use the place I am." Not `ಲೋಕೇಶನ್ ಬಳಸಿ` ("use location"): the Kannada names the place, because the customer is consenting to a *place*, not to a technology. When it fails the screen offers the finger instead: **`ಸ್ಥಳ ಸಿಗಲಿಲ್ಲ. ಬೆರಳು ಜರುಗಿಸಿ ಪಿನ್ ಬ್ಲಸಬಹುದು.`** |
 
 ## 5. Improvisations (deliberate, not literal)
 

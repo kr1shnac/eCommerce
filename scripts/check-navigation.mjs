@@ -76,8 +76,16 @@ for (const [name, lat, lng] of [
   expect(`no directions for ${name}`, mapsDirectionsUrl({ lat, lng }), null);
   expect(`no place link for ${name}`, mapsPlaceUrl({ lat, lng }), null);
 }
-expect('the exact north pole corner is still a place', mapsDirectionsUrl({ lat: 90, lng: 180 }) !== null, true);
+expect('the north Mercator corner is still a place', mapsDirectionsUrl({ lat: 85, lng: 180 }) !== null, true);
 expectTrue('a null fix with no label has no target', !hasNavigationTarget({ lat: null, lng: null }));
+// (0,0) is what a device reports when it has no idea where it is. A maps link to
+// the Gulf of Guinea is worse than no link, and `isUsableFix` now shares the
+// map's rule rather than keeping its own copy of the bounds.
+expectTrue('the null island is not a place', !isUsableFix(0, 0));
+expectTrue('a real fix is still a place', isUsableFix(13.0316, 77.0395));
+// Past the Mercator limit the map cannot draw the fix at all, so the link to it
+// is refused too — one definition of "a place", imported from map-tiles.
+expectTrue('latitude 89 is refused: it cannot be drawn', !isUsableFix(89, 77.0395));
 
 console.log('\n=== 3. an address is encoded, so Kannada survives the URL ===');
 const kann = 'ಕುನಿಗಲ, ಹೊರಗೆ ಮಾರುಕಟ್ಟೆ, ಬೆಂಗಳೂರು ರೋಡ್';
@@ -101,9 +109,15 @@ expect('a padding-only label is trimmed then capped', new URL(mapsDirectionsUrl(
 console.log('\n=== 5. no key, no SDK, one origin, always HTTPS ===');
 const source = readFileSync(join(root, 'apps/mobile/src/lib/navigation-links.ts'), 'utf8');
 const codeOnly = source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+// Imports are stripped for the endpoint test, and only for that one: this module
+// imports `isValidLatLng` from `@/lib/map-tiles` so there is ONE definition of
+// "is this coordinate a place" instead of three, and the module path contains
+// the word "tile". An import is not a request — the assertion below is about
+// this file talking to a tile provider, which it must never do.
+const callsOnly = codeOnly.replace(/^\s*import[^\n]*\n/gm, '');
 expectTrue('no api key parameter anywhere', !/key=/.test(codeOnly));
 expectTrue('no map SDK import', !/(react-native-maps|mapbox|leaflet|maplibre|WebView)/i.test(codeOnly));
-expectTrue('no tile or provider endpoint', !/tile|staticmap|geocode/i.test(codeOnly));
+expectTrue('no tile or provider endpoint', !/tile|staticmap|geocode/i.test(callsOnly));
 expectTrue('HTTPS only', mapsDirectionsUrl({ lat: 1, lng: 1 }).startsWith('https://'));
 expectTrue('one origin, always google maps', mapsDirectionsUrl({ lat: 1, lng: 1 }).startsWith('https://www.google.com/maps/'));
 expectTrue('the place link shares the origin', mapsPlaceUrl({ lat: 1, lng: 1 }).startsWith('https://www.google.com/maps/'));

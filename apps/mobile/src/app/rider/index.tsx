@@ -17,6 +17,7 @@ import { OfflineBanner } from '@/components/offline-banner';
 import { DeliveryCodeEntry } from '@/components/delivery-code-entry';
 import { NavigateButton } from '@/components/navigate-button';
 import { RiderAddressBlock } from '@/components/rider-address-block';
+import { RiderMap } from '@/components/rider-map';
 import { LocationConsentCard } from '@/components/location-consent-card';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
@@ -43,7 +44,7 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
-import { formatClock, isSameDay, readSnapshotAddress, snapshotAddressLine } from '@/lib/order-view';
+import { formatClock, isSameDay, readSnapshotAddress, snapshotAddressLine, snapshotFix } from '@/lib/order-view';
 import { hasLocationConsent, recordLocationConsent } from '@/lib/location-consent';
 import { orderStatusStyle } from '@/lib/order-status';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -424,6 +425,11 @@ export default function RiderScreen() {
           ) : (
             myDeliveries.map((order) => {
               const address = readSnapshotAddress(order);
+              // The door from THIS order's snapshot. Null when the customer
+              // saved no pin — which is still the common case for addresses
+              // saved before the pin screen existed, and is handled by not
+              // drawing a map rather than by inventing a door.
+              const doorFix = snapshotFix(address);
               const actionKey = ACTION_KEY[order.status];
               const busy = advance.isPending && advance.variables?.orderId === order.id;
               const style = orderStatusStyle(theme, order.status);
@@ -455,6 +461,18 @@ export default function RiderScreen() {
                   </View>
                   <RiderAddressBlock address={address} />
 
+                  {/*
+                    The door on the map. The rider knows where they are (they
+                    are standing in it), so this map has no rider dot and no
+                    "follow me" — it exists to answer "which street is that
+                    door on", and it draws the door from the ORDER's snapshot,
+                    not from the customer's live address, so a customer who
+                    moved house cannot rewrite a delivery from last month.
+                  */}
+                  {doorFix ? (
+                    <RiderMap destination={doorFix} height={200} />
+                  ) : null}
+
                   <View style={styles.actionsRow}>
                     <Button
                       label={t('common.call')}
@@ -465,12 +483,13 @@ export default function RiderScreen() {
                     />
                     {/*
                       Take me there, without a map key. The address snapshot is
-                      handed to the phone's own maps app as a text query — the
-                      same sentence the rider is reading, so the two cannot
-                      disagree. No SDK, no vendor, no billing account.
+                      handed to the phone's own maps app: the pin when the
+                      order carries one, otherwise the same sentence the rider
+                      is reading above — so the two cannot disagree. No SDK, no
+                      vendor, no billing account.
                     */}
                     <NavigateButton
-                      target={{ label: snapshotAddressLine(address) }}
+                      target={{ lat: doorFix?.lat ?? null, lng: doorFix?.lng ?? null, label: snapshotAddressLine(address) }}
                       style={styles.flex}
                     />
                     {order.assigned_to === userId &&

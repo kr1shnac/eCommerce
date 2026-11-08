@@ -28,7 +28,7 @@ import { useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
-import { formatSnapshotAddress, readSnapshotAddress } from '@/lib/order-view';
+import { formatSnapshotAddress, readSnapshotAddress, snapshotFix } from '@/lib/order-view';
 import { orderStatusStyle } from '@/lib/order-status';
 import { etaMinutesFor, hasArrived, positionAgeSeconds } from '@/lib/tracking-rules';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -80,23 +80,14 @@ export default function OrderDetailScreen() {
   const address = readSnapshotAddress(data ?? { delivery_address: null });
 
   /**
-   * The door's pin, if the order carries one. Nothing captures it yet —
-   * `addresses.lat/lng` exist but no screen writes them (`SCALE-AND-TRACKING.md`
-   * §7), so today this is `null` and the map draws the rider alone, with no
-   * invented line to a guessed position. It is read from the snapshot rather
-   * than hard-coded to null so that the day the address screen drops a pin and
-   * `place_order()` snapshots it, the route appears with no change here.
+   * The door pin, if this order carries one. `place_order()` copies it from the
+   * saved address (migration 20261107000001), so a customer who moves house
+   * later cannot rewrite where this order is going. `snapshotFix` is the single
+   * place that turns the two jsonb keys into a fix the map can draw, and it
+   * refuses anything that is not a place — an out-of-range number would put a
+   * rider in the wrong district with no error anywhere.
    */
-  const doorFix = useMemo<{ lat: number; lng: number } | null>(() => {
-    const snapshot = (data?.delivery_address ?? null) as Record<string, unknown> | null;
-    if (!snapshot) return null;
-    const lat = typeof snapshot.lat === 'number' ? (snapshot.lat as number) : null;
-    const lng = typeof snapshot.lng === 'number' ? (snapshot.lng as number) : null;
-    // The null island is what a failed fix reports; never draw a door in it.
-    if (lat === null || lng === null || !Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-    if (lat === 0 && lng === 0) return null;
-    return { lat, lng };
-  }, [data?.delivery_address]);
+  const doorFix = useMemo(() => snapshotFix(address), [address]);
 
   const onCancel = async () => {
     if (!orderId || cancelOrder.isPending) return;
@@ -206,7 +197,22 @@ export default function OrderDetailScreen() {
             that answers "which street is he on" (SCALE-AND-TRACKING.md §6.5.1).
             No SDK and no API key — OpenStreetMap tiles, drawn here.
           */}
-          {data.status === 'out_for_delivery' && position.data ? (
+          {/*
+            The map, and what it is allowed to be. Two shapes, one card:
+
+            * the rider is on the way and their fix is live — the map follows
+              them, and the door pin (when this order carries one) gives the
+              route line and the road-snapped distance;
+            * the fix is stale or not shared, but the door has a pin — the map
+              shows the door alone. That is the honest answer: the customer
+              learns their order is going to the right place, and the screen
+              never pretends to know where the rider is.
+
+            Behind a tap either way, never by default: the text block above is
+            the thing that works on 2G and on a cheap phone (SCALE-AND-TRACKING
+            §6.5.1). No SDK and no API key — OpenStreetMap tiles, drawn here.
+          */}
+          {data.status === 'out_for_delivery' && (position.data || doorFix) ? (
             <Card style={styles.mapCard}>
               <View style={styles.mapHead}>
                 <Ionicons name="map-outline" size={18} color={theme.accent} />
@@ -215,13 +221,19 @@ export default function OrderDetailScreen() {
                 </ThemedText>
               </View>
               <RiderMap
-                rider={{ lat: position.data.lat, lng: position.data.lng }}
+                rider={
+                  position.data ? { lat: position.data.lat, lng: position.data.lng } : null
+                }
                 destination={doorFix}
               />
-              <NavigateButton
-                target={{ lat: position.data.lat, lng: position.data.lng }}
-                mode="place"
-              />
+              {position.data ? (
+                <NavigateButton
+                  target={{ lat: position.data.lat, lng: position.data.lng }}
+                  mode="place"
+                />
+              ) : doorFix ? (
+                <NavigateButton target={doorFix} mode="place" />
+              ) : null}
             </Card>
           ) : null}
 

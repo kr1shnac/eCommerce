@@ -54,6 +54,7 @@ const {
   formatSnapshotAddress,
   splitSnapshotAddress,
   hasLandmark,
+  snapshotFix,
   dialablePhone,
   formatClock,
   minutesSince,
@@ -146,7 +147,44 @@ expectTrue('undefined is false', hasLandmark({}) === false);
 expectTrue('empty string is false', hasLandmark({ landmark: '' }) === false);
 expectTrue('whitespace only is false', hasLandmark({ landmark: '  \n ' }) === false);
 
-console.log('\n=== 5. dialablePhone only returns something you can actually call ===');
+console.log('\n=== 5. snapshotFix turns the door pin into a marker, or nothing ===');
+// The pin is two jsonb keys written by place_order(). This is the function that
+// lets the map draw the door on the customer's screen and the rider's card, so
+// the thing it must never do is draw one from a value that is not a place.
+expect('a full pair becomes a fix', snapshotFix({ lat: 13.0316, lng: 77.0395 }),
+  { lat: 13.0316, lng: 77.0395 });
+
+// The three states a jsonb column actually holds. All three must be `null`,
+// because "no pin" and "a pin we cannot place" are the same answer to a screen.
+expect('a missing key is null', snapshotFix({ line1: '12, Gandhi Road' }), null);
+expect('a null value is null', snapshotFix({ lat: null, lng: null }), null);
+expect('half a pin is null', snapshotFix({ lat: 13.0316 }), null);
+expect('an empty snapshot is null', snapshotFix({}), null);
+
+// The failure that would put a rider in the wrong house without an error.
+expect('a string latitude is null, not a parse attempt', snapshotFix({ lat: '13.0316', lng: 77.0395 }), null);
+expect('a string longitude is null', snapshotFix({ lat: 13.0316, lng: '77.0395' }), null);
+expect('NaN is null', snapshotFix({ lat: NaN, lng: 77.0395 }), null);
+expect('Infinity is null', snapshotFix({ lat: Infinity, lng: 77.0395 }), null);
+expect('latitude 999 is null', snapshotFix({ lat: 999, lng: 77.0395 }), null);
+expect('longitude -181 is null', snapshotFix({ lat: 13.0316, lng: -181 }), null);
+expect('beyond the Mercator pole is null (it cannot be drawn)', snapshotFix({ lat: 89, lng: 77.0395 }), null);
+expect('the null island is null — a failed GPS reports it', snapshotFix({ lat: 0, lng: 0 }), null);
+
+// The equator is a real place, and a pin on it must survive.
+expect('the equator is a place', snapshotFix({ lat: 0, lng: 77.4 }), { lat: 0, lng: 77.4 });
+
+// Reading it out of a live snapshot row is the same call the screens make.
+expect('a snapshot row with a pin is read the same way',
+  snapshotFix(readSnapshotAddress({
+    delivery_address: { line1: '12, Gandhi Road', lat: 13.0316, lng: 77.0395 },
+  })), { lat: 13.0316, lng: 77.0395 });
+expect('a snapshot row without a pin is null',
+  snapshotFix(readSnapshotAddress({
+    delivery_address: { line1: '12, Gandhi Road' },
+  })), null);
+
+console.log('\n=== 6. dialablePhone only returns something you can actually call ===');
 expect('a plain 10-digit number', dialablePhone('9876543210'), '9876543210');
 expect('a +91 number is stripped to digits', dialablePhone('+91 98765 43210'), '919876543210');
 expect('spaces and dashes are removed', dialablePhone('98765-43210'), '9876543210');

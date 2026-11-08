@@ -135,6 +135,43 @@ export async function lastKnownFix(): Promise<Coordinates | null> {
 export type LocationWatch = { stop: () => void };
 
 /**
+ * One position, right now: the "drop a pin at my door" button on the address
+ * screen.
+ *
+ * WHY IT IS A ONE-SHOT AND NOT THE WATCHER
+ * ---------------------------------------
+ * `watchPosition` is the rider's stream — it starts, it keeps coming, and it
+ * must be stopped. This is a different question ("where am I standing") asked
+ * once by a customer saving an address, and it has to end by itself. Sharing the
+ * watcher would mean a second place that owns a subscription lifecycle, which is
+ * exactly how a location listener gets left running after the screen is gone.
+ *
+ * WHY IT ASKS FOR PERMISSION
+ * --------------------------
+ * The rider's consent (`lib/location-consent.ts`) is a promise about being
+ * tracked during a delivery, and it is not transferable to this purpose. So the
+ * customer is asked by the OS at the moment they tap, for the same foreground
+ * permission, with the same refusal path: `'denied'` becomes a translated
+ * sentence, never a retry loop.
+ */
+export async function currentFix(): Promise<Coordinates | null> {
+  const location = await locationModule();
+  if (!location) return null;
+
+  const permission = await getForegroundPermission();
+  if (permission !== 'granted') return null;
+
+  try {
+    const position = await location.getCurrentPositionAsync({
+      accuracy: location.Accuracy.Balanced,
+    });
+    return toCoordinates(position);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Start watching the phone's position. The caller stops it; this module has no
  * timer of its own and no opinion about when to stop.
  *

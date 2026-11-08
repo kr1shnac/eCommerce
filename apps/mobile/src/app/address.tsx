@@ -14,6 +14,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { RiderMap } from '@/components/rider-map';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,8 @@ import {
 import { useDeliveryZones } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedName } from '@/lib/localized';
+import { currentFix, hasLocationRuntime, requestForegroundPermission } from '@/lib/location';
+import { isValidLatLng } from '@/lib/map-tiles';
 import { useAuthStore } from '@/store/auth-store';
 import { currentLanguage } from '@/store/language-store';
 import type { Address } from '@/types/database';
@@ -128,6 +131,17 @@ function AddressForm({ existing, pick }: { existing?: Address; pick: boolean }) 
   const [isDefault, setIsDefault] = useState(existing?.is_default ?? false);
   const [touched, setTouched] = useState(false);
 
+  // The door pin. Null until the customer drops one, and saved as null when
+  // there is none — the map on the order screen then draws the rider alone and
+  // says so, rather than inventing a door.
+  const [pin, setPin] = useState<{ lat: number; lng: number } | null>(() => {
+    if (!existing || existing.lat === null || existing.lng === null) return null;
+    const fix = { lat: existing.lat, lng: existing.lng };
+    return isValidLatLng(fix) ? fix : null;
+  });
+  const [locating, setLocating] = useState(false);
+  const [pinError, setPinError] = useState(false);
+
   const pincodeValue = pincode.trim();
   const zone = zones.data?.find((row) => row.pincode === pincodeValue);
   const isValid =
@@ -136,6 +150,37 @@ function AddressForm({ existing, pick }: { existing?: Address; pick: boolean }) 
     line1.trim().length >= 4 &&
     city.trim().length >= 2 &&
     pincodeValue.length >= 6;
+
+  /**
+   * "Use my current location": ask the OS, then drop the pin where the phone
+   * says the customer is standing. Every failure is the same translated
+   * sentence, because every failure means the same thing to the customer —
+   * they move the pin with their finger instead.
+   */
+  const findMyLocation = async () => {
+    if (locating) return;
+    setLocating(true);
+    setPinError(false);
+    try {
+      if (!hasLocationRuntime()) {
+        setPinError(true);
+        return;
+      }
+      const permission = await requestForegroundPermission();
+      if (permission !== 'granted') {
+        setPinError(true);
+        return;
+      }
+      const fix = await currentFix();
+      if (!fix || !isValidLatLng(fix)) {
+        setPinError(true);
+        return;
+      }
+      setPin(fix);
+    } finally {
+      setLocating(false);
+    }
+  };
 
   const onSave = async () => {
     setTouched(true);
@@ -150,6 +195,8 @@ function AddressForm({ existing, pick }: { existing?: Address; pick: boolean }) 
       landmark: landmark.trim() || null,
       city: city.trim(),
       pincode: pincodeValue,
+      lat: pin?.lat ?? null,
+      lng: pin?.lng ?? null,
     };
 
     try {
@@ -323,6 +370,64 @@ function AddressForm({ existing, pick }: { existing?: Address; pick: boolean }) 
           )
         ) : null}
 
+        {/*
+          The door pin. This is the one screen in the app that asks for the
+          customer's location, and it asks at the moment they tap — the rider's
+          consent is a promise about being tracked during a delivery and is not
+          transferable to this. `lib/location.ts` is the only module allowed to
+          touch the package, and the permission is foreground and one-shot.
+        */}
+        <Card style={styles.pinCard}>
+          <View style={styles.pinHead}>
+            <Ionicons name="map-outline" size={18} color={theme.accent} />
+            <ThemedText type="smallBold" style={styles.flex}>
+              {t('address.pinTitle')}
+            </ThemedText>
+          </View>
+
+          <RiderMap
+            placeable
+            pin={pin}
+            onPinChange={(fix) => {
+              setPin(fix);
+              setPinError(false);
+            }}
+            initialZoom={17}
+            height={220}
+          />
+
+          <ThemedText type="caption" themeColor="textSecondary">
+            {pin ? t('address.pinSet') : t('address.pinMissing')}
+          </ThemedText>
+
+          <View style={styles.pinRow}>
+            <Button
+              label={locating ? t('common.pleaseWait') : t('address.pinUseMyLocation')}
+              icon="locate-outline"
+              variant="outline"
+              busy={locating}
+              onPress={() => void findMyLocation()}
+              style={styles.flex}
+            />
+            {pin ? (
+              <Button
+                label={t('address.pinClear')}
+                variant="ghost"
+                onPress={() => {
+                  setPin(null);
+                  setPinError(false);
+                }}
+              />
+            ) : null}
+          </View>
+
+          {pinError ? (
+            <ThemedText type="caption" style={{ color: theme.danger }}>
+              {t('address.pinFailed')}
+            </ThemedText>
+          ) : null}
+        </Card>
+
         <Pressable
           onPress={() => setIsDefault((value) => !value)}
           accessibilityRole="checkbox"
@@ -394,6 +499,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   zoneCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  pinCard: { gap: Spacing.two },
+  pinHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
+  pinRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   defaultRow: {
     flexDirection: 'row',
     alignItems: 'center',

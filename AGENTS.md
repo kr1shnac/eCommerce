@@ -222,7 +222,7 @@ npm run admin                     # Next.js on http://localhost:3000
 npm run dev                       # both at once
 
 npm run typecheck                 # tsc --noEmit in both apps
-npm run lint                      # eslint in both apps + ten chained safety checks
+npm run lint                      # eslint in both apps + fourteen chained safety checks
 npm run check:i18n                # en/kn key parity + every key used in code exists
 npm run check:session             # the signed-in session survives an app restart
 npm run check:auth-doors          # a release build has no dev login; the review build has one
@@ -234,6 +234,9 @@ npm run check:packs               # pack sizes, and the arithmetic that must nev
 npm run check:storage             # only one module may touch AsyncStorage (the expo-start crash)
 npm run check:location            # only one module may touch expo-location, and foreground only
 npm run check:tracking            # the rider throttle, staleness and ETA rules
+npm run check:navigation          # the no-key maps links, and the one "is this a place" rule
+npm run check:map-tiles           # the Web Mercator arithmetic the OSM map draws with
+npm run check:route               # OSRM's URL order, and every malformed body refused
 npm run test:db                   # all database tests against a throwaway PostgreSQL (Windows/macOS/Linux)
 ```
 
@@ -352,14 +355,28 @@ As of this build, the app is a working end-to-end flow on one shop:
 - **The rider's position is shared, text first.** A rider consents once, then the
   foreground watcher writes throttled fixes through `record_my_position()`
   (migration `20261026000001`, test 24); the customer's order screen reads
-  `order_rider_position` and shows age, distance and an ETA — **no map and no
-  dot**. The fifth tracker stop ("Picked up") appears once `picked_up_at` is set.
+  `order_rider_position` and shows age, distance and an ETA. The fifth tracker
+  stop ("Picked up") appears once `picked_up_at` is set.
   The position is deleted when the delivery closes, a fix older than 10 minutes is
   never shown, and there is no background location. `src/lib/location.ts` is the
   only module allowed to mention `expo-location` (enforced by `check:location`).
   **This needs an EAS development build; Expo Go cannot exercise it.** Proved by
   `supabase/tests/24_rider_positions_test.sql`, `check:tracking` and
   `check:location`, but **not yet on a phone**.
+- **The distance and the ETA finally have a door.** `distance_m` and
+  `eta_minutes` were NULL for every order ever placed, because nothing anywhere
+  wrote a coordinate for a delivery address. Migration `20261107000001` fixes
+  that at the source: the address screen drops a **door pin** on the same OSM
+  map (long-press, or "use my current location"), and `place_order()` copies
+  `addresses.lat/lng` into the order's own `delivery_address` snapshot — two
+  jsonb keys that are *absent, never null* when there is no pin, and that a
+  customer's later move cannot rewrite. `is_usable_fix()` is the one SQL
+  definition of "a coordinate that is a place" (inside the earth, not the null
+  island); `snapshotFix()` in `src/lib/order-view.ts` is the one TypeScript one,
+  and it refuses a string, a NaN and a 999 rather than drawing a rider into the
+  wrong district. Proved by `supabase/tests/28_door_pin_test.sql` (39
+  assertions), including that the view measures to the *snapshot's* door and not
+  to the address the customer moved afterwards.
 - **The customer can say whether the bag arrived right.** One record per
   delivered order (`order_feedback`, migration `20261106000001`, test 25):
   `was_ok` plus, when not, one of six fixed reasons — `missing_item`, `damaged`,
@@ -389,8 +406,22 @@ As of this build, the app is a working end-to-end flow on one shop:
   basket, because in those cases adding items saves nothing. Both are integer
   paise; `check:delivery` proves the nudge and `previewFee` agree, and the fee
   actually charged is still `place_order()`'s.
+- **The customer sees the order on a map, with no SDK and no key.** The map is
+  OpenStreetMap raster tiles composited by `components/rider-map.tsx` on the
+  gesture stack the app already had — pinch to zoom with the anchor held still,
+  double-tap, one-finger pan, a "centre on the rider" button once the customer
+  has taken over, theme colours in light and dark, and the OSM attribution on
+  screen at all times because their licence requires it. The route line comes
+  from OSRM's public router (no key, no account) and, when the router does not
+  answer, is a dashed line **labelled "a direction, not a route"**. It sits
+  behind a tap, over the text-first block that works on 2G. The pure arithmetic
+  is in `src/lib/map-tiles.ts` (`check:map-tiles`, 55 assertions) and the route
+  parsing in `src/lib/route.ts` (`check:route`, 45 assertions), both in the lint
+  chain. **Never rendered on a device** — `SCALE-AND-TRACKING.md` §6.5.1 is the
+  decision record, §7 keeps the Google/Mapbox option open and probably unused.
 - **Not built yet**, in the intended order: push notifications → Razorpay → a live
-  map / background location. The text-first rider position above *is* built.
+  map / background location. The text-first rider position and the key-free OSM
+  map above *are* built.
   Everything except location still runs in Expo Go; push notifications, Razorpay
   and the location screens need an EAS development build.
 - **The competitor-derived design plan is measured, not built.**

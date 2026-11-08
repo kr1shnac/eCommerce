@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Gesture,
   GestureDetector,
+  type LongPressGestureHandlerEventPayload,
   type PanGestureHandlerEventPayload,
   type PinchGestureHandlerEventPayload,
   type TapGestureHandlerEventPayload,
@@ -91,10 +92,26 @@ function MapControlButton({
 }
 
 export type RiderMapProps = {
-  /** The rider's live fix. Null means "not being shared right now". */
-  rider: LatLng | null;
-  /** The door, once an address carries coordinates (`addresses.lat/lng`). */
+  /**
+   * The rider's live fix. Null means "not being shared right now" — which is
+   * also the normal state on the address screen, where there is no rider at all
+   * and the map exists to place a pin. The component is no longer rider-only.
+   */
+  rider?: LatLng | null;
+  /** The door, read from the order's snapshot (`readSnapshotAddress` + `snapshotFix`). */
   destination?: LatLng | null;
+  /**
+   * A pin the user is choosing. When set it is the marker drawn, and it wins
+   * over `destination` — the address screen is placing a door that does not
+   * exist yet, and the rider's card is showing the one the order snapshotted.
+   */
+  pin?: LatLng | null;
+  /** Supply with `placeable` to let a long-press move the pin. */
+  onPinChange?: (fix: LatLng) => void;
+  /** True on the address screen: hold still on the map to drop the pin there. */
+  placeable?: boolean;
+  /** Where to start looking. Street level (17) for a door, town (15) for a rider. */
+  initialZoom?: number;
   height?: number;
 };
 
@@ -104,25 +121,42 @@ export type RiderMapProps = {
  */
 const DEFAULT_CENTRE: LatLng = { lat: 13.0, lng: 77.4 };
 
-export function RiderMap({ rider, destination = null, height = 260 }: RiderMapProps) {
+export function RiderMap({
+  rider = null,
+  destination = null,
+  pin = null,
+  onPinChange,
+  placeable = false,
+  initialZoom = 15,
+  height = 260,
+}: RiderMapProps) {
   const { t } = useTranslation();
   const theme = useTheme();
 
   const [size, setSize] = useState({ width: 0, height });
   const [center, setCenter] = useState<LatLng | null>(rider);
-  const [zoom, setZoom] = useState(15);
-  const [following, setFollowing] = useState(true);
+  const [zoom, setZoom] = useState(initialZoom);
+  // A rider's map follows; a pin-picker does not, because the thing being
+  // placed is the subject, not the camera. Starting `following` at false for
+  // anything without a rider is what stops the first fix from dragging the
+  // pin back to the middle of the screen.
+  const [following, setFollowing] = useState(Boolean(rider));
   const [route, setRoute] = useState<RouteLine | null>(null);
 
   const language = useLanguageStore((state) => state.language);
 
-  // A new fix while the customer has not taken over: the centre IS the rider,
-  // derived rather than copied. The first version of this was an effect that
-  // called setCenter on every fix, which re-rendered the map twice per poll and
-  // still lagged a frame behind the update it was chasing.
+  /**
+   * What the map is about: the rider when it is following one, otherwise the
+   * pin, the door, and only then a default. Derived rather than copied into
+   * state — the first version was an effect that called setCenter on every fix,
+   * which re-rendered the map twice per poll and still lagged a frame behind the
+   * update it was chasing.
+   */
+  const subject = rider ?? pin ?? destination ?? DEFAULT_CENTRE;
+
   const centre = useMemo<LatLng>(
-    () => (following ? rider ?? DEFAULT_CENTRE : center ?? rider ?? DEFAULT_CENTRE),
-    [following, rider, center],
+    () => (following ? subject : center ?? subject),
+    [following, subject, center],
   );
 
   /**
@@ -163,12 +197,16 @@ export function RiderMap({ rider, destination = null, height = 260 }: RiderMapPr
     () => (rider && size.width > 0 ? screenPosition(rider, centre, zoom, size.width, size.height) : null),
     [rider, centre, zoom, size.width, size.height],
   );
+  // One marker for "the door": the pin the user is placing, or the destination
+  // the order carries. Never both, so a screen can never show two pins and
+  // leave the customer guessing which one the bag goes to.
+  const doorFix = pin ?? destination;
   const doorPoint = useMemo(
     () =>
-      destination && size.width > 0
-        ? screenPosition(destination, centre, zoom, size.width, size.height)
+      doorFix && size.width > 0
+        ? screenPosition(doorFix, centre, zoom, size.width, size.height)
         : null,
-    [destination, centre, zoom, size.width, size.height],
+    [doorFix, centre, zoom, size.width, size.height],
   );
 
   /**
@@ -270,16 +308,53 @@ export function RiderMap({ rider, destination = null, height = 260 }: RiderMapPr
     [onDoubleTap],
   );
 
-  const composed = useMemo(() => Gesture.Simultaneous(pan, pinch, doubleTap), [pan, pinch, doubleTap]);
+  /**
+   * The screen point under a finger, as a fix on the ground.
+   *
+   * `zoomToHoldingAnchor` above runs the same projection backwards — that one
+   * keeps a point still while the zoom changes, this one answers "where did the
+   * customer press". Both are the state wrappers of arithmetic that is proved
+   * under bare Node in `scripts/check-map-tiles.mjs` (`screenPosition`).
+   */
+  const fixAt = useCallback(
+    (x: number, y: number): LatLng => {
+      const origin = project(centre, zoom);
+      return unproject(origin.x + x - size.width / 2, origin.y + y - size.height / 2, zoom);
+    },
+    [centre, zoom, size.width, size.height],
+  );
+
+  // Hold still to drop the pin. `maxDistance` is what keeps it honest: a finger
+  // that moves more than a few pixels is a PAN, not a press, and a drag across
+  // the street must not silently relocate the customer's door.
+  const longPress = useMemo(() => {
+    if (!placeable || !onPinChange) return null;
+    return Gesture.LongPress()
+      .minDuration(450)
+      .maxDistance(12)
+      .onEnd((event: LongPressGestureHandlerEventPayload) => {
+        onPinChange(fixAt(event.x, event.y));
+      });
+  }, [placeable, onPinChange, fixAt]);
+
+  const composed = useMemo(
+    () =>
+      longPress
+        ? Gesture.Simultaneous(pan, pinch, doubleTap, longPress)
+        : Gesture.Simultaneous(pan, pinch, doubleTap),
+    [pan, pinch, doubleTap, longPress],
+  );
 
   const recentre = () => {
     if (rider) setCenter(rider);
     setFollowing(true);
   };
 
-  // No fix to draw: the order screen keeps its text-first block and this card is
-  // not rendered at all. See the caller.
-  if (!rider) return null;
+  // Nothing to look at at all. An order screen with no rider and no door keeps
+  // its text-first block and never renders this card (see the caller), so this
+  // only guards a genuine mistake — NOT the address screen, which is placing a
+  // pin that does not exist yet and is centred on the town instead.
+  if (!rider && !doorFix && !placeable) return null;
 
   return (
     <View
@@ -324,10 +399,10 @@ export function RiderMap({ rider, destination = null, height = 260 }: RiderMapPr
 
           {doorPoint ? (
             <View
-              style={[styles.marker, { left: doorPoint.left - 14, top: doorPoint.top - 28, backgroundColor: theme.text, borderColor: theme.card }]}
+              style={[styles.marker, { left: doorPoint.left - 14, top: doorPoint.top - 28, backgroundColor: placeable ? theme.accent : theme.text, borderColor: theme.card }]}
               accessibilityRole="image"
               accessibilityLabel={t('map.doorHere')}>
-              <Ionicons name="home" size={16} color={theme.card} />
+              <Ionicons name={placeable ? 'pin' : 'home'} size={16} color={placeable ? theme.onAccent : theme.card} />
             </View>
           ) : null}
 
@@ -349,7 +424,6 @@ export function RiderMap({ rider, destination = null, height = 260 }: RiderMapPr
               />
             </View>
           ) : null}
-
           <View style={styles.zoomColumn}>
             <MapControlButton
               icon="add"
@@ -372,15 +446,29 @@ export function RiderMap({ rider, destination = null, height = 260 }: RiderMapPr
       </GestureDetector>
 
       <View style={[styles.caption, { borderTopColor: theme.border }]}>
-        {route && rider && destination ? (
+        {/*
+          The caption always says which of the two things this map is showing.
+          A map that is placing a door and a map that is following a rider are
+          different screens that happen to share tiles, and a customer who
+          cannot tell them apart has been let down.
+        */}
+        {placeable ? (
+          <ThemedText type="caption" themeColor="textSecondary">
+            {t('map.pinHint')}
+          </ThemedText>
+        ) : route && rider && destination ? (
           <ThemedText type="caption" themeColor="textSecondary">
             {route.kind === 'road'
               ? t('map.routeByRoad', { distance: routeLengthText(route.distanceM ?? 0, language) })
               : t('map.directionOnly', { distance: routeLengthText(route.distanceM ?? 0, language) })}
           </ThemedText>
-        ) : (
+        ) : rider ? (
           <ThemedText type="caption" themeColor="textSecondary">
             {t('map.riderOnly')}
+          </ThemedText>
+        ) : (
+          <ThemedText type="caption" themeColor="textSecondary">
+            {t('map.doorOnly')}
           </ThemedText>
         )}
         {zoom <= MIN_ZOOM || zoom >= MAX_ZOOM ? (

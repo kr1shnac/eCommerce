@@ -121,6 +121,7 @@ const {
   getForegroundPermission,
   watchPosition,
   lastKnownFix,
+  currentFix,
 } = await import(pathToFileURL(LOCATION_MODULE).href);
 
 expectTrue('hasLocationRuntime() is a boolean', typeof hasLocationRuntime() === 'boolean');
@@ -138,6 +139,10 @@ expectTrue(
   (await watchPosition(() => {})) === null,
 );
 expectTrue('lastKnownFix() resolves to null', (await lastKnownFix()) === null);
+expectTrue(
+  'currentFix() resolves to null, not a throw (the address pin button)',
+  (await currentFix()) === null,
+);
 
 console.log('\n=== 5. the app asks for foreground location only ===');
 const appJson = JSON.parse(source(join(root, 'apps/mobile/app.json')));

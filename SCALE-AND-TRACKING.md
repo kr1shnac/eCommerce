@@ -459,11 +459,34 @@ lives in `lib/route.ts` and is proved by `scripts/check-route.mjs` (45
 assertions) — including the assertion that OSRM takes **longitude first**, the
 one swap that would silently put a rider in the wrong district.
 
-**The honest limit, unchanged:** there is still **no pin on the door**.
-`addresses.lat/lng` exist but nothing writes them, so the map draws the rider
-alone and no route line appears. When the address screen drops a pin and
-`place_order()` snapshots it, the route appears with no change to this file — the
-order screen already reads `lat`/`lng` from the snapshot.
+**The honest limit, closed on 2026-11-08 (migration `20261107000001`):** the
+door has a pin now. The address screen drops one — press and hold on the same
+map, or "use my current location" — `place_order()` copies `addresses.lat/lng`
+into the order's own `delivery_address` snapshot, and `snapshotFix()` in
+`src/lib/order-view.ts` is the single place that turns those two jsonb keys
+into a marker. That closes three gaps at once:
+
+* the map on the order screen now draws the door and the road-snapped route
+  line, not the rider alone;
+* `order_rider_position` finally computes **`distance_m` and `eta_minutes`** —
+  they were NULL for every order since day one, because nothing supplied a
+  destination;
+* the rider's card gets a door map and a *directions link with coordinates*
+  instead of a text query the maps app has to geocode.
+
+The snapshot wins over the live address on purpose (see the migration): a
+customer who moves their saved pin next year must not rewrite where a past
+order went. And `snapshotFix()` refuses anything that is not a place — a
+jsonb value of `"12.5"`, or `999`, or the null island — because a door drawn
+from a bad value is a rider sent to the wrong house with no error anywhere.
+
+**What is still not built, and is not claimed:** marker clustering, a map style
+of our own, tilt, rotation, an offline tile region, or turn-by-turn inside the
+app. The arithmetic lives in `lib/map-tiles.ts` and is proved by
+`scripts/check-map-tiles.mjs` (55 assertions) on every lint run; route parsing
+lives in `lib/route.ts` and is proved by `scripts/check-route.mjs` (45
+assertions) — including the assertion that OSRM takes **longitude first**, the
+one swap that would silently put a rider in the wrong district.
 
 ### 6.6 The privacy and safety rules (non-negotiable)
 
@@ -503,11 +526,13 @@ it here rather than claiming it is done.
 | --- | --- | --- |
 | Cold-start round-trip count and time are `[UNVERIFIED]` (no device available on this machine) | Measure with the app on a real cheap Android on 2G throttled; count requests in the dashboard | Dev (needs device) |
 | Realtime connection ceiling is reasoned, not measured | Know the Supabase plan; watch Realtime logs during the pilot | Dev + client |
-| No map SDK chosen | **Partly resolved 2026-11-06:** the no-key deep link ships and the in-app map ships on OSM tiles; an *embedded Google/Mapbox* map still waits for the owner's decision and probably always will | Dev + client |
-| Addresses never capture `lat`/`lng` | pin the drop point when the address is chosen, so the map can draw a route | Dev + owner |
+| No map SDK chosen | **Resolved 2026-11-08:** the no-key deep link ships, and the in-app map ships on OSM tiles with an OSRM road route. An *embedded Google/Mapbox* map still waits for the owner's decision and probably always will | Dev + client |
+| Addresses never capture `lat`/lng` | **DONE 2026-11-08:** the address screen drops a pin (long-press or current location), `place_order()` snapshots it, `order_rider_position` measures to it | Dev — device test still owed |
+| OSRM's public router is not proven from a phone | One live call during the first device run; the fallback is already the straight direction | Dev (needs device) |
+| Tile usage against OSM's policy | A single-shop pilot is inside OSM's spirit; a 10 000-user app would need its own tile service or a MapLibre vector style | Dev + owner |
 | Five-wrong-OTP lockout is untested on a device | the DB suite proves it; a phone should be asked for the customer's view of it | Dev (needs device) |
 | Background-location battery behaviour `[UNVERIFIED]` | Device test with the rider build | Dev (needs device) |
-| Whether a free routing API is usable `[UNVERIFIED]` | Check licence + quota before drawing any road route | Dev |
+| Whether a free routing API is usable `[UNVERIFIED]` | **Answered 2026-11-08:** OSRM's public endpoint is used for the road route — no key, no account, GeoJSON out, and the straight-line fallback is already the honest answer when it does not reply. Still unproven from a phone | Dev |
 | Rider consent wording in Kannada | **Built in both locales** (2026-10-26); still needs a Kunigal read-through per `KUNIGAL.md` | Owner |
 | The 60 s poll and the tracking poll must not double | One timer, one owner; assert in a check script | Dev |
 
@@ -529,7 +554,8 @@ that make it honest.
 | T6 | Customer text-first tracking block on `order/[id].tsx` (age + distance + ETA) | **CODE DONE 2026-10-26**; device test still owed (needs EAS dev build) |
 | T6.5 | "Show the way" maps deep links — no SDK, no key (`lib/navigation-links.ts`, `check:navigation`): rider directions to the snapshot address, customer place view of the rider's fix | typecheck + lint + `check:navigation` (no DB change) — **DONE 2026-11-06**, see `CHANGELOG.md` |
 | T7 | **The in-app map** (`components/rider-map.tsx`): OSM raster tiles, pinch/pan/double-tap on the app's own gesture stack, road-snapped route from OSRM with an honest straight-line fallback, follow-the-rider centre, OSM attribution. Rider-side map still waits on the door pin. | typecheck + lint + `check:map-tiles` + `check:route` + `test:db` — **CODE DONE 2026-11-06**; device test still owed |
-| T8 | Door pin: the address screen drops a pin on this same map, `place_order()` snapshots it, and the route appears on both faces | migration + test + a screen |
+| T8 | Door pin: the address screen drops a pin on this same map, `place_order()` snapshots it, and the route appears on both faces | migration + test + a screen — **DONE 2026-11-08** (migration `20261107000001`, test 28 with 39 assertions); the phone run is still owed |
+| T9 | A live map on the rider's card that follows the rider's own fix, once a device proves the tile geometry at street level | device test |
 
 **Every phase ends the same way**, per `AGENTS.md` §9.10: `npm run typecheck`
 passes, `npm run lint` passes, `supabase/tests/` passes against real PostgreSQL,
