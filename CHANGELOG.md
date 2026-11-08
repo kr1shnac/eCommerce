@@ -1,8 +1,215 @@
 # Build log
 
-Newest first. Append a dated section after each working session, and be honest in
+Newest first. Prepend a dated section after each working session, and be honest in
 it: what was verified and *how*, decisions with their reasons, bugs found, and
 the gaps you know about. A future session reads this file first.
+
+---
+
+## 2026-11-09 — The launch paperwork, drafted: domain, hosted legal pages, the store listing kit
+
+**What was asked.** "What are the documents and the domain we need to start
+preparing for, so we can publish as fast as possible." The answer is not code —
+it is the external register — so this session wrote it down instead of leaving
+it to memory.
+
+**What was created (all new, `docs/launch/`):**
+
+- `LAUNCH-REGISTER.md` — every document, account, asset and decision the app
+  needs, tagged `DEV` / `OWNER` / `CA`, in the order they actually block a
+  submission. Leads with the one irreversible decision: `in.kunigal.grocery` is a
+  placeholder and becomes permanent at the first store upload, so the domain and
+  the shop's real name must be decided before it is set.
+- `privacy-policy.md` — hosted draft (EN + Kannada). Deliberately mirrors the
+  notice already shipping in-app (`privacy.*` in both locales, read from
+  `en.json`/`kn.json` this session) so the page and the app cannot drift, and
+  adds only what a hosted policy must carry: controller identity, third parties
+  (Supabase, the SMS provider, Sentry, OSM/OSRM), the grievance contact.
+- `terms.md` — hosted draft, plain-language, matching what the code does (the
+  price charged is the one confirmed server-side; failed is not delivered).
+- `store-listing.md` — Play + Apple listing kit: EN and Kannada copy drafts, the
+  data-safety/App-Privacy declaration answered from the code (phone, address +
+  optional door pin, orders, rider GPS, owner photos, crash diagnostics; no ads,
+  no analytics, no payment data at launch), content-rating draft answers, the
+  asset spec (feature graphic, Kannada-first screenshots), the reviewer-account
+  note (C8), and the Apple D-U-N-S / guideline-4.2 caveats.
+- `delete-account.md` — the **account-deletion URL** Play requires for apps with
+  account creation, in both languages, pointing at the in-app path that already
+  exists (`delete_my_account()`).
+
+**Verified how.** Not run — nothing here is executable. Every factual claim was
+read from the repository this session: the in-app notice strings from both locale
+files, the app's actual data flows from `PRODUCTION.md` §12 and the migration
+list, and the store rules from `PRODUCTION.md` §9, which carries
+`[EXTERNAL]` (checked 2026-10-19) and is flagged for re-check at submission.
+The hosted-project gap used in the register is today's probe result: the live
+Supabase project is **ten migrations behind** (stops at `20261013000001`), so
+the app silently falls back to placeholders there and `supabase db push` is the
+first live-project task.
+
+**Decisions, with reasons.**
+
+1. **The register is tagged by who can move each row**, because most of the
+   remaining work is not code: the domain, DLT registration, FSSAI/GST/CA
+   wording, the Play account, 12 testers. Writing it as one flat checklist would
+   have hidden the fact that the developer's share is small.
+2. **Kannada is drafted but marked unreviewed** (M7). Listing copy I can write;
+   the voice belongs to KUNIGAL.md and the local read-through is the owner's.
+3. **Nothing legal was invented.** Every owner/CA-only value is a `TODO(…)` in
+   the draft — the same rule the app follows for FSSAI/GST numbers: an absent
+   number shows nothing rather than a placeholder.
+
+**Bugs found.** Two of my own drafting errors, fixed immediately: garbled
+mixed-script strings in the Kannada listing copy and the Kannada heading of the
+privacy draft (`ಮೆम्erಸhip`, `ಅಂತರ್ಜalet`), replaced with plain Kannada. Noted
+here because a garbled string in a customer-visible draft is exactly the class of
+error the i18n checks catch in `.tsx` and nothing catches in Markdown.
+
+**Not verified.** The Kannada drafts have not been read by a Kunigal local. The
+legal drafts have not been seen by the CA. No store console has been re-checked
+against its live rules. No screenshots exist, because no screen has rendered on
+a phone (C4) — that is still the first real task, and it gates the listing kit
+more than anything in it.
+
+**Open gaps.** The domain is not bought (the shop's real name is needed for the
+name and the permanent app identifier). The hosted project still needs its ten
+migrations. The Kannada voice still needs its sign-off (M7).
+
+`AGENTS.md` was edited live during this session by hand (the `check:metro` and
+deep-link rules from the run-and-test session); this entry covers only
+`docs/launch/` and touches no code, so no gate was rerun — nothing in
+`npm run lint` reads Markdown.
+
+---
+
+## 2026-11-09 — "Let's run and test": two bugs the gates could never see, and the
+screens finally rendered
+
+**What was asked.** *"Let's run and test."* There is no phone, no emulator and no
+EAS build on this machine, so "run" had to mean: make the thing actually start,
+render its screens somewhere real, and drive them like a user — not just "the
+commands exit 0". That is how the two bugs below were found. Both of them had
+been invisible to every gate the project has, and one of them would have broken
+the next feature on the roadmap before it was written.
+
+### Bug 1 — the web export was broken by our own Metro config (found: `Unable to resolve module semver/functions/satisfies`)
+
+`npx expo export --platform web` died inside
+`react-native-reanimated/scripts/validate-worklets-version.js`. The Android
+export had kept working, which is why "the android export is the proof" in
+`PRODUCTION.md` was true and useless: **the failure was only in the web bundle.**
+
+Root cause, not a guess: `metro.config.js` had
+`resolver.disableHierarchicalLookup = true`, which the file's comment claimed was
+*required* by Expo's monorepo guide to stop two copies of a package loading at
+once. It is the opposite. With it on, npm gave
+`react-native-reanimated` its own private `semver@7.8.5` while the hoisted root
+copy stayed `semver@6.3.1`, and the script does
+`require('semver/functions/satisfies')` — a path that only exists in semver 7.
+Flipping it to `false` was the fix. The comment now records the post-mortem
+instead of arguing for the wrong value, because the next person to read it would
+otherwise put it back.
+
+`scripts/check-metro.mjs` guards it (in the lint chain as `check:metro`), and the
+guard was proved to bite: the flag was flipped back by hand, `npm run lint`
+reported `1 check failed`, and it was restored. Web and Android exports now both
+succeed (`Web Bundled 9007ms, 1983 modules` → `Exported: dist`).
+
+### Bug 2 — every deep link dropped the person on the shop's home screen
+
+Found while driving the signed-in screens in headless Chrome. Traced frame by
+frame: opening `/order/<uuid>` rendered the order, then the URL became
+`/address?id=<uuid>`, then `/`. Reproduced identically on `/product/<id>`
+(rendered the product, then `/address?id=<id>`, then `/`) and `/admin/today`
+(rendered the board's tab label, then `/admin`). Signed out, `/product/<id>`
+rendered the product perfectly — so it was the session path, not the route.
+
+`apps/mobile/src/app/_layout.tsx` returned early while the role was being read:
+
+```tsx
+if (session && profile.isLoading) {
+  return <View …><ActivityIndicator /></View>;   // ← unmounts the entire <Stack>
+}
+```
+
+Unmounting the navigator throws away the URL expo-router had already resolved,
+and rebuilding it on the way back up lands on wherever the router restarts. So
+**every deep link opened by a signed-in user was silently discarded.** Push
+notifications are the next item on the roadmap, and "tap it → see your order" is
+their whole purpose — this would have shipped broken.
+
+Fixed by keeping the navigator mounted and putting the same "hold one moment"
+spinner over it as an absolute overlay. The app still never flashes the shop and
+then jumps to a different face; it just no longer erases where you were. Retested:
+`/order/<uuid>` holds its URL, renders the tracker, and survives a reload at that
+URL.
+
+### What was actually verified (all of it, on this machine)
+
+- `npx expo install --check` → six patch bumps applied (`expo ~57.0.32`,
+  `expo-constants ~57.0.23`, `expo-image-picker ~57.0.21`,
+  `expo-location ~57.0.23`, `expo-router ~57.0.30`,
+  `expo-splash-screen ~57.0.11`), then **`npx expo-doctor`: 21/21 checks passed,
+  no Metro complaint**. The `PRODUCTION.md` exemption for it is now withdrawn
+  (see below).
+- `npm run typecheck` — clean. `npm run lint` — clean, 16 chained checks.
+- `npm run test:db` — **732 passed, 0 failed**, 29 suites plus the two-session
+  race; 0 stray `postgres` processes and 0 `grocery-dbtest-*` dirs left behind.
+- Static web export served over HTTP and driven with Chrome headless via the
+  DevTools protocol, signed in through the demo accounts: **login, shop home,
+  cart (empty state), orders, account, checkout, admin board, admin Today
+  (rendered by clicking the tab), the rider face (pool + my deliveries + OTP
+  handover), and a customer order in `out_for_delivery`.**
+- The customer order screen showed the whole 5-stage tracker, payment and refund
+  cards, the item lines with pack info, totals in paise, the address, the rider
+  card and the call button. The rider face showed the pool, "cash to collect",
+  "show directions", "ask the customer for the code" and "couldn't deliver".
+- `npm start` boots Metro (`Waiting on http://localhost:8081`), and Metro
+  resolved the full graph on demand for both platforms
+  (android 6.5 MB, ios 5.8 MB, both HTTP 200). Stopped cleanly afterwards.
+
+### Decision — the `expo-doctor` exemption is withdrawn, not kept
+
+`PRODUCTION.md` argued that the doctor's Metro complaint was a false positive we
+were right to ignore. It was: we were wrong, and the doctor was right. The
+workflow's `awk` filter that deleted one class of complaint from the output has
+been deleted too — CI now runs the doctor and fails on **any** complaint,
+including whatever check the doctor gains next. A filter that discards a
+category of failure is how drift like this survives for a week.
+
+### The open gap that matters more than any of the above: the hosted project is
+ten migrations behind
+
+Probed the live Supabase project the `.env` points at, as the demo customer. It
+has migrations up to **`20261013000001` (rider assignment)** and nothing after
+that: `rider_directory`, `shop_day_totals`, `update_product_from_shop`,
+`create_product_from_shop`, `product_pack_options`, `record_my_position`,
+`order_rider_position`, `order_feedback`, `orders.refund_due_paise`,
+`addresses.lat/lng`, `shop_feedback_totals` — all absent (42703 / PGRST205 /
+PGRST202, not a stale cache on everything).
+
+What that means, said plainly: the renders above were done against an **old
+schema**. The app is resilient — the rider card fell back to its placeholder and
+the refund card showed `₹0.00` rather than crashing — but the Today totals, the
+shelf writes, the feedback counts, the refund rule and the door pin are
+**untested against anything but the local throwaway PostgreSQL**, which is where
+`test:db` proves them (732 assertions) and where nobody has ever seen them.
+
+This is not something to fix by hand from here. `supabase db push` needs the
+project's credentials, and running ten migrations — three of them guard triggers —
+against a live project is the owner's call. It is written into `HANDOFF.md` as the
+first thing to do on the next session with access.
+
+### Still not verified
+
+- **Nothing has been rendered on a real device.** No phone is attached to this
+  machine, so the map (pinch, the OSM tiles), the door-pin long-press, the
+  saved-for-later shelf and the Today card are unproven beyond the web export.
+- Location end-to-end still needs an **EAS development build**; Expo Go cannot
+  exercise GPS, and the hosted project lacks `record_my_position` anyway.
+- A11 (customer-facing rating), A12 (itemised fee), P6 (partial fulfilment) and
+  P7 (scheduled delivery) still wait on owner decisions.
+
 
 ---
 
@@ -5060,3 +5267,4 @@ All against real PostgreSQL 16, booted throwaway by `run.sh` every time.
 - `05_admin_writes_test.sql` leaves products 1800-3 and category 10000000-...-001
   at their seeded values by overwriting them with the same values. If a future
   migration changes those seeds, that file will fight it.
+

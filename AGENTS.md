@@ -139,6 +139,13 @@ two languages are written side by side, not translated one from the other.
   `expo start` prerenders the app under Node, where the package's web build
   touches `window` and throws `ReferenceError: window is not defined`. Enforced
   by `npm run check:storage`.
+- **Never unmount the navigator while a session or a role is still resolving.**
+  A loading gate is an *overlay* on top of the `<Stack>`, never an early return
+  before it. Returning early destroys expo-router's state and rebuilds it on the
+  way back up, which throws away the URL the person opened: signed in,
+  `/order/<id>` came back on `/address?id=<id>` and then on `/`. Push
+  notifications (next on `ROADMAP.md`) are "tap it → open this order", so they
+  would ship broken by exactly this. See the 2026-11-09 CHANGELOG entry.
 
 ### Database conventions
 
@@ -222,7 +229,7 @@ npm run admin                     # Next.js on http://localhost:3000
 npm run dev                       # both at once
 
 npm run typecheck                 # tsc --noEmit in both apps
-npm run lint                      # eslint in both apps + fifteen chained safety checks
+npm run lint                      # eslint in both apps + sixteen chained safety checks
 npm run check:i18n                # en/kn key parity + every key used in code exists
 npm run check:session             # the signed-in session survives an app restart
 npm run check:auth-doors          # a release build has no dev login; the review build has one
@@ -238,6 +245,7 @@ npm run check:navigation          # the no-key maps links, and the one "is this 
 npm run check:map-tiles           # the Web Mercator arithmetic the OSM map draws with
 npm run check:route               # OSRM's URL order, and every malformed body refused
 npm run check:saved               # the save-for-later shelf can never overlap the bag
+npm run check:metro               # the Metro resolver flag that broke the web export
 npm run test:db                   # all database tests against a throwaway PostgreSQL (Windows/macOS/Linux)
 ```
 
@@ -439,6 +447,24 @@ As of this build, the app is a working end-to-end flow on one shop:
   parsing in `src/lib/route.ts` (`check:route`, 45 assertions), both in the lint
   chain. **Never rendered on a device** — `SCALE-AND-TRACKING.md` §6.5.1 is the
   decision record, §7 keeps the Google/Mapbox option open and probably unused.
+- **The web export works again, and so do deep links** (2026-11-09, the "run and
+  test" session). Two bugs no gate could see were found by actually running the
+  app: `metro.config.js` set `disableHierarchicalLookup: true`, which let
+  reanimated resolve a private `semver@7` while the root kept `semver@6` and the
+  **web** bundle died on `semver/functions/satisfies` (the Android bundle kept
+  building, which is why the old "the android export is the proof" note was true
+  and useless); it is `false` now, guarded by `npm run check:metro`. And the root
+  layout held the app while a role was read by **unmounting the navigator**, so
+  every deep link opened by a signed-in user was thrown away and the person
+  landed on the shop's home screen — an overlay now, see the rule in §3.
+  `expo install --check` bumped six patch-version drifts and
+  `npx expo-doctor` reports 21/21.
+- **The hosted Supabase project is ten migrations behind**, which is now the top
+  open item. It stops at `20261013000001`; `rider_directory`, the shop totals,
+  the shelf writes, feedback, the refund rule and the door pin were never applied
+  there, so the app quietly fell back to placeholders. `test:db` is the real
+  proof (732 assertions) and the live project needs `supabase db push` before any
+  live test means anything. `HANDOFF.md` §7 step 5 lists exactly what is missing.
 - **Not built yet**, in the intended order: push notifications → Razorpay → a live
   map / background location. The text-first rider position and the key-free OSM
   map above *are* built.

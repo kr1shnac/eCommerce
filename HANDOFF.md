@@ -42,7 +42,7 @@ Do these in order on the Windows laptop. If all six pass, the move worked.
 6. Start the app: `npm run mobile`, scan the QR with Expo Go.
 
 Expected: typecheck silent, lint finishes with every check passed, database suite
-ends with `590 | 0 | 590` and `RESULT: all assertions passed`, Expo prints a QR
+ends with `732 | 0 | 732` and `RESULT: all assertions passed`, Expo prints a QR
 code.
 
 If `npm run test:db` cannot find PostgreSQL, set `PGBIN` for that terminal:
@@ -235,7 +235,7 @@ Run on the Linux machine that built the project, from the repo root.
 | --- | --- | --- |
 | `npm run typecheck` | Clean, both apps | Types agree with the database types and each other |
 | `npm run lint` | Clean, zero warnings | ESLint + all nine chained checks (i18n parity, view, persist, speech, packs, auth doors, storage, location, tracking) |
-| `npm run test:db` | **590 passed / 0 failed** | Migrations apply in order; RLS, guards, money, stock race, coupons, deletion, totals, packs, product creation, names, rider positions all behave |
+| `npm run test:db` | **732 passed / 0 failed** | Migrations apply in order; RLS, guards, money, stock race, coupons, deletion, totals, packs, product creation, names, rider positions all behave |
 | `npx expo-doctor` | 20/21 checks pass; only the known Metro warning | SDK packages are internally consistent |
 | `npx expo export --platform android` | Built a 6.1 MB Hermes bundle | The app bundles for Android, fonts included |
 
@@ -250,7 +250,7 @@ git clone https://github.com/kr1shnac/eCommerce.git <tmp>/clone-check
 cd <tmp>/clone-check && npm ci        # succeeded, no manual step
 npm run typecheck                     # clean
 npm run lint                          # clean, all nine chained checks
-npm run test:db                       # 590 passed / 0 failed
+npm run test:db                       # 732 passed / 0 failed
 ```
 
 Only two things are deliberately **not** in Git: `apps/mobile/.env` and
@@ -432,7 +432,7 @@ npm run test:db
 ```
 
 `npm run test:db` prints the PostgreSQL version and a temp cluster path, runs 23
-SQL files plus the two-session race, and ends with the 590-assertion summary. It
+SQL files plus the two-session race, and ends with the 732-assertion summary. It
 starts its own server on a free localhost port and never touches the PostgreSQL
 service from the installer. If it cannot find the binaries:
 
@@ -515,6 +515,15 @@ model.
 9. **iOS build path** — needs a Mac or a cloud build (M12).
 10. **Confirm the app identifier** `in.kunigal.grocery` is really owned/desired
     before the first store upload; it becomes permanent.
+
+`docs/launch/` holds the external-launch drafts written for the items above:
+`LAUNCH-REGISTER.md` is the index (domain, accounts, assets, store
+questionnaires), with `privacy-policy.md`, `terms.md`, `store-listing.md` and
+`delete-account.md` as the hosted pages. They are **drafts with `TODO(CA)` and
+`TODO(OWNER)` markers — nothing in them may be guessed**, and the privacy policy
+mirrors the in-app `privacy.*` notice that already ships in both languages.
+Added 2026-11-09; commit them separately from code, because a lawyer's sign-off
+is what turns them from drafts into the shop's policy.
 
 ### 6.2 Code work, in the intended order
 
@@ -764,15 +773,37 @@ the reasoning. None of them changes a promise or a price.
    `SKILLS.md`'s status note for the version differences and the two repointed
    council models. Independent of the steps below — the app builds without it.
 1. `npm run typecheck && npm run lint && npm run test:db` — all green on Windows.
+   (2026-11-09: **732 | 0 | 732**, typecheck clean, lint clean across sixteen
+   chained checks, `expo-doctor` 21/21.)
 2. Open the app on a real Android phone with Expo Go; walk the customer flow
    end to end, then rider, then owner.
 3. Fix the first-device findings (expect some; that is why C4 is a blocker).
+   Until a phone exists, the substitute that has actually been run (2026-11-09)
+   is the **static web export served over HTTP and driven in headless Chrome via
+   the DevTools protocol** — login, shop, cart, orders, account, checkout, admin
+   board, admin Today, the rider pool with the OTP handover, and a customer order
+   in `out_for_delivery` all rendered. It caught two bugs no gate could see
+   (CHANGELOG 2026-11-09), but it is not a phone: the map's pinch, the door-pin
+   long-press and GPS are still unproven.
 4. The cheap pre-launch design gaps: **A5, A6, A3-card, A2, A7 and A8 are built**
    (2026-11-03, §6.4). What remains is **A1** when the owner supplies honest ETA
    numbers, **A4** after decision 5, and **A9/A10** which need the owner and a CA
    (§6.5). Each should ship with its own CHANGELOG entry; A1 changes a
    customer-visible promise, so confirm it first.
-5. Apply the missing migrations to the hosted project and clean the demo data.
+5. **Apply the missing migrations to the hosted project** and clean the demo data.
+   Probed 2026-11-09 with the demo customer's own token: the hosted project has
+   everything up to `20261013000001` (rider assignment) and **nothing after it** —
+   `rider_directory`, `shop_day_totals`, `shop_day_by_rider`,
+   `update_product_from_shop`, `create_product_from_shop`, `product_pack_options`,
+   `record_my_position`, `order_rider_position`, `order_feedback`,
+   `orders.refund_due_paise`, `addresses.lat/lng`, `shop_feedback_totals`,
+   `shop_feedback_reasons` are all absent (`42703` / `PGRST205` / `PGRST202`).
+   The app degrades politely — the rider card falls back to "your rider" and the
+   refund card shows ₹0.00 — which is exactly why this went unnoticed: **the
+   fallback hid the drift.** `supabase db push` needs the project credentials and
+   three of the ten are guard triggers, so it is the owner's call, not a
+   background fix. Do this *before* step 2, or the device run will test ten
+   missing features.
 6. Set up OTP/SMS + DLT and prove one real sign-in.
 7. Create an EAS development build; test location consent, a real rider fix,
    the customer's text tracker, the map and the door pin, and native crash
@@ -916,8 +947,12 @@ When asking a future session for help, paste the failing command and the first
 
 ## 13. The one-sentence state
 
-The software is built and proven at the database/type/lint level — **590 database
-assertions, clean typecheck and lint, a 6.1 MB Android bundle** — and it has never
-been seen on a phone; the move to Windows is a tooling step, and the first real
-milestone on the other side is a device run, not more features. The Blinkit/Zepto
-design gaps (A1–A10) are measured and prioritised but **not built** — see §6.4.
+The software is built and proven at the database/type/lint level — **732 database
+assertions, clean typecheck and lint, a working web export and a Metro bundle that
+serves** — and it has never been seen on a phone; the first real milestone is a
+device run, not more features. **The hosted Supabase project is ten migrations
+behind** (it stops at `20261013000001`), so anything the app does beyond rider
+assignment has only ever run against the throwaway PostgreSQL that `test:db`
+boots — apply those migrations before doing any live test (§7 step 5). The
+Blinkit/Zepto design gaps (A1–A10) are measured and prioritised but **not
+built** — see §6.4.

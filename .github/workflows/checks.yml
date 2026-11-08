@@ -93,48 +93,20 @@ jobs:
 
       - name: Check the SDK is internally consistent
         working-directory: apps/mobile
-        run: |
-          # `expo-doctor` flags two things here, and only one is a real failure.
-          #
-          #   * A package that has drifted off the SDK's expected version is a
-          #     real problem and must fail the build. That is the whole point of
-          #     running the doctor in CI.
-          #   * "✖ Check for issues with Metro config" is a FALSE POSITIVE. That
-          #     line is deliberate and required by Expo's own monorepo guide; see
-          #     the comment in apps/mobile/metro.config.js. Removing it to quieten
-          #     the warning is the change that would actually break the bundle.
-          #
-          # So: fail on ANY remaining complaint of any kind — including whatever
-          # new check the doctor gains next — and tolerate only that one block.
-          set +e
-          OUTPUT="$(npx expo-doctor 2>&1)"
-          STATUS=$?
-          echo "$OUTPUT"
+        run: npx expo-doctor
 
-          if [ "$STATUS" -eq 0 ]; then
-            echo "doctor is clean"
-            exit 0
-          fi
-
-          # Remove the known-benign Metro block by deleting from its heading up to
-          # the next heading or the summary. A line-by-line filter was tried first
-          # and was wrong: the heading and the "N checks failed" summary survived
-          # it, so the job failed on its own exemption.
-          REMAINING="$(
-            printf '%s\n' "$OUTPUT" \
-              | awk '
-                  /^✖ Check for issues with Metro config$/ { skip = 1; next }
-                  /^✖ / { skip = 0 }
-                  /^[0-9]+ checks? failed/ { skip = 1; next }
-                  skip { next }
-                  { print }
-                '
-          )"
-
-          # A bare "✖ Check for ..." anywhere in what is left is a real failure.
-          if printf '%s\n' "$REMAINING" | grep -qE '^✖ Check'; then
-            echo "::error::expo-doctor found a real problem (see the output above)."
-            exit 1
-          fi
-
-          echo "only the known, deliberate Metro-config warning remains — passing"
+      # This step used to run through a filter that deleted the doctor's
+      # Metro-config complaint from its output. That complaint was correct.
+      # With npm workspaces, `disableHierarchicalLookup: true` is what let
+      # reanimated resolve a private semver@7 while the hoisted root copy
+      # stayed semver@6, and the WEB bundle died on
+      # `semver/functions/satisfies` — a path that only exists in semver 7 —
+      # while the Android bundle kept building. The filter therefore silenced
+      # the one tool that could have named it, in the only place it was
+      # visible.
+      #
+      # So there is no filter and no exemption now. metro.config.js sets the
+      # flag to false with the post-mortem above it, check-metro.mjs guards it
+      # in the lint chain, both platform exports build, and the doctor reports
+      # 21/21. Any complaint of any kind — including whatever check the doctor
+      # gains next — fails this job.

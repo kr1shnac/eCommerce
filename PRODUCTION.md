@@ -119,13 +119,13 @@ the item-by-item tracker.
 
 | Area | State |
 | --- | --- |
-| Database | **26 migrations**, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement |
-| Database tests | **590 assertions, 0 failures**, against throwaway PostgreSQL (`npm run test:db`); now runs on Windows, macOS and Linux |
-| Typecheck / lint / i18n | Clean. **613 keys in parity** across `en.json` and `kn.json`; every chained check passes with zero warnings |
+| Database | **31 migrations**, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement |
+| Database tests | **732 assertions, 0 failures**, against throwaway PostgreSQL (`npm run test:db`); now runs on Windows, macOS and Linux |
+| Typecheck / lint / i18n | Clean. **702 keys in parity** across `en.json` and `kn.json`; every chained check passes with zero warnings (sixteen of them, `check:metro` now included) |
 | Mobile app | Three faces by `profiles.role` (customer / rider / admin), realtime order updates, light **and** dark themes, design system in `src/components/ui/`, responsive skeletons, offline catalogue persistence |
-| Rider tracking | Text-first position sharing is built (consent, foreground throttle, distance/ETA, "Picked up"); **no map, no background location** |
+| Rider tracking | Text-first position sharing is built (consent, foreground throttle, distance/ETA, "Picked up"), **with a key-free OpenStreetMap map and a door pin**; still no background location |
 | Install path | `app.json` + `eas.json` exist. **Still never built by EAS** |
-| Device runs | **None. Ever.** No screenshot, no emulator session, no APK |
+| Device runs | **None. Ever.** No screenshot, no emulator session, no APK. The closest thing that exists is the static web export driven in headless Chrome (CHANGELOG 2026-11-09), which is not a phone |
 | Sign-in | Phone OTP only in release builds; email+password demo path is `__DEV__`-gated; the hosted project has OTP disabled (C1) |
 | CI | Exists — `.github/workflows/checks.yml` runs typecheck, lint, session, database suite and `expo-doctor` (H12) |
 | Crash reporting / analytics | Sentry for JavaScript errors (`src/lib/crash-reporting.ts`, H11); native crashes need a real build; no analytics |
@@ -486,22 +486,31 @@ its own throwaway cluster with `initdb`/`pg_ctl` and needs no service or
 container. The same command runs on Windows, where the runner finds
 `C:\Program Files\PostgreSQL\*\bin` itself.
 
-**One exemption, and it is argued rather than assumed.** `expo-doctor` reports
-`resolver.disableHierarchicalLookup mismatch` in `metro.config.js`. That line is
-**deliberate and required by Expo's own monorepo guide** — with npm workspaces, it
-is what stops two copies of a package being loaded at once, and `npx expo export`
-proves the bundle builds with it in place. Removing it to quieten the doctor is the
-change that would actually break the build. So the workflow drops *only* that one
-block and fails on any other complaint of any kind, including whatever new check
-the doctor gains next. The filter was tested against three inputs — the real output
-(→ pass), a simulated SDK-drift failure (→ fail), and both together (→ fail); the
-last is the case that matters, because an exemption that masks a real problem is
-worse than no exemption.
+**No exemption any more, and the reason it was withdrawn is worth reading.** This
+file used to carry an argued exemption: `expo-doctor` reported
+`resolver.disableHierarchicalLookup mismatch` in `metro.config.js`, and this
+document said the line was deliberate and required by Expo's own monorepo guide,
+so the CI job deleted that one block from the doctor's output.
+
+**The doctor was right and we were wrong.** With npm workspaces, hierarchical
+lookup *disabled* is what lets a transitive dependency resolve a private copy of a
+package instead of the hoisted one. That is exactly what happened: reanimated got
+`semver@7.8.5` while the root kept `semver@6.3.1`, and the web bundle died on
+`semver/functions/satisfies`, a path that only exists in semver 7. The exemption
+did not merely permit the complaint; it permitted the breakage, and it silenced
+the one tool that could have named it in the ten days between the drift appearing
+and the export failing. `metro.config.js` now sets the flag to `false` with the
+post-mortem written above it, `scripts/check-metro.mjs` guards it in the lint
+chain, and the CI filter is gone: **the job runs the doctor and fails on any
+complaint of any kind.** An exemption that masks a category of failure is worse
+than no exemption, and this one cost a week.
 
 Running the doctor in CI also found **six packages had drifted off the SDK's
-expected patch versions** (`expo`, `expo-constants`, `expo-crypto`, `expo-linking`,
-`expo-router`, `expo-splash-screen`). All were upgraded within SDK 57 and the whole
-gate plus a real bundle export were re-run afterwards.
+expected patch versions** (`expo`, `expo-constants`, `expo-image-picker`,
+`expo-location`, `expo-router`, `expo-splash-screen`). All were bumped to the
+expected versions with `npx expo install --check` and the doctor now reports
+**21/21 with no Metro complaint** — the claim in the previous paragraph is
+verified behaviour, not hope.
 
 ### The landmark, and the drift it exposed — DONE (register M5)
 

@@ -171,13 +171,17 @@ function RootNavigator() {
 
   // A signed-in person whose role we have not read yet: hold one moment rather
   // than flashing the shop and then jumping to a different face.
-  if (session && profile.isLoading) {
-    return (
-      <View style={[styles.loading, { backgroundColor: theme.background }]}>
-        <ActivityIndicator color={theme.accent} />
-      </View>
-    );
-  }
+  //
+  // This is an OVERLAY, not an early return. Returning early unmounts the whole
+  // <Stack>, and expo-router rebuilds its state on the way back up — which threw
+  // away the URL the person opened. Measured, headless Chrome, signed in:
+  // opening /product/<id> rendered the product screen, then this branch ran,
+  // then the app came back on `/address?id=<id>` and from there on `/`. The
+  // board behaved the same way: /admin/today came back on /admin. So a deep
+  // link — a push notification's "see your order", next on the roadmap — would
+  // have dropped the person on the home screen with no explanation. The navigator
+  // stays mounted; the spinner covers it for a moment instead.
+  const holding = Boolean(session && profile.isLoading);
 
   const riderGuard = role === 'delivery';
   const adminGuard = role === 'admin';
@@ -186,17 +190,25 @@ function RootNavigator() {
   const customerGuard = !session || role === null || role === 'customer' || role === 'admin';
 
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
-      <Stack.Protected guard={riderGuard}>
-        <Stack.Screen name="rider" />
-      </Stack.Protected>
-      <Stack.Protected guard={adminGuard}>
-        <Stack.Screen name="admin" />
-      </Stack.Protected>
-      <Stack.Protected guard={customerGuard}>
-        <Stack.Screen name="(tabs)" />
-      </Stack.Protected>
-    </Stack>
+    <>
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: theme.background } }}>
+        <Stack.Protected guard={riderGuard}>
+          <Stack.Screen name="rider" />
+        </Stack.Protected>
+        <Stack.Protected guard={adminGuard}>
+          <Stack.Screen name="admin" />
+        </Stack.Protected>
+        <Stack.Protected guard={customerGuard}>
+          <Stack.Screen name="(tabs)" />
+        </Stack.Protected>
+      </Stack>
+
+      {holding ? (
+        <View style={[styles.holding, { backgroundColor: theme.background }]}>
+          <ActivityIndicator color={theme.accent} />
+        </View>
+      ) : null}
+    </>
   );
 }
 
@@ -208,6 +220,9 @@ function RootNavigator() {
 export default wrapWithCrashReporting(RootLayout);
 
 const styles = StyleSheet.create({
-  loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  // Covers the navigator while the role is read, so the app never flashes the
+  // shop and then jumps to a different face. Absolute, because the navigator
+  // below must stay mounted for the URL to survive.
+  holding: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   root: { flex: 1 },
 });
