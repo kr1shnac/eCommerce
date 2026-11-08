@@ -136,6 +136,10 @@ Everything below is in `master` and passes the gates in §3.
   `supabase/demo-images.sql`) and a product emoji fallback.
 - Search, category chips, product detail, favourites, "buy again", offers rail.
 - Cart persisted on the device, quantity clamped to stock, basket bar.
+- **"Save for later"** beside Remove on every cart line (A13, measured on
+  Flipkart's cart): a shelf on the phone — not the server, because a customer
+  hesitates while offline — that keeps the quantity they wanted, feeds off the
+  same product query as the bag, and cannot overlap it (`check:saved`).
 - Addresses with a landmark (the town has no reliable house numbers), one default
   enforced by a partial unique index, and a **door pin** dropped on the same OSM
   map the tracking screen uses (long-press, or "use my current location").
@@ -198,12 +202,12 @@ Everything below is in `master` and passes the gates in §3.
 
 - TypeScript everywhere; TanStack Query for server state; Zustand for device
   state; Expo Router with `Stack.Protected` role gates.
-- 683 i18n keys in `en.json` and `kn.json`, parity enforced; every placeholder is
+- 690 i18n keys in `en.json` and `kn.json`, parity enforced; every placeholder is
   single-brace `{name}`; plurals are `_one`/`_other`.
 - 28 SQL test files + a two-session concurrency suite = **714 assertions**,
-  against a real throwaway PostgreSQL, on every `npm run test:db`.- Twelve pure-JS guard scripts run inside `npm run lint`: i18n, order view,
+  against a real throwaway PostgreSQL, on every `npm run test:db`.- Fifteen pure-JS guard scripts run inside `npm run lint`: i18n, order view,
   persistence allowlist, speech, packs, unit price, auth doors, storage,
-  location, tracking, navigation, map tiles, route.
+  location, tracking, navigation, map tiles, route, saved-later.
 - CI (`.github/workflows/checks.yml`) runs typecheck, lint, the session check,
   the database suite and `expo-doctor` on every push. The one `expo-doctor`
   exemption (Metro `disableHierarchicalLookup`) is argued in `PRODUCTION.md`.

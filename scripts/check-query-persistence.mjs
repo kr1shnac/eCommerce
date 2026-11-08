@@ -82,7 +82,7 @@ const FORBIDDEN = [
   ['shelf', 'staff-only price/stock view'],
   ['shop-totals', 'the shop\'s takings — staff only'],
   ['coupons', 'shop-internal'],
-  ['cart-products', 'the basket, derived from the customer\'s own actions'],
+  ['cart-products', 'the basket AND the saved shelf, derived from the customer\'s own actions'],
 ];
 for (const [key, why] of FORBIDDEN) {
   check(`NOT persisted: ${key} (${why})`, shouldPersistQuery(k([key])) === false);

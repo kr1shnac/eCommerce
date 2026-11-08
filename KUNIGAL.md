@@ -116,6 +116,8 @@ and why.
 | A door pin | **ಬುಟ್ಟಿ ಎಲ್ಲಿಗೆ ತರಬೇಕು?** | The question the address screen asks before showing a map. Not `ಪಿನ್ ಹಾಕಿ` ("insert a pin"): a customer who may not read the word "pin" is asked the shop's own question — where should the bag be brought — and the map is the answering space. |
 | Moving the pin | **ನಕ್ಷೆಯ ಮೇಲೆ ಒತ್ತಿ ಹಿಡಿಯಿರಿ** | "Press and hold on the map." Written as an instruction in the helper's voice, with the *effect* in the verb (`ಬೀಳುತ್ತದೆ` — "falls into place"), not a device gesture name. |
 | Use my current location | **ನಾನು ಇರುವ ಸ್ಥಾನವನ್ನೇ ಬಳಸಿ** | "Use the place I am." Not `ಲೋಕೇಶನ್ ಬಳಸಿ` ("use location"): the Kannada names the place, because the customer is consenting to a *place*, not to a technology. When it fails the screen offers the finger instead: **`ಸ್ಥಳ ಸಿಗಲಿಲ್ಲ. ಬೆರಳು ಜರುಗಿಸಿ ಪಿನ್ ಬ್ಲಸಬಹುದು.`** |
+| Save for later (cart) | **ನಂತರಕ್ಕೆ ಉಳಿಸಿ** | "Keep for later." Not `ಸೇವ್ ಮಾಡಿ` ("save", the device word): the customer is putting the item *back in the shop*, not saving a file. The section then reads **`ನಂತರಕ್ಕೆ ಉಳಿಸಿದ್ದು`** — "what was kept for later" — as a state, not a command. |
+| Put back in the bag | **ಬುಟ್ಟಿಗೆ ಹಾಕಿ** | "Put it in the bag." The Kannada already has the right word for a basket (`ಬುಟ್ಟಿ`, used by "Pick up": `ಬುಟ್ಟಿ ಕೈಗೆ ಬಂದಿದೆ`), so the cart and the saved shelf speak the same language. |
 
 ## 5. Improvisations (deliberate, not literal)
 

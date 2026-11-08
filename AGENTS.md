@@ -222,7 +222,7 @@ npm run admin                     # Next.js on http://localhost:3000
 npm run dev                       # both at once
 
 npm run typecheck                 # tsc --noEmit in both apps
-npm run lint                      # eslint in both apps + fourteen chained safety checks
+npm run lint                      # eslint in both apps + fifteen chained safety checks
 npm run check:i18n                # en/kn key parity + every key used in code exists
 npm run check:session             # the signed-in session survives an app restart
 npm run check:auth-doors          # a release build has no dev login; the review build has one
@@ -237,6 +237,7 @@ npm run check:tracking            # the rider throttle, staleness and ETA rules
 npm run check:navigation          # the no-key maps links, and the one "is this a place" rule
 npm run check:map-tiles           # the Web Mercator arithmetic the OSM map draws with
 npm run check:route               # OSRM's URL order, and every malformed body refused
+npm run check:saved               # the save-for-later shelf can never overlap the bag
 npm run test:db                   # all database tests against a throwaway PostgreSQL (Windows/macOS/Linux)
 ```
 
@@ -406,6 +407,16 @@ As of this build, the app is a working end-to-end flow on one shop:
   basket, because in those cases adding items saves nothing. Both are integer
   paise; `check:delivery` proves the nudge and `previewFee` agree, and the fee
   actually charged is still `place_order()`'s.
+- **A hesitant customer has two exits per line.** "Save for later"
+  (`COMPETITOR-TEARDOWN.md` §10.5, A13) takes an item out of the bag and onto a
+  shelf **on the phone**, not the server — a village with one bar of signal is
+  where this matters, and a shelf that needs a round trip to write to fails
+  exactly then. The quantity the customer wanted travels with it, one product
+  query serves both lists, and `scripts/check-saved.mjs` proves the two lists
+  can never overlap (an item counted twice is an item the customer thinks they
+  are not buying), that putting a line back tops up the bag instead of
+  overwriting it, and that a full bag leaves the overflow on the shelf rather
+  than losing it.
 - **The customer sees the order on a map, with no SDK and no key.** The map is
   OpenStreetMap raster tiles composited by `components/rider-map.tsx` on the
   gesture stack the app already had — pinch to zoom with the anchor held still,

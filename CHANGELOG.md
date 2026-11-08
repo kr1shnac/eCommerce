@@ -6,6 +6,69 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-08 — Two exits per line: "Save for later" (A13, built)
+
+**What was asked.** Continue the gap list. `COMPETITOR-TEARDOWN.md` §10.7 left
+three rows from the measured Flipkart cart: **A11** (a rating on the shelf card)
+and **A12** (an itemised fee line) both need an owner decision before build —
+A11 because a sparse rating is worse than none, A12 because inventing a
+platform fee on a shop that never charged one is a price rise dressed as
+parity. **A13 does not**: "Save for later" is one list, one query, no new
+money. So it is the one built.
+
+**The decision: the shelf lives on the phone, not on a server.** A customer
+hesitates over an item in a village with one bar of signal, which is exactly
+when a round trip is worst. A shelf that needs the network to write to is a
+shelf that fails at the only moment it is needed. It therefore sits beside the
+cart in the device store (`src/store/saved-store.ts`), on the same trust model,
+and stores no prices, no stock and no names — `useCart` joins it against live
+product rows, so a line that has sold out since is reported as unavailable
+rather than kept as if it could still be bought.
+
+**What was built.**
+
+- `src/lib/saved-later.ts` (new, pure) — the id union that lets **one product
+  query serve both lists** (a second round trip is the difference between a
+  screen that appears and one that does not), the merge that puts saved lines
+  back **into** the bag, and the quantity and hydration guards.
+- `src/store/saved-store.ts` (new) — the persisted shelf; a half-written file
+  degrades to an empty shelf, not a crash on launch.
+- `src/hooks/use-cart.ts` — `saveForLater`, `moveToCart`, `moveAllToCart`,
+  `forgetSaved`, and `saved`. The quantity the customer wanted travels with
+  them, because "put back" must restore the *shopping*, not just the product.
+- `apps/mobile/src/app/(tabs)/cart.tsx` — the action on every line, and the
+  saved section at the bottom of the same screen (its own tap, not a tab: a
+  list one step further away is housekeeping nobody does). Loading and
+  unavailable states are distinct — a line whose product row has not arrived is
+  not a line that has sold out.
+- `scripts/check-saved.mjs` (new, `check:saved`, 30 assertions, in the lint
+  chain) — the invariant that makes this safe to ship: **an item can never be
+  in both lists** (counted twice is an item the customer thinks they are not
+  buying, which is a silent money bug, not a crash), a full bag leaves the
+  overflow on the shelf rather than losing it, a corrupted quantity never
+  enters the bag, and a device file with `NaN` or a string degrades to empty.
+- **i18n 683 → 690 keys**, both locales: `ನಂತರಕ್ಕೆ ಉಳಿಸಿ` ("keep for later"),
+  `ಬುಟ್ಟಿಗೆ ಹಾಕಿ` ("put it in the bag") — using `ಬುಟ್ಟಿ`, the word the rider
+  screen already uses, so the cart and the saved shelf speak one language.
+  Three new `KUNIGAL.md` glossary rows record why.
+- `COMPETITOR-TEARDOWN.md` §10.7 marks A13 built and states the one decision
+  that was ours rather than Flipkart's.
+
+**Verified.** `npm run typecheck` (0 errors, both apps), `npm run lint` (0
+errors, 0 warnings — fifteen chained checks, `check:saved` included),
+`npm run check:i18n` (690 keys, parity), and `npm run test:db` (no schema change,
+**714 | 0 | 714** unchanged).
+
+**Not verified.** The cart screen has never been rendered. The taps, the
+section, the FlatList footer and the bookend are checked logic, not a looked-at
+screen.
+
+**Open gaps.** A11 and A12 still wait on the owner. The saved shelf does not
+survive a change of phone — same as the cart, which is a deliberate trade and is
+now documented in `AGENTS.md` §7.
+
+---
+
 ## 2026-11-08 — The door has a pin: the map finally has a route, and the ETA finally has a door
 
 **What was asked.** "Done with implementation? If not, go for it." The map

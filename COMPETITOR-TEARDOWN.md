@@ -948,6 +948,18 @@ the breakdown, and a check that it cannot be sent by the client.
 exits per row is what keeps a hesitant customer from re-searching. One table,
 one query, no new money.
 
+**BUILT 2026-11-08** (`src/lib/saved-later.ts`, `src/store/saved-store.ts`,
+`check:saved`, the cart's saved section). The one decision that was ours, not
+Flipkart's: the shelf lives **on the phone**, not on a server. A customer in a
+village with one bar of signal hesitates exactly when the network is worst, and
+a shelf that needs a round trip to write to fails exactly then — so it sits
+next to the cart in AsyncStorage, shares the cart's product query, and carries
+the quantity the customer asked for so "put back" restores the shopping rather
+than just the product. `check:saved` pins the invariant that makes it safe: an
+item can never be in both lists at once, putting a line back tops up the bag
+instead of overwriting it, and a full bag leaves the overflow on the shelf
+rather than losing it.
+
 **Refuse, with the measurement:** their trust row ("Safe and secure payments.
 Easy returns…") is not transferable to a COD-only shop with no return window;
 copying it would be writing a claim we cannot honour. Ours lives on the order

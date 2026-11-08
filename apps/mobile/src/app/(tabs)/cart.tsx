@@ -15,8 +15,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Elevation, Radii, Spacing } from '@/constants/theme';
-import { useCart, type CartLineView } from '@/hooks/use-cart';
-import { useAddresses } from '@/hooks/use-orders';
+import { useCart, type CartLineView } from '@/hooks/use-cart';import { useAddresses } from '@/hooks/use-orders';
 import { useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { freeDeliveryHint, previewFee } from '@/lib/delivery';
@@ -26,6 +25,7 @@ import { spokenProductLine } from '@/lib/speech';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import { useCartStore } from '@/store/cart-store';
+import { useSavedStore } from '@/store/saved-store';
 
 /**
  * The basket.
@@ -121,6 +121,24 @@ export default function CartScreen() {
               {formatPaise(item.lineTotalPaise)}
             </ThemedText>
           </View>
+
+          {/*
+            Two exits per line, the way Flipkart's measured cart has it
+            (COMPETITOR-TEARDOWN.md §10.5, A13). A hesitant customer should not
+            have to choose between keeping an item and re-searching for it, and
+            this tap is what stops a basket being rebuilt from memory.
+          */}
+          <Pressable
+            onPress={() => cart.saveForLater(item.productId)}
+            accessibilityRole="button"
+            accessibilityLabel={t('cart.saveForLater', { name })}
+            hitSlop={8}
+            style={styles.lineAction}>
+            <Ionicons name="bookmark-outline" size={15} color={theme.accent} />
+            <ThemedText type="caption" style={[styles.lineActionText, { color: theme.accent }]}>
+              {t('cart.saveForLater')}
+            </ThemedText>
+          </Pressable>
         </View>
 
         <Pressable
@@ -280,6 +298,7 @@ export default function CartScreen() {
               </View>
             )
           }
+          ListFooterComponent={<SavedForLater />}
         />
       )}
 
@@ -362,9 +381,129 @@ export default function CartScreen() {
   );
 }
 
-/** Title + optional count, in one place so every tab screen's head matches. */
-function Header({ title, subtitle }: { title: string; subtitle?: string }) {
+/**
+ * The saved shelf, under the bag.
+ *
+ * WHY IT SITS ON THIS SCREEN AND NOT A SCREEN OF ITS OWN
+ * ----------------------------------------------------
+ * A customer sets an aside because they hesitate **while they are looking at
+ * their basket**. Putting the saved list one tap further away — a tab, a
+ * drawer — turns "keep it for later" into an act of housekeeping they will
+ * never do, and the items will simply be removed. So it is the last thing on
+ * the screen they are already on, and it is empty and unremarkable when there
+ * is nothing on it.
+ *
+ * It is on the DEVICE, not the server: a village with one bar of signal is
+ * where this feature matters, and a shelf that needs a round trip to write to
+ * is a shelf that fails exactly then. Prices come from the same live product
+ * rows as the bag (`useCart`), so a saved line that has sold out is reported
+ * as unavailable rather than kept as if it could still be bought.
+ */
+function SavedForLater() {
+  const { t } = useTranslation();
+  const theme = useTheme();
+  const cart = useCart();
+  const hydrated = useSavedStore((state) => state.hasHydrated);
+
+  // Nothing on the shelf: don't render the section at all. A permanently empty
+  // heading is noise, and this screen is read by people scanning, not reading.
+  if (!hydrated || cart.saved.length === 0) return null;
+
+  // The shelf's product rows come from the same query as the bag's. Until it
+  // answers, a saved line has no product — which is not the same thing as a
+  // line that has sold out, so it gets the loading state rather than the
+  // warning (rule 9.2: loading, empty, and error-with-Retry, never a wrong
+  // guess).
+  if (cart.isLoading && cart.saved.every((line) => line.product === null)) {
+    return (
+      <View style={styles.savedSection}>
+        <View style={styles.savedHead}>
+          <Ionicons name="bookmark" size={16} color={theme.textSecondary} />
+          <ThemedText type="smallBold" style={styles.flex}>
+            {t('cart.savedTitle')}
+          </ThemedText>
+        </View>
+        <LoadingState />
+      </View>
+    );
+  }
+
   return (
+    <View style={styles.savedSection}>
+      <View style={styles.savedHead}>
+        <Ionicons name="bookmark" size={16} color={theme.textSecondary} />
+        <ThemedText type="smallBold" style={styles.flex}>
+          {t('cart.savedTitle')}
+        </ThemedText>
+        {cart.saved.length > 1 ? (
+          <Button
+            label={t('cart.moveAllToCart')}
+            variant="ghost"
+            size="md"
+            onPress={cart.moveAllToCart}
+          />
+        ) : null}
+      </View>
+
+      <ThemedText type="caption" themeColor="textSecondary">
+        {t('cart.savedHint')}
+      </ThemedText>
+
+      {cart.saved.map((line) => {
+        const name = line.product ? localizedName(line.product) : t('cart.unavailableItem');
+        return (
+          <View
+            key={line.productId}
+            style={[styles.savedLine, { borderColor: theme.border, backgroundColor: theme.card }]}>
+            <View style={[styles.savedThumb, { backgroundColor: theme.backgroundElement }]}>
+              <ThemedText style={styles.thumbEmoji}>{line.product?.emoji ?? '🛒'}</ThemedText>
+            </View>
+
+            <View style={styles.flex}>
+              <ThemedText type="bodyStrong" numberOfLines={1}>
+                {name}
+              </ThemedText>
+              {line.product ? (
+                <ThemedText type="small" themeColor="textSecondary">
+                  {`${formatPaise(line.product.price_paise)} · ${line.product.unit}`}{' '}
+                  {`× ${line.quantity}`}
+                </ThemedText>
+              ) : (
+                <ThemedText type="small" style={{ color: theme.danger }}>
+                  {t('cart.savedUnavailable')}
+                </ThemedText>
+              )}
+            </View>
+
+            <View style={styles.savedActions}>
+              <Pressable
+                onPress={() => cart.moveToCart(line.productId)}
+                accessibilityRole="button"
+                accessibilityLabel={t('cart.moveToCart', { name })}
+                hitSlop={8}
+                style={styles.savedAction}>
+                <ThemedText type="caption" style={{ color: theme.accent }}>
+                  {t('cart.moveToCart')}
+                </ThemedText>
+              </Pressable>
+              <Pressable
+                onPress={() => cart.forgetSaved(line.productId)}
+                accessibilityRole="button"
+                accessibilityLabel={t('cart.forgetSaved', { name })}
+                hitSlop={8}
+                style={styles.savedAction}>
+                <Ionicons name="trash-outline" size={16} color={theme.danger} />
+              </Pressable>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+/** Title + optional count, in one place so every tab screen's head matches. */
+function Header({ title, subtitle }: { title: string; subtitle?: string }) {  return (
     <View style={styles.headerRow}>
       <ThemedText type="title">{title}</ThemedText>
       {subtitle ? (
@@ -378,6 +517,7 @@ function Header({ title, subtitle }: { title: string; subtitle?: string }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  flex: { flex: 1 },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
@@ -419,6 +559,51 @@ const styles = StyleSheet.create({
   removeButton: {
     width: 36,
     height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  lineAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    minHeight: 44,
+    alignSelf: 'flex-start',
+    paddingRight: Spacing.two,
+  },
+  lineActionText: { fontWeight: '600' },
+  savedSection: {
+    marginTop: Spacing.four,
+    gap: Spacing.two,
+  },
+  savedHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
+  savedLine: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    padding: Spacing.two,
+    borderRadius: Radii.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  savedThumb: {
+    width: 40,
+    height: 40,
+    borderRadius: Radii.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  savedActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+  },
+  savedAction: {
+    minHeight: 44,
+    minWidth: 44,
+    paddingHorizontal: Spacing.two,
     alignItems: 'center',
     justifyContent: 'center',
   },
