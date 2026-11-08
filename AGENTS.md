@@ -386,6 +386,15 @@ As of this build, the app is a working end-to-end flow on one shop:
   (no update/delete policy), only the order's own customer may write it and only
   after `delivered`, and erasing the account erases it. The question lives in
   `src/components/order-feedback.tsx` on the order screen.
+- **The shop reads its own answers.** `shop_feedback_totals()` and
+  `shop_feedback_reasons()` (migration `20261108000001`, test 29) put those six
+  reasons on the owner's Today tab as **counts** — two numbers that add up, and
+  the reasons that actually occurred, most frequent first. No average, no
+  rating, no per-product or per-rider attribution (the reason is per ORDER and
+  says nothing about which item or who carried it — inventing one would be a
+  breakdown that looks like evidence). A reason that did not occur returns **no
+  row at all**, never a zero, and the functions return no row to anybody who is
+  not staff rather than a row of zeroes.
 - **The customer is told when the shop owes them money.** The owner's Today tab
   has reported `refund_due_paise` since migration `20261021000002`; the person
   owed it saw nothing. Migration `20261106000002` makes the same rule a

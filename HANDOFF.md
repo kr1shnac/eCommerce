@@ -81,7 +81,7 @@ fields — see §6.
 
 Everything below is in `master` and passes the gates in §3.
 
-### 2.1 Database (30 migrations)
+### 2.1 Database (31 migrations)
 
 - One store, 8 categories, 34 products, 4 delivery zones, 2 coupons, settings.
 - Every table has RLS and explicit policies. Customers read their own addresses
@@ -129,6 +129,12 @@ Everything below is in `master` and passes the gates in §3.
   and `order_rider_position` measures the distance and ETA to the snapshot's
   door first and the saved address second. Until this migration, `distance_m`
   and `eta_minutes` were NULL for every order ever placed.
+- **The shop reads its own answers.** `shop_feedback_totals()` and
+  `shop_feedback_reasons()` (migration `20261108000001`, test 29): two counts
+  and the six reasons that actually occurred, staff-only, over a window. Not a
+  rating and not an average — a shop with a handful of deliveries a day has no
+  average worth reading — and a reason that did not occur returns no row at all,
+  never a zero.
 
 ### 2.2 Customer app
 
@@ -190,7 +196,10 @@ Everything below is in `master` and passes the gates in §3.
 - Live order board over Supabase Realtime (customer sockets are filtered to their
   own orders; a 60 s poll is the backstop for a dropped rural socket).
 - Assign / reassign / unassign a rider.
-- **Today** tab: takings, by-rider cash, refunds due — computed in Postgres.
+- **Today** tab: takings, by-rider cash, refunds due — computed in Postgres —
+  and **what customers said**: how many bags arrived right, and which of the six
+  complaint reasons occurred (counts, never a rating, never a zero for a reason
+  that did not happen).
 - **Shelf** tab: price, stock, on/off-shelf from the phone, through
   `update_product_from_shop()` (a plain `.update()` silently matches zero rows
   for a non-admin, so the RPC raises instead). Product identity is frozen.
@@ -202,9 +211,9 @@ Everything below is in `master` and passes the gates in §3.
 
 - TypeScript everywhere; TanStack Query for server state; Zustand for device
   state; Expo Router with `Stack.Protected` role gates.
-- 690 i18n keys in `en.json` and `kn.json`, parity enforced; every placeholder is
+- 702 i18n keys in `en.json` and `kn.json`, parity enforced; every placeholder is
   single-brace `{name}`; plurals are `_one`/`_other`.
-- 28 SQL test files + a two-session concurrency suite = **714 assertions**,
+- 29 SQL test files + a two-session concurrency suite = **732 assertions**,
   against a real throwaway PostgreSQL, on every `npm run test:db`.- Fifteen pure-JS guard scripts run inside `npm run lint`: i18n, order view,
   persistence allowlist, speech, packs, unit price, auth doors, storage,
   location, tracking, navigation, map tiles, route, saved-later.

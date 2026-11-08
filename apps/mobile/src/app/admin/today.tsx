@@ -8,6 +8,7 @@ import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';import { useShopDayByRider, useShopDayTotals } from '@/hooks/use-shop-totals';
+import { useShopFeedbackReasons, useShopFeedbackTotals } from '@/hooks/use-shop-feedback';
 import { useTheme } from '@/hooks/use-theme';
 import { formatPaise } from '@/lib/money';
 import { isSupabaseConfigured } from '@/lib/supabase';
@@ -45,6 +46,8 @@ export default function AdminTodayScreen() {
 
   const totals = useShopDayTotals();
   const riders = useShopDayByRider();
+  const feedback = useShopFeedbackTotals();
+  const reasons = useShopFeedbackReasons();
 
   const configured = isSupabaseConfigured;
   const loading = totals.isLoading || riders.isLoading;
@@ -53,6 +56,8 @@ export default function AdminTodayScreen() {
   const refetchAll = () => {
     void totals.refetch();
     void riders.refetch();
+    void feedback.refetch();
+    void reasons.refetch();
   };
 
   return (
@@ -223,6 +228,57 @@ export default function AdminTodayScreen() {
               </ThemedText>
             )}
           </Card>
+
+          {/* The shop's own answers. Every complaint reason maps to an action
+              the owner can take, and until now the app has been collecting them
+              and showing them to nobody. Counts, not a rating: a shop with a
+              handful of deliveries a day has no average worth reading. */}
+          <Card>
+            <SectionHeading icon="chatbubbles-outline" title={t('admin.feedbackTitle')} />
+            <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+              {t('admin.feedbackSubtitle')}
+            </ThemedText>
+
+            {feedback.isLoading ? (
+              <LoadingState />
+            ) : !feedback.data || feedback.data.answered === 0 ? (
+              // Three states, and this is the one a pilot shop will see most:
+              // nothing wrong, just nothing answered yet.
+              <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                {t('admin.feedbackEmpty')}
+              </ThemedText>
+            ) : (
+              <>
+                <ThemedText type="subtitle">
+                  {feedback.data.wrong_count === 0
+                    ? t('admin.feedbackAllRight', { count: feedback.data.answered })
+                    : t('admin.feedbackOk', {
+                        ok: feedback.data.ok_count,
+                        answered: feedback.data.answered,
+                      })}
+                </ThemedText>
+
+                {reasons.data && reasons.data.length > 0 ? (
+                  <View style={styles.reasonList}>
+                    {reasons.data.map((row) => (
+                      <View key={row.reason} style={styles.reasonRow}>
+                        <ThemedText type="small" style={{ flex: 1 }}>
+                          {t(`admin.feedbackReasons.${row.reason}`, { count: row.seen })}
+                        </ThemedText>
+                        <ThemedText type="smallBold">{row.seen}</ThemedText>
+                      </View>
+                    ))}
+                  </View>
+                ) : null}
+
+                {/* Each reason maps to a different action; the hint is the
+                    reminder of which, so a count does not become a dead end. */}
+                <ThemedText type="caption" style={{ color: theme.textSecondary }}>
+                  {t('admin.feedbackHint')}
+                </ThemedText>
+              </>
+            )}
+          </Card>
         </ScrollView>
       )}
     </View>
@@ -339,4 +395,6 @@ const styles = StyleSheet.create({
   },
   riderName: { flex: 1, gap: 2 },
   riderMoney: { alignItems: 'flex-end', gap: 2 },
+  reasonList: { gap: Spacing.one, marginTop: Spacing.two },
+  reasonRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
 });

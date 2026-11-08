@@ -6,6 +6,92 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-08 — The shop finally reads its own answers (P5's "later, smaller step")
+
+**What was asked.** Continue the gap list. A11 and A12 still wait on the owner
+(a sparse rating, or a platform fee on a shop that never charged one), and P6
+and P7 are owner decisions too. But `HANDOFF.md` §6.2 item 5 left one unblocked
+step behind the feedback feature: *"The record exists; aggregating it for the
+owner is a later, smaller step."* The app has been collecting "did everything
+arrive right, and if not, what was wrong" since 2026-11-06 and showing it to
+nobody. That is the step, and it is built.
+
+**The decision: counts, and nothing that looks like a rating.** This shop does a
+handful of deliveries a day. An average over that would look like information
+and act like noise, so `shop_feedback_totals()` returns exactly two numbers that
+add up (`answered = ok + wrong`) and `shop_feedback_reasons()` returns the six
+fixed reasons that ACTUALLY occurred, most frequent first. What it deliberately
+does not return: a per-product count of complaints (`reason` is per ORDER and
+never says *which* item was missing) and a per-rider count (`late` and
+`wrong_address` are about the route, not the person carrying it). Both would be
+inferences the data does not make, and an invented breakdown is worse than none
+because it looks like evidence.
+
+**What was built.**
+
+- `supabase/migrations/20261108000001_shop_feedback.sql` (new, 31st migration) —
+  the two functions, staff-only, with a 30-day default window that is a
+  **parameter**, not a constant. Two shapes worth naming:
+  * `shop_feedback_totals()` refuses with a **HAVING**, not a WHERE. With a
+    WHERE the aggregate still returns one row of zeroes to a customer, and
+    "zero bags complained" is a claim this function has no right to make about
+    anybody but the shop. With a HAVING there is no group at all, so a
+    non-staff caller gets **no row** — the fail-closed shape.
+  * `shop_feedback_reasons()` returns no row for a reason that did not occur.
+    A zero line reads as "this happened zero times", which is the same
+    invention as a product with no reviews showing "0".
+- `supabase/tests/29_shop_feedback_test.sql` (new, **18 assertions**) — staff can
+  read it; a customer gets **no row**, not a row of zeroes; a customer reading
+  another customer's feedback sees zero rows (RLS makes them invisible, which is
+  a count of 0, not an exception); a signed-out caller gets nothing; a null
+  window falls back to 30 days; a window from the far past returns the whole
+  history and one from the future returns nothing; `damaged` and `wrong_item`
+  return **no row** when nobody reported them; and there is no product argument
+  on the function to mis-attribute a complaint with.
+- `apps/mobile/src/hooks/use-shop-feedback.ts` (new) — the two queries, with the
+  reasoning for an RPC rather than a sum over the board written down: the board
+  never fetches `order_feedback` at all, so summing what is on screen would
+  report zero forever with total confidence.
+- `apps/mobile/src/app/admin/today.tsx` — a **"What customers said"** card at the
+  end of the day. Three states per rule 9.2: loading, "nobody has answered yet"
+  (the one a pilot shop will see most), and the counts with the reason list. The
+  hint under it names the action each reason maps to, so a count is never a dead
+  end.
+- `types/database.ts` — `FeedbackTotals`, `FeedbackReasonCount`, and the two RPC
+  entries so `supabase.rpc` is typed rather than cast.
+- **i18n 690 → 702 keys**, both locales, including the six reason strings and
+  `ಇಲ್ಲಿಯವರೆಗೆ ಎಲ್ಲಾ {count} ಬುಟ್ಟಿಗಳೂ ಸರಿಯಾಗಿ ತಲುಪಿವೆ` ("every bag so far has
+  arrived right") — the all-good case said in the shop's own voice, because the
+  bad case is the one the screen already had words for.
+
+**Bugs found.**
+
+1. `shop_feedback_totals()` first filtered `and public.is_staff()` in the WHERE,
+   which returns **one row of zeroes** to a customer instead of none. The test
+   caught it in the shape of "a customer gets no totals row" failing with 1 row.
+   The fix is the HAVING, and the reason is written in the migration.
+2. `test_result.refused()` is the wrong helper for RLS on a SELECT — it makes
+   someone else's rows invisible, so the statement *succeeds* and sees nothing.
+   Asserted as a count of zero instead. This is the second time this trap has
+   bitten in the same week; both times the harness file's own warning was right
+   and I had read it too fast.
+
+**Verified.** `npm run typecheck` (0 errors, both apps), `npm run lint` (0
+errors, 0 warnings — all fifteen chains), `npm run check:i18n` (702 keys,
+parity, 12 dynamic families including the new reason list), and
+`npm run test:db` against a throwaway PostgreSQL — **732 passed | 0 failed |
+732 total** (714 before; +18 new). No leftover `postgres` processes and no
+`grocery-dbtest-*` directories.
+
+**Not verified.** The Today card has never been rendered, and no real feedback
+has ever been given on a device — the counts in the test come from rows this
+suite wrote itself.
+
+**Open gaps.** A11 (the customer-facing rating) is still the owner's call, and
+the data it would need now exists — which is the point of building this first.
+
+---
+
 ## 2026-11-08 — Two exits per line: "Save for later" (A13, built)
 
 **What was asked.** Continue the gap list. `COMPETITOR-TEARDOWN.md` §10.7 left

@@ -533,6 +533,27 @@ export type RiderDayTotal = {
 };
 
 /**
+ * How many bags arrived right, and how many did not, from
+ * `shop_feedback_totals()` (migration 20261108000001).
+ *
+ * NOT a rating and not an average. `answered = ok_count + wrong_count` always,
+ * and the function returns **no row at all** to a caller who is not staff — so
+ * the hook types this as `FeedbackTotals | null` and the screen renders "no
+ * answers yet" rather than a confident zero.
+ */
+export type FeedbackTotals = {
+  answered: number;
+  ok_count: number;
+  wrong_count: number;
+};
+
+/** One of the six fixed complaint reasons, and how often it occurred. */
+export type FeedbackReasonCount = {
+  reason: string;
+  seen: number;
+};
+
+/**
  * supabase-js expects every table to carry a `Relationships` array; leaving it
  * out makes `.update()` resolve its argument to `never`, which is why writes
  * used to need `as any`. The `orders <-> order_items` pair is declared because
@@ -813,6 +834,29 @@ export type Database = {
           p_accuracy_m?: number | null;
         };
         Returns: Record<string, unknown>;
+      };
+      /**
+       * The shop's own answers: two counts over a window (30 days by default).
+       * Returns **no row** to anybody who is not staff — the function uses a
+       * HAVING for that, so the caller gets `[]` and the screen says "nobody has
+       * answered yet" rather than a confident zero.
+       */
+      shop_feedback_totals: {
+        Args: {
+          p_since?: string | null;
+        };
+        Returns: FeedbackTotals[];
+      };
+      /**
+       * Which of the six complaint reasons occurred, most frequent first. A
+       * reason that did not occur returns no row at all — never a zero, which
+       * would read as "this happened zero times".
+       */
+      shop_feedback_reasons: {
+        Args: {
+          p_since?: string | null;
+        };
+        Returns: FeedbackReasonCount[];
       };
     };
     Enums: {
