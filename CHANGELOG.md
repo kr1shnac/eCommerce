@@ -6,6 +6,111 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-09 — The rider-erasure bug is fixed, and the hosted drift is now a command
+
+**What was asked.** *"Finish the other pending work while I get you the
+connection string."* This session took the two items on that list which could be
+finished **and proved** without the hosted project: the one real bug in the
+pending set, and the recurring documentation error that had been wasting every
+session's first hour.
+
+### 1. The bug a rider would have hit: an assigned rider could not erase their account
+
+`HANDOFF.md` §6.3 had it, found 2026-11-06 and left open because "it needs its
+own shape in the erasure path plus a test". Now it has both.
+
+The mechanics, so nobody re-derives them: `delete_my_account()` ends by deleting
+the `auth.users` row → cascade to the profile row → `orders.assigned_to` is
+`on delete set null`, so Postgres issues its **own** UPDATE on every order that
+rider was carrying → `guard_order_update()` sees it *after* the caller's
+profile is gone, so `current_user_role()` no longer reads `delivery`, the
+erasure flag is already off, the row falls through to the customer branch and is
+refused → **the whole erasure rolls back**. A customer could never hit this (a
+customer cannot be assigned), which is why it sat unnoticed.
+
+The fix copies the pattern migration `20261020000001` already documents for
+`addresses` — "setting `address_id = null` here first means the cascade later
+has nothing to change" — and applies it to `assigned_to`, which had never been
+given the same treatment.
+
+- `supabase/migrations/20261109000001_rider_erasure.sql` (32nd migration):
+  `delete_my_account()` gains step 4b (a rider hands back the orders they carry,
+  with the erasure flag on, while they are still a rider) and
+  `guard_order_update()` gains a **second, narrower erasure shape** gated on
+  `old.assigned_to = auth.uid()`. Both bodies are copied in full — this
+  function's current definition lives in `20261021000001`, and a partial copy
+  would have silently dropped the tracker's rules.
+- `supabase/tests/30_rider_erasure_test.sql` — **16 assertions**, and the first
+  one is the forbidden case: a live rider still cannot hand a delivery back by
+  hand (`test_result.refused … '42501'`). Then: the erasure succeeds while
+  carrying; profile/auth/address vanish; **the carried order keeps its customer,
+  money, status and order number** (an erasure must never rewrite another
+  person's order history) and loses only the assignment, `assigned_at` with it —
+  a claim time with nobody attached is a lie; the rider's own order is still
+  anonymised to the tombstone; and another rider can claim the handed-back order
+  straight afterwards, so the shop keeps working.
+
+**Verified how.** `npm run test:db` against a real throwaway PostgreSQL:
+**748 passed / 0 failed** (was 732; +16). The first run of the new file failed 4
+of its own assertions — all four were my test's bugs, not the migration's
+(comparing a NULL `assigned_to` against `''`, and an AND-chain poisoned by a
+NULL `delivered_at`); they were corrected and the suite re-run clean. Also:
+`npm run typecheck` clean, `npm run lint` exit 0 across all sixteen chained
+checks, `npm run check:i18n` 701 keys in both languages.
+
+**Windows, proved at last.** PostgreSQL is not installed on this laptop and
+never was, so `test:db` had never run here. The PostgreSQL 16 **binary zip** was
+downloaded and unpacked to a temp folder (no installer, no service — the runner
+boots its own cluster) and `PGBIN` pointed at it. The Windows discovery path
+`HANDOFF.md` §3.1 wrote "deliberately but unproven" now has its proof.
+
+### 2. The hosted project is fourteen migrations behind, and the docs said "ten"
+
+Re-probed the live project **read-only** with the publishable key already in
+`.env`. The docs' claim ("stops at `20261013000001`", "ten migrations") was
+**wrong**: `favourites`, `coupons` and `products.emoji` are all *later* and are
+present. The real boundary is after `20261014000004_coupons.sql`; the missing
+fourteen are `account_deletion`, `shop_identity`, `order_tracker`, `shop_totals`,
+`product_guard`, `pack_sizes`, `create_product`, `my_name`, `rider_positions`,
+`order_feedback`, `refund_due`, `delivery_otp`, `door_pin`, `shop_feedback`.
+
+Because this exact drift cost three sessions the same re-derivation, the probe
+is now a command rather than a paragraph:
+
+- `scripts/check-hosted-schema.mjs` + `npm run check:hosted` — one marker per
+  migration (a column, an RPC or a table, chosen because PostgREST answers
+  `42703`/`PGRST202`/`PGRST205` for a missing object regardless of who is
+  asking), so the answer is *which migrations are missing*, not just "something
+  is". Present/missing/unproven for the three with no REST-visible object
+  (`20261002000006` RLS-only, `20261013000002` publication, the index-only
+  files) — it says so instead of pretending to have checked, and the database
+  suite remains the proof for those. Exit code 1 when behind, and it prints the
+  apply list in filename order. Deliberately **not** in the lint chain: it needs
+  the network and the git-ignored `.env`, which CI has neither.
+- `AGENTS.md` §7 and `HANDOFF.md` §7 step 5 / §13 corrected with the verified
+  numbers; `PRODUCTION.md` §7's M9 paragraph and the §12 register row updated.
+
+### 3. M9 — the developer text is deleted, not hidden
+
+`auth.testNumbers` ("Use a Supabase test phone number") was the one piece of
+developer text on a customer screen. The register said *hidden in release,
+delete before public* — `__DEV__` is a build-time hide, which is not the rule.
+Removed from `login.tsx`, from both locales, and its now-unused style. i18n
+702 → **701 keys**, parity checked. The demo-account panel remains env-gated and
+never compiles into a release without `EXPO_PUBLIC_DEMO_*`.
+
+### Not done, and why
+
+- **The push itself** — still needs the project's credentials (DB password or a
+  Supabase access token; `supabase login` was chosen, in progress).
+- **The roadmap's remaining features** (push, Razorpay, A1/A4/A9/A10, P6, P7,
+  the `apps/admin` decision) are unchanged in status: each is blocked on an
+  owner decision, an account or a device, not on a laptop. Nothing was started
+  that could not be finished, because a half-built payment or notification path
+  is worse than an absent one.
+
+---
+
 ## 2026-11-09 — The launch paperwork, drafted: domain, hosted legal pages, the store listing kit
 
 **What was asked.** "What are the documents and the domain we need to start

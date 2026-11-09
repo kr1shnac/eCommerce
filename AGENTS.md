@@ -459,12 +459,22 @@ As of this build, the app is a working end-to-end flow on one shop:
   landed on the shop's home screen — an overlay now, see the rule in §3.
   `expo install --check` bumped six patch-version drifts and
   `npx expo-doctor` reports 21/21.
-- **The hosted Supabase project is ten migrations behind**, which is now the top
-  open item. It stops at `20261013000001`; `rider_directory`, the shop totals,
-  the shelf writes, feedback, the refund rule and the door pin were never applied
-  there, so the app quietly fell back to placeholders. `test:db` is the real
-  proof (732 assertions) and the live project needs `supabase db push` before any
-  live test means anything. `HANDOFF.md` §7 step 5 lists exactly what is missing.
+- **The hosted Supabase project is fourteen migrations behind**, which is now the
+  top open item. Probed 2026-11-09 (read-only, with the publishable key; see
+  `npm run check:hosted`): it carries everything through
+  `20261014000004_coupons.sql` and nothing after it —
+  `20261020000001_account_deletion`, `20261020000002_shop_identity`,
+  `20261021000001_order_tracker`, `..._shop_totals`, `..._product_guard`,
+  `..._pack_sizes`, `..._create_product`, `..._my_name`,
+  `20261026000001_rider_positions`, `20261106000001_order_feedback`,
+  `..._refund_due`, `..._delivery_otp`, `20261107000001_door_pin` and
+  `20261108000001_shop_feedback` are all absent, so the app quietly fell back to
+  placeholders there. (An earlier entry claimed it stopped at
+  `20261013000001`; that was wrong — `favourites`, `coupons` and `products.emoji`
+  are later and are present. `check:hosted` exists so this never has to be
+  re-derived by hand again.) `test:db` is the real proof (732 assertions plus
+  test 30) and the live project needs `supabase db push` before any live test
+  means anything. `HANDOFF.md` §7 step 5 lists exactly what is missing.
 - **Not built yet**, in the intended order: push notifications → Razorpay → a live
   map / background location. The text-first rider position and the key-free OSM
   map above *are* built.

@@ -295,10 +295,13 @@ Also in this phase:
   machine's git-ignored `.env` defines the demo addresses, so the script has been
   run against *some* project. Check Auth → Users on the hosted project and delete
   anything named `demo`. The owner's own account must have MFA.
-- **No developer text on a customer screen** (register M9). `auth.testNumbers` in
-  `en.json`/`kn.json` is developer text showing on the login screen. It is now
-  `__DEV__`-only, so it cannot appear in a release build — but it should be
-  deleted outright before the public release, not merely hidden.
+- **No developer text on a customer screen** (register M9). ~~`auth.testNumbers`
+  in `en.json`/`kn.json` is developer text showing on the login screen. It is now
+  `__DEV__`-only…~~ **DONE 2026-11-09 — deleted, not hidden.** The key is gone
+  from both locales (701 now, parity checked), the block is out of `login.tsx`
+  and its style with it. Nothing else on a customer screen mentioned
+  development; the demo-account panel is env-gated and absent from any release
+  without `EXPO_PUBLIC_DEMO_*`.
 - **A `LICENSE`** (register C5, still open). The repo has none. Decide the licence
   before the code is shown to anyone outside the shop.
 - **One phone, several adults** (register H10). Decide the household model
@@ -960,7 +963,7 @@ From the council chairman, item for item. "Owner" is who can actually move it.
 | M6 | Medium | i18n is read-only; no Kannada data entry for the owner | **0 — done.** `create_product_from_shop()` + an in-app Add-a-product panel that requires a real Kannada name; migration `20261021000005`, test 22 (28 assertions) | Dev |
 | M7 | Medium | No Kannada dialect review by a Kunigal local | 6 | Owner |
 | M8 | Medium | 6 products have no image; the rest are dev stock photos | 4 | Owner |
-| M9 | Medium | Developer text on the customer's first screen | **3 — hidden in release**, delete before public | Dev |
+| M9 | Medium | Developer text on the customer's first screen | **0 — done, deleted outright** (2026-11-09). `auth.testNumbers` was hidden behind `__DEV__` (never in a release build) but the rule was "delete before public", not "hide", so it was removed from `login.tsx`, from both locale files (i18n now 701 keys, parity checked) and its now-unused style with it. Nothing else on a customer screen mentioned development. | Dev |
 | M10 | Medium | Jargon with no glossary; "done" used two ways | 3 | Dev |
 | M11 | Medium | Doc contradictions (OTA, images, order count, "DONE") | **3 — done.** Order count fixed; the two stale image claims swept (`README.md` and the `seed.sql` header both said "no product photos on purpose" while `demo-images.sql` loads 28 of them). OTA claims verified absent: no `expo-updates` in the repo, and `PRODUCTION.md` §3's "`expo-updates`, push, Sentry all absent" was true when written — Sentry has since landed, so that one line is now corrected in place. | Dev |
 | M12 | Medium | No iOS build path from this Linux box | 4 | Owner + dev |

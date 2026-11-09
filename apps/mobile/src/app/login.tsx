@@ -294,14 +294,6 @@ export default function LoginScreen() {
           </View>
         ) : null}
 
-        {__DEV__ ? (
-          <View style={styles.help}>
-            <Ionicons name="information-circle-outline" size={16} color={theme.textSecondary} />
-            <ThemedText type="small" themeColor="textSecondary" style={styles.helpText}>
-              {t('auth.testNumbers')}
-            </ThemedText>
-          </View>
-        ) : null}
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -363,5 +355,4 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   helpBody: { flex: 1, gap: Spacing.two },
-  helpText: { flex: 1 },
 });

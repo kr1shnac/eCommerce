@@ -579,12 +579,22 @@ is what turns them from drafts into the shop's policy.
 - The 60 s order poll and the 30 s position poll are separate queries; they are
   a backstop, not a substitute for push.
 - `apps/admin` has no tests.
-- **A rider assigned to an order cannot delete their account.** Deleting the
+- **A rider assigned to an order cannot delete their account.** ~~Deleting the
   profile makes `orders.assigned_to` `on delete set null`, and that FK-driven
   UPDATE is then refused by `guard_order_update()` — by which point the caller's
-  profile is gone, so `current_user_role()` reads `customer`. Found on
-  2026-11-06 while proving the feedback cascade; **not fixed**, because it needs
-  its own shape in the erasure path plus a test. Customers are unaffected.
+  profile is gone, so `current_user_role()` reads `customer`.~~ **FIXED
+  2026-11-09** by migration `20261109000001_rider_erasure.sql` + test 30 (16
+  assertions): `delete_my_account()` now hands the delivery back (with the
+  erasure flag on, as the caller is still a rider) before the profile goes, so
+  the cascade has nothing left to change — the same shape this file's own
+  `address_id` comment already describes. The guard gained a second, narrower
+  erasure shape, gated on `old.assigned_to = auth.uid()` so the flag alone
+  unlocks nothing. The carried order keeps its customer, money and status; only
+  the assignment is dropped, `assigned_at` with it. The trade-off, written down
+  at the time: a deleted rider's past deliveries lose WHO carried them (never
+  the money — `shop_day_totals()` ignores riders), and pointing a finished order
+  at a "deleted rider" stand-in would instead put a stranger's name on a
+  customer's order screen, which is what `rider_directory` exists to avoid.
 - The feedback card is code-complete but has never been seen on a phone, like
   every other screen here.
 - **The map has never been rendered anywhere.** Tiles, pinch, the OSRM call, the
@@ -791,19 +801,22 @@ the reasoning. None of them changes a promise or a price.
    (§6.5). Each should ship with its own CHANGELOG entry; A1 changes a
    customer-visible promise, so confirm it first.
 5. **Apply the missing migrations to the hosted project** and clean the demo data.
-   Probed 2026-11-09 with the demo customer's own token: the hosted project has
-   everything up to `20261013000001` (rider assignment) and **nothing after it** —
-   `rider_directory`, `shop_day_totals`, `shop_day_by_rider`,
-   `update_product_from_shop`, `create_product_from_shop`, `product_pack_options`,
-   `record_my_position`, `order_rider_position`, `order_feedback`,
-   `orders.refund_due_paise`, `addresses.lat/lng`, `shop_feedback_totals`,
-   `shop_feedback_reasons` are all absent (`42703` / `PGRST205` / `PGRST202`).
-   The app degrades politely — the rider card falls back to "your rider" and the
-   refund card shows ₹0.00 — which is exactly why this went unnoticed: **the
-   fallback hid the drift.** `supabase db push` needs the project credentials and
-   three of the ten are guard triggers, so it is the owner's call, not a
-   background fix. Do this *before* step 2, or the device run will test ten
-   missing features.
+   Re-probed 2026-11-09 with the publishable key, read-only, through
+   `npm run check:hosted` (new today, one marker per migration): the hosted
+   project carries everything through `20261014000004_coupons.sql` and is
+   missing the **fourteen** after it — `account_deletion`, `shop_identity`,
+   `order_tracker`, `shop_totals`, `product_guard`, `pack_sizes`,
+   `create_product`, `my_name`, `rider_positions`, `order_feedback`,
+   `refund_due`, `delivery_otp`, `door_pin`, `shop_feedback`. The docs used to
+   claim it stopped at `20261013000001`; that was wrong (`favourites`, `coupons`
+   and `products.emoji` are all later and are present), which is exactly why this
+   is now a command rather than a paragraph to re-derive. The app degrades
+   politely — the rider card falls back to "your rider" and the refund card shows
+   ₹0.00 — which is exactly why this went unnoticed: **the fallback hid the
+   drift.** `supabase db push` needs the project credentials, and three of the
+   fourteen are guard triggers, so it is the owner's call, not a background fix.
+   Do this *before* step 2, or the device run will test fourteen missing
+   features.
 6. Set up OTP/SMS + DLT and prove one real sign-in.
 7. Create an EAS development build; test location consent, a real rider fix,
    the customer's text tracker, the map and the door pin, and native crash

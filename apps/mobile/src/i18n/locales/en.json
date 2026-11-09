@@ -231,7 +231,6 @@
     "verify": "Verify",
     "changeNumber": "Change number",
     "signIn": "Sign in",
-    "testNumbers": "Use a Supabase test phone number (not your real number).",
     "demo": {
       "title": "Demo accounts",
       "tag": "DEV",
