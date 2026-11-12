@@ -81,13 +81,15 @@ fields — see §6.
 
 Everything below is in `master` and passes the gates in §3.
 
-### 2.1 Database (45 migrations locally; 43 on the hosted project)
+### 2.1 Database (45 migrations, all applied to the hosted project)
 
-The hosted project is **two migrations behind** this checkout: the two Razorpay
-files (`20261112000006_razorpay.sql`, `20261112000007_refund_due_methods.sql`)
-are written and proved locally but have not been pushed, because the payment
-gateway has no keys yet. `npm run check:hosted` reports them MISSING today; that
-is expected, not drift.
+Migration `20261112000006_razorpay.sql` and
+`20261112000007_refund_due_methods.sql` were pushed on 2026-11-12 (third
+session); `npm run check:hosted` reports **45 applied, 0 missing**, 5 of them
+with no REST-visible object (RLS/publication/index-only files, proved by
+`npm run test:db`). The payment path itself is still **dark**: no Razorpay keys,
+so the Edge Functions answer `gateway_not_configured` and checkout greys the
+online methods.
 
 - **Development** data: one store, 8 categories, 34 products, 4 delivery zones,
   2 coupons, settings (from `seed.sql`). **Production** is bootstrapped by

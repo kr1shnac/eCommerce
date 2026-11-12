@@ -266,8 +266,10 @@ against real PostgreSQL locally.
 - **`online_payments_enabled` is still false on the live project**, so checkout
   still greys the online methods with an honest sentence. That is deliberate
   until the keys exist.
-- **Two migrations are local-only** (`20261112000006`, `20261112000007`) and not
-  on the hosted project yet.
+- **Both migrations are now on the hosted project** (pushed 2026-11-12, third
+  session, `check:hosted` reports 45 applied / 0 missing) — so the schema is
+  level with this checkout. The **functions are not deployed**, which is the
+  correct order: a gateway that cannot settle is safer than one nobody tested.
 
 ### Open gaps — read this before launch
 
