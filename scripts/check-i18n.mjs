@@ -60,7 +60,30 @@ const strip = (text) =>
 //   - privacy.gstinLabel: "GSTIN" is a statutory acronym with no Kannada form;
 //     a shop, an accountant and a GST portal all say GSTIN. Transliterating it
 //     would make it harder, not easier, to match against a real document.
-const SAME_IS_FINE = new Set(['address.areaName', 'privacy.gstinLabel']);
+const SAME_IS_FINE = new Set([
+  'address.areaName',
+  'privacy.gstinLabel',
+  // Statutory acronyms and product names with no Kannada form. A shop, an
+  // accountant and the GST portal all say GSTIN/CGST/SGST/IGST/HSN, and the
+  // customer checks the paper against those words — transliterating them would
+  // make the document harder to verify, not easier. "UPI" is the same: nobody in
+  // Kunigal says "ಯುಪಿಐ".
+  'invoice.gstin',
+  'invoice.cgst',
+  'invoice.sgst',
+  'invoice.igst',
+  'invoice.col.hsn',
+  'invoice.col.gstRate',
+  'invoice.col.gst',
+  'invoice.gstRate',
+  'invoice.method.upi',
+  'order.pay.upi',
+  'checkout.method.upi',
+  'admin.gstTitle',
+  // "GST 18%" — the acronym and the numeral are the whole string. Kannada
+  // writes the number in the same digits, so there is nothing to translate.
+  'admin.gstRateOption',
+]);
 
 for (const key of enKeys) {
   if (!knKeys.has(key) || SAME_IS_FINE.has(key)) continue;

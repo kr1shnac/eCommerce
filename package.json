@@ -7,7 +7,7 @@
     "apps/*"
   ],
   "scripts": {
-    "mobile": "npm run start --workspace @kunigal/mobile",
+    "mobile": "node ./scripts/start-mobile.mjs",
     "mobile:android": "npm run android --workspace @kunigal/mobile",
     "mobile:ios": "npm run ios --workspace @kunigal/mobile",
     "mobile:web": "npm run web --workspace @kunigal/mobile",
@@ -17,8 +17,11 @@
     "check:hosted": "node scripts/check-hosted-schema.mjs",
     "check:session": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-session-persistence.mjs",
     "check:auth-doors": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-auth-doors.mjs",
+    "check:resend-otp": "node ./scripts/check-resend-otp.mjs",
+    "check:phone-field": "node ./scripts/check-phone-field.mjs",
     "check:view": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-order-view.mjs",
     "check:delivery": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-delivery.mjs",
+    "check:geo": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-geo.mjs",
     "check:persist": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-query-persistence.mjs",
     "check:speech": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-speech.mjs",
     "check:packs": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-packs.mjs",
@@ -31,7 +34,8 @@
     "check:route": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-route.mjs",
     "check:saved": "node --import ./scripts/node-hooks/register.mjs ./scripts/check-saved.mjs",
     "check:metro": "node ./scripts/check-metro.mjs",
-    "lint": "npm run lint --workspaces --if-present && npm run check:i18n && npm run check:view && npm run check:delivery && npm run check:persist && npm run check:speech && npm run check:packs && npm run check:unit-price && npm run check:auth-doors && npm run check:storage && npm run check:location && npm run check:tracking && npm run check:navigation && npm run check:map-tiles && npm run check:route && npm run check:saved && npm run check:metro",
+    "check:payments": "node ./scripts/check-payments.mjs",
+    "lint": "npm run lint --workspaces --if-present && npm run check:i18n && npm run check:view && npm run check:delivery && npm run check:geo && npm run check:persist && npm run check:speech && npm run check:packs && npm run check:unit-price && npm run check:auth-doors && npm run check:resend-otp && npm run check:phone-field && npm run check:storage && npm run check:location && npm run check:tracking && npm run check:navigation && npm run check:map-tiles && npm run check:route && npm run check:saved && npm run check:metro && npm run check:payments",
     "check:i18n": "node scripts/check-i18n.mjs",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "clean": "npm run clean --workspaces --if-present"

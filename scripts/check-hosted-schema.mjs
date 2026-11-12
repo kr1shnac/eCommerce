@@ -20,10 +20,11 @@
  * WHAT IT PROVES
  *
  *   A marker object exists on the hosted project (or not), for each migration
- *   that has a REST-visible object. Three migrations have no such object —
- *   `20261002000006` (RLS policies only), `20261013000002` (a publication) and
- *   the three index-only files — and the script says so rather than pretending
- *   to have checked them. The database suite is the proof for those.
+ *   that has a REST-visible object. Some files have no such object — RLS
+ *   policies only, a publication, indexes/constraints only, or a function body
+ *   that was replaced without changing its shape — and the script says so
+ *   rather than pretending to have checked them. The database suite is the
+ *   proof for those.
  *
  * WHAT IT DOES NOT PROVE
  *
@@ -73,16 +74,64 @@ const MARKERS = [
   { file: '20261020000002_shop_identity.sql', probe: ['GET', '/rest/v1/stores?select=fssai_number&limit=1'] },
   { file: '20261021000001_order_tracker.sql', probe: ['GET', '/rest/v1/orders?select=failure_reason&limit=1'] },
   { file: '20261021000002_shop_totals.sql', probe: ['POST', '/rest/v1/rpc/shop_day_totals', {}] },
-  { file: '20261021000003_product_guard.sql', probe: ['POST', '/rest/v1/rpc/update_product_from_shop', {}] },
+  { file: '20261021000003_product_guard.sql', probe: ['POST', '/rest/v1/rpc/update_product_from_shop', { p_product_id: '00000000-0000-0000-0000-000000000000' }] },
   { file: '20261021000004_pack_sizes.sql', probe: ['GET', '/rest/v1/products?select=sold_by&limit=1'] },
-  { file: '20261021000005_create_product.sql', probe: ['POST', '/rest/v1/rpc/create_product_from_shop', {}] },
+  { file: '20261021000005_create_product.sql', probe: ['POST', '/rest/v1/rpc/create_product_from_shop', { p_name_en: 'probe', p_name_kn: 'ಪರೀಕ್ಷೆ', p_price_paise: 1, p_category_id: '00000000-0000-0000-0000-000000000000' }] },
   { file: '20261021000006_my_name.sql', probe: ['POST', '/rest/v1/rpc/set_my_name', { p_full_name: 'probe' }] },
+  // Split out of 20261021000001 on 2026-11-09: a new enum value cannot be USED
+  // in the transaction that added it. Two CHECK constraints and one partial
+  // index, so there is nothing REST-visible to probe. Proof is test 18.
+  { file: '20261021000007_order_tracker_rules.sql', probe: null },
   { file: '20261026000001_rider_positions.sql', probe: ['GET', '/rest/v1/rider_positions?select=order_id&limit=1'] },
   { file: '20261106000001_order_feedback.sql', probe: ['GET', '/rest/v1/order_feedback?select=order_id&limit=1'] },
   { file: '20261106000002_refund_due.sql', probe: ['GET', '/rest/v1/orders?select=refund_due_paise&limit=1'] },
   { file: '20261106000003_delivery_otp.sql', probe: ['GET', '/rest/v1/order_delivery_codes?select=order_id&limit=1'] },
   { file: '20261107000001_door_pin.sql', probe: ['GET', '/rest/v1/addresses?select=lat&limit=1'] },
   { file: '20261108000001_shop_feedback.sql', probe: ['POST', '/rest/v1/rpc/shop_feedback_totals', {}] },
+  // Replaces two existing functions and changes no shape, so there is no object
+  // a REST probe can see. Its proof is `npm run test:db` (test 30).
+  { file: '20261109000001_rider_erasure.sql', probe: null },
+  // An anon caller is refused (42501), which still proves the function exists;
+  // it cannot close the shop because the publishable key has no admin user.
+  { file: '20261109000002_set_shop_open.sql', probe: ['POST', '/rest/v1/rpc/set_shop_open', { p_is_open: false }] },
+  // The two money actions. An anon caller is refused, and a zero id would be
+  // P0002 if it were allowed — either answer proves the function is deployed.
+  { file: '20261109000003_money_desk.sql', probe: ['POST', '/rest/v1/rpc/mark_cod_collected', { p_order_id: '00000000-0000-0000-0000-000000000000' }] },
+  // Per-customer coupon limit. A column on coupons + validate_coupon/place_order
+  // both check it. An anon caller is refused (42501), proving the functions exist.
+  { file: '20261109000004_coupon_per_customer.sql', probe: ['POST', '/rest/v1/rpc/validate_coupon', { p_store_id: '00000000-0000-4000-8000-000000000001', p_code: 'PROBE', p_subtotal_paise: 10000 }] },
+  // The shop's two status actions on somebody else's order. An anon caller is
+  // refused with 42501, and an unknown order would be P0002 if it were allowed —
+  // either answer proves the function is deployed.
+  { file: '20261109000005_admin_order_actions.sql', probe: ['POST', '/rest/v1/rpc/admin_force_complete', { p_order_id: '00000000-0000-0000-0000-000000000000' }] },
+  // The offers rail's own scope. `active_offers()` is granted to anon and the
+  // zero store has no offers, so a 200 with `[]` proves the new signature.
+  { file: '20261109000006_offers_scope.sql', probe: ['POST', '/rest/v1/rpc/active_offers', { p_store_id: '00000000-0000-0000-0000-000000000000' }] },
+
+  // ── 2026-11-12: GST billing, payments, radius, express ──────────────────────
+  // A column on a publicly readable table: the GST rate the invoice extracts.
+  { file: '20261112000001_gst_billing.sql', probe: ['GET', '/rest/v1/products?select=gst_rate_bp,hsn_code&limit=1'] },
+  // An enum value, which no column probe can show. `place_order()` takes the
+  // method as a `payment_method` argument, so PostgREST parses 'upi' against the
+  // enum before the function runs: if the value were absent this would be
+  // 22P02 "invalid input value for enum", not the 401/403 an anon caller gets.
+  { file: '20261112000002_payment_methods.sql', probe: ['POST', '/rest/v1/rpc/place_order', { p_items: [], p_store_id: '00000000-0000-0000-0000-000000000000', p_address_id: '00000000-0000-0000-0000-000000000000', p_idempotency_key: 'hosted-probe-0000', p_note: null, p_coupon_code: null, p_payment_method: 'upi', p_express: false }] },
+  // The switch that must stay false until the shop can settle online money.
+  { file: '20261112000003_payment_settlement.sql', probe: ['GET', '/rest/v1/store_settings?select=online_payments_enabled&limit=1'] },
+  // The shop's own pin, which every distance is measured from.
+  { file: '20261112000004_delivery_radius.sql', probe: ['GET', '/rest/v1/stores?select=lat,lng&limit=1'] },
+  // The 8-argument signature. Sending all eight names fails with PGRST202
+  // ("Could not find the function") if only the old 6-argument one is deployed,
+  // which is exactly the drift this line exists to catch.
+  { file: '20261112000005_place_order_billing.sql', probe: ['POST', '/rest/v1/rpc/place_order', { p_items: [], p_store_id: '00000000-0000-0000-0000-000000000000', p_address_id: '00000000-0000-0000-0000-000000000000', p_idempotency_key: 'hosted-probe-0000', p_note: null, p_coupon_code: null, p_payment_method: 'cod', p_express: false }] },
+  // The gateway's own order id on the order row. A customer's call is refused
+  // (42501) once they are signed in, but the COLUMN is what proves the
+  // migration landed; the guard and the state rules are test 39's job.
+  { file: '20261112000006_razorpay.sql', probe: ['GET', '/rest/v1/orders?select=payment_provider_order_id&limit=1'] },
+  // `refund_due_paise` is generated, so it is selectable but never writable —
+  // the probe cannot show the expression. Its rule (not-cash, not merely
+  // `online`) is proved locally by test 39 §10.
+  { file: '20261112000007_refund_due_methods.sql', probe: ['GET', '/rest/v1/orders?select=refund_due_paise&limit=1'] },
 ];
 
 /** The three answers a probe can honestly give. */
