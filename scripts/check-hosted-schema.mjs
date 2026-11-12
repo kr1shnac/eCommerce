@@ -137,6 +137,14 @@ const MARKERS = [
   // both halves: the object is in the schema cache (an absent view would be
   // PGRST205) and the grant has not been widened (test 40's job locally).
   { file: '20261112000008_rider_directory_scoped.sql', probe: ['GET', '/rest/v1/rider_directory?select=id&limit=1'] },
+  // The shortage settlement. The three named arguments resolve the exact
+  // signature (a missing name would be PGRST202 even though the function
+  // exists); an anon caller is refused with 42501 before anything else, and a
+  // zero id would be P0002 if the role check ever widened — either answer
+  // proves the function is deployed. The two policies this migration DROPPED
+  // have no REST face (the table was never anon-readable either way); their
+  // proof is test 41's policy counts and zero-row probes.
+  { file: '20261112000009_admin_shortage_adjust.sql', probe: ['POST', '/rest/v1/rpc/admin_adjust_order_item', { p_order_id: '00000000-0000-0000-0000-000000000000', p_item_id: '00000000-0000-0000-0000-000000000000', p_quantity: 0 }] },
 ];
 
 /** The three answers a probe can honestly give. */

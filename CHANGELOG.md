@@ -6,6 +6,96 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-12 (seventh session) — a shortage is settled by one function, and the books cannot be edited by hand
+
+The next item from the sixth session's list: the owner could, until today,
+UPDATE or DELETE any line of any order directly — an RLS policy with no column
+guard, no total recompute and no state check. The most likely mistake ("the
+shelf only has 6, let me change the 10 to a 6") was a silent desync: the line
+says 6, the order total still says 10, and nothing anywhere raises.
+
+### 1. Migration `20261112000009_admin_shortage_adjust.sql` (register 41)
+
+`admin_adjust_order_item(order_id, item_id, quantity)` — one definer function
+in the shape of the owner's other buttons (`admin_cancel_order`,
+`set_shop_open`): admin-only (42501), unknown rows refused (P0002), returns
+the stored row. Its rules:
+
+- Only `placed` / `confirmed` / `packing` are adjustable — once the bag is
+  `out_for_delivery` the rider has counted it, and a `delivered` order is
+  history (P0001).
+- **A shortage means less**: the quantity may only be LOWER, or 0 to take the
+  line off. An increase is refused (P0001) — giving a customer more than they
+  ordered is a new order, not an edit.
+- The released units go back to stock inside the `kunigal.moving_stock`
+  window, the same shape `place_order()` and `cancel_order()` use.
+- `subtotal_paise` and `total_paise` are recomputed from the remaining lines
+  in the same transaction — the books can never disagree with the lines again.
+- Quantity 0 on the LAST line is refused: emptying an order is a
+  cancellation, and `admin_cancel_order()` already does that honestly.
+- A coupon discount carried as stored is checked BEFORE anything moves: if
+  the smaller basket would go negative, the function refuses with the
+  sentence "cancel the order instead" instead of letting the CHECK constraint
+  speak in Postgres dialect.
+- Deliberately NOT re-derived: the delivery fee (express and the zone fee were
+  merged at checkout and cannot be un-merged honestly) and
+  `min_order_value_paise` (a rule for new baskets, not for un-selling part of
+  a paid one).
+
+The two admin policies (`admins update order items`, `admins delete order
+items`) are dropped. No client of any role can write a line directly; the
+SELECT policy survives. The app never wrote `order_items` (verified by grep
+before the drop). Pushed to production; `check:hosted` reports **42 applied
+(proved) / 0 missing** with a new marker for this migration (a three-named-
+argument anon POST, refused 42501 — which proves the signature resolved).
+
+### 2. Test 41 — 41 assertions, and four bugs the debugging found
+
+The suite passes 1054/0 from a scratch cluster, but the first drafts failed
+19 times and every failure taught something the next fixture could get wrong
+again:
+
+- **`guard_order_insert` forced every fixture order to `placed`.** A fresh
+  psql session with no JWT claim resolves `current_user_role()` to
+  'customer', so the guard rewrote the fixture's `delivered` /
+  `out_for_delivery` / `cancelled` statuses — which is why the status refusals
+  looked "allowed" while a manual repro refused correctly. The fix is test
+  34's pattern: **sign in as the owner before the order inserts** (the
+  "admins create orders" policy), then `reset role` for the lines and shelf.
+- **The increase check was missing from the first draft of the function.** The
+  header promised it; the code never wrote it. A 10→11 call succeeded and
+  poisoned every later assertion. Added.
+- **Three sections asserted states no call created.** Sections 8, 10 and 12
+  of the draft read totals and stock as if a reduce/removal had happened — no
+  call existed. Added.
+- **`guard_order_item_insert` overwrites a fixture line's price and name from
+  the products row.** Draft 1 priced lines at 3000/2000; the guard made them
+  the shelf's 1800/2600. Fixtures must SET the shelf first and price lines
+  the same way.
+- The cancelled-order probe is now **sharp**: a5 carries two lines, so the
+  refusal can only be the status check — a single-line order would refuse
+  through the last-line rule even without the status check, and a quantity
+  equal to the line would refuse through nothing at all (it would return
+  idempotently).
+
+### Verified how
+
+- `npm run test:db` from scratch: **1054 passed / 0 failed** (was 1013).
+- `npm run typecheck`: exit 0. `npm run lint`: exit 0 (2 workspaces + 22
+  chained checks).
+- `npx supabase db push --remote --yes`: 1 migration applied; `check:hosted`
+  42 proved / 0 missing.
+
+### Open gaps
+
+- **No screen calls the function yet.** The shortage adjustment is a database
+  capability; the owner's order screen gets the button in the next batch
+  (together with the accepted/packing/ready buttons it belongs beside).
+- The owner-blocked items are unchanged: dashboard SMS test numbers, staging
+  project, `eas login`, Play/Apple enrolment clocks, shop pin + radius.
+
+---
+
 ## 2026-11-12 (sixth session) — the rider fix reached production, and a photo is compressed before it leaves the phone
 
 Two items carried over from the fifth session's gap list, done in order. The
