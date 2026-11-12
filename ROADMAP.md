@@ -4,11 +4,13 @@
 done; this file is the plan and the reasons behind it. When they disagree, the
 CHANGELOG is right and this file is stale.
 
-**Last written:** 2026-10-13. **Status refreshed 2026-10-30:** Phases 0–3 and
+**Last written:** 2026-10-13. **Status refreshed 2026-11-09:** Phases 0–3 and
 most of the customer depth work are built; §14 below is the current gap audit.
-The code as handed over passes typecheck, lint and **590** database assertions,
-and has still never run on a real phone. Read `HANDOFF.md` first for the
-one-page state, then the newest `CHANGELOG.md` entries for the detail.
+The code passes typecheck, lint and **748** database assertions, and has still
+never run on a real phone. The hosted project is being rebuilt from all 32
+migrations in filename order — see `HANDOFF.md` §7 step 5. Read `HANDOFF.md`
+first for the one-page state, then the newest `CHANGELOG.md` entries for the
+detail.
 
 ---
 

@@ -12,7 +12,7 @@ export default function AdminHomePage() {
         textAlign: 'center',
       }}>
       <div style={{ fontSize: 44 }}>🏪</div>
-      <h1 style={{ fontSize: 24, fontWeight: 700 }}>Kunigal Grocery — Shop Admin</h1>
+      <h1 style={{ fontSize: 24, fontWeight: 700 }}>Kunigal Bazaar — Shop Admin</h1>
       <p style={{ maxWidth: 460, opacity: 0.7, lineHeight: 1.6 }}>
         This panel is intentionally empty for now. Product management, order
         status updates and delivery settings will be built here, talking to the

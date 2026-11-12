@@ -42,7 +42,7 @@ Do these in order on the Windows laptop. If all six pass, the move worked.
 6. Start the app: `npm run mobile`, scan the QR with Expo Go.
 
 Expected: typecheck silent, lint finishes with every check passed, database suite
-ends with `732 | 0 | 732` and `RESULT: all assertions passed`, Expo prints a QR
+ends with `1001 | 0 | 1001` and `RESULT: all assertions passed`, Expo prints a QR
 code.
 
 If `npm run test:db` cannot find PostgreSQL, set `PGBIN` for that terminal:
@@ -81,9 +81,18 @@ fields — see §6.
 
 Everything below is in `master` and passes the gates in §3.
 
-### 2.1 Database (31 migrations)
+### 2.1 Database (45 migrations locally; 43 on the hosted project)
 
-- One store, 8 categories, 34 products, 4 delivery zones, 2 coupons, settings.
+The hosted project is **two migrations behind** this checkout: the two Razorpay
+files (`20261112000006_razorpay.sql`, `20261112000007_refund_due_methods.sql`)
+are written and proved locally but have not been pushed, because the payment
+gateway has no keys yet. `npm run check:hosted` reports them MISSING today; that
+is expected, not drift.
+
+- **Development** data: one store, 8 categories, 34 products, 4 delivery zones,
+  2 coupons, settings (from `seed.sql`). **Production** is bootstrapped by
+  `supabase/production-bootstrap.sql` instead: one store, settings, the Kunigal
+  zone and the 8 categories — **no products**, because an empty shelf is honest.
 - Every table has RLS and explicit policies. Customers read their own addresses
   and orders; staff read all orders; only the owner edits prices, stock and
   settings.
@@ -135,6 +144,41 @@ Everything below is in `master` and passes the gates in §3.
   rating and not an average — a shop with a handful of deliveries a day has no
   average worth reading — and a reason that did not occur returns no row at all,
   never a zero.
+- **The door** (migration `20261109000002`, test 31): `set_shop_open(p_is_open)`
+  lets the owner close the shop from the phone. `place_order()` has refused a
+  closed shop since migration 08; this is the write path that was missing.
+  Non-admin → 42501, NULL → 22004, and the function returns the stored row.
+- **The money desk** (migration `20261109000003`, test 32): `mark_cod_collected()`
+  moves a delivered COD order from "cash in a rider's pocket" to "cash in the
+  drawer"; `mark_refund_paid()` clears `refund_due_paise`. Both admin-only,
+  state-checked, and safe to retry.
+- **GST billing** (migrations `20261112000001`–`20261112000005`, tests 36–38):
+  MRP-inclusive prices with the tax extracted per line, a discount allocated
+  proportionally so the figures add up exactly, the delivery fee as its own 18%
+  line, CGST+SGST or IGST by state, invoice numbers from a sequence in IST, and
+  `order_invoice()` as the **single** arithmetic — no per-line tax columns, since
+  `line_total_paise` is already generated and Postgres forbids generated-on-
+  generated. No GSTIN on the store ⇒ **bill of supply**, with no tax lines at all.
+- **Distance and express** (migration `20261112000004`): `distance_metres()`,
+  `delivery_quote()` and `update_delivery_settings()`. When both pins exist the
+  distance decides; otherwise the pincode zone decides exactly as before. Express
+  has its own radius, ETA, fee and basket cap, and `place_order()` refuses it with
+  a reason (`too_far`, `too_many_items`, `no_location`, `disabled`).
+- **Online money** (migrations `20261112000002`/`0003`): `upi`, `card`,
+  `netbanking`, `wallet` join the payment enum, `online_payments_enabled` defaults
+  to **false**, and `mark_online_payment_paid()` is the admin-only manual path
+  until a gateway exists.
+- **Razorpay** (migration `20261112000006`, local only — not on the hosted
+  project): `orders.payment_provider` + `payment_provider_order_id`,
+  `set_order_payment_intent()` (the order's own customer, one gateway object per
+  basket, same id = safe retry, different id = `23505`), `settle_online_payment()`
+  (service_role only), and two flag-plus-shape branches in `guard_order_update()`.
+  Three Edge functions in `supabase/functions/`.
+- **The refund rule covers every non-cash method** (migration
+  `20261112000007`, local only): `refund_due_paise` is now `payment_method <> 'cod'`,
+  `shop_day_totals()` **sums that column** rather than re-deriving the rule, and
+  `mark_refund_paid()` works on `upi`/`card`/`wallet` instead of raising "this
+  order was cash on delivery".
 
 ### 2.2 Customer app
 
@@ -149,10 +193,27 @@ Everything below is in `master` and passes the gates in §3.
 - Addresses with a landmark (the town has no reliable house numbers), one default
   enforced by a partial unique index, and a **door pin** dropped on the same OSM
   map the tracking screen uses (long-press, or "use my current location").
-- Checkout with COD, coupon code (the app sends only the code; Postgres decides
-  the discount), delivery fee from the zone, idempotent `place_order()`.
-- Order history, detail, tracker, cancel-while-placed, reorder, invoice/transaction
-  document, privacy notice in both languages.
+- Checkout with **five payment methods** — cash, UPI (Google Pay / PhonePe /
+  Paytm), card, net banking, wallet — where the online four are shown greyed with
+  an honest reason until the shop can settle them
+  (`store_settings.online_payments_enabled`, deliberately false and SQL-only).
+  When online payment is on, the button reads **"Pay ₹XXX"**, the order is placed
+  first and the Razorpay sheet opens over it; the signature is re-checked on the
+  server before the money is recorded, and a dismissed sheet leaves the order
+  payable from its own screen ("Payment not completed" + **Pay now**).
+  Coupon code (the app sends only the code; Postgres decides the discount),
+  delivery fee from the zone, idempotent `place_order()`.
+- **The 30-minute promise, priced and explained.** Express is offered only inside
+  its own radius and basket cap, says why when it is not, and shows its fee as
+  its own line in the totals. A normal order states its own ETA.
+- **The 10 km circle, before the tap.** The distance is computed on the phone
+  from the shop pin and the door pin, so an out-of-range address is refused in a
+  sentence ("Sorry, delivery is currently available only within a 10 KM radius.")
+  rather than at the end of checkout; the database refuses it in the same words
+  if the app was wrong.
+- Order history, detail, tracker, cancel-while-placed, reorder, **a GST invoice
+  the customer can keep** (native screen, plus a self-contained A4 PDF through
+  `expo-print` — share or print), privacy notice in both languages.
 - Rider name/photo and a **Call the rider** button on the order screen.
 - Text-first delivery tracking: age, distance, ETA, and a fifth "Picked up" stop.
   The distance and ETA now work because the order carries a door pin
@@ -200,9 +261,18 @@ Everything below is in `master` and passes the gates in §3.
   and **what customers said**: how many bags arrived right, and which of the six
   complaint reasons occurred (counts, never a rating, never a zero for a reason
   that did not happen).
+- **Delivery area** card on Today: the radius (default 10 km), the express
+  promise (radius, ETA, fee, basket cap) and the shop's own pin, all written in
+  one transaction through `update_delivery_settings()`. **The pin is the step the
+  owner must take before the distance rule can run** — stand in the shop, tap
+  *Use my current location*.
 - **Shelf** tab: price, stock, on/off-shelf from the phone, through
   `update_product_from_shop()` (a plain `.update()` silently matches zero rows
   for a non-admin, so the RPC raises instead). Product identity is frozen.
+- **GST and HSN on each shelf row**: the rate is chosen from five chips
+  (0/5/12/18/28%) so a typo cannot reach a tax invoice, and the HSN is 4–8 digits
+  or blank, through `set_product_gst()`. A product starts at 0 = "not classified
+  yet", printed as 0%, never as a guess.
 - **Add a product** in Kannada; a blank Kannada name or the English name copied
   across is refused.
 - Team roles, coupons, product photos.
@@ -234,9 +304,9 @@ Run on the Linux machine that built the project, from the repo root.
 | Command | Result | What it proves |
 | --- | --- | --- |
 | `npm run typecheck` | Clean, both apps | Types agree with the database types and each other |
-| `npm run lint` | Clean, zero warnings | ESLint + all nine chained checks (i18n parity, view, persist, speech, packs, auth doors, storage, location, tracking) |
-| `npm run test:db` | **732 passed / 0 failed** | Migrations apply in order; RLS, guards, money, stock race, coupons, deletion, totals, packs, product creation, names, rider positions all behave |
-| `npx expo-doctor` | 20/21 checks pass; only the known Metro warning | SDK packages are internally consistent |
+| `npm run lint` | Clean, zero warnings | ESLint + all sixteen chained checks (i18n parity, view, persist, speech, packs, auth doors, storage, location, tracking, delivery, navigation, map tiles, route, saved, metro) |
+| `npm run test:db` | **850 passed / 0 failed** | Migrations apply in order; RLS, guards, money, stock race, coupons (global + per-customer), deletion, totals, packs, product creation, names, rider positions, shop door, money desk, admin order actions, offers scope all behave |
+| `npx expo-doctor` | 21/21 checks pass | SDK packages are internally consistent |
 | `npx expo export --platform android` | Built a 6.1 MB Hermes bundle | The app bundles for Android, fonts included |
 
 ### 3.1 A fresh clone is self-sufficient (re-checked 2026-10-31)
@@ -250,7 +320,7 @@ git clone https://github.com/kr1shnac/eCommerce.git <tmp>/clone-check
 cd <tmp>/clone-check && npm ci        # succeeded, no manual step
 npm run typecheck                     # clean
 npm run lint                          # clean, all nine chained checks
-npm run test:db                       # 732 passed / 0 failed
+npm run test:db                       # 850 passed / 0 failed
 ```
 
 Only two things are deliberately **not** in Git: `apps/mobile/.env` and
@@ -377,38 +447,40 @@ anyone.
 
 ### 4.5 Database: which Supabase project?
 
-**Option A — keep the existing hosted project (normal case).**
-Copy its URL and publishable key into both `.env` files. Then check whether the
-newest migrations are applied. The hosted project was set up before the pack,
-in-product-creation, name and rider-position work, so assume it is behind. In the
-Supabase SQL Editor:
+**The project is Kunigal Bazaar, `argahiagpywluxpqtnpp` (Mumbai, PostgreSQL
+17.11).** Its URL is `https://argahiagpywluxpqtnpp.supabase.co`; both `.env`
+files already point at it. As of **2026-11-09** it carries all **35** migrations
+in filename order, and `supabase migration list --remote` reports 0 pending.
+`npm run check:hosted` proves it from the repo (30 present, 0 missing, 5
+RLS/publication/index-only).
 
-```sql
--- Packs, in-app product creation, names, rider positions
-select column_name
-  from information_schema.columns
- where table_schema = 'public' and table_name = 'products'
-   and column_name in ('sold_by', 'pack_size', 'pack_unit');
+The old project (`ncfjzbptbtvkjvnrwyyq`) was **out of order** — later migrations
+present, earlier ones missing — and has been retired. Do not try to patch it.
 
-select proname
-  from pg_proc
- where proname in ('create_product_from_shop', 'set_my_name',
-                   'shop_day_totals', 'shop_day_by_rider',
-                   'record_my_position');
+**Production data is not `seed.sql`.** It is
+`supabase/production-bootstrap.sql`: one store (working name `Kunigal Grocery`,
+no phone/address), one settings row, the 572130 zone and the eight categories.
+`seed.sql`, `demo.sql`, `demo-accounts.sql` and `demo-images.sql` are
+**development only** and must never run on this project.
 
-select to_regclass('public.rider_positions') as rider_positions;
+One thing still needs the dashboard, not this repo:
+
+1. the phone OTP SMS provider (Auth → Providers → Phone) — without it nobody can
+   sign in. The four `storage.objects` policies were created 2026-11-11 and
+   proved (`docs/launch/STORAGE-POLICIES.md`); the dashboard wrote six rows
+   because its *For full customization* flow pairs a `SELECT` with each `UPDATE`
+   and `DELETE`, which is expected and harmless.
+
+**A fresh project (only if this one is ever lost).** Create it, link it, then:
+
+```bash
+supabase db push --remote --yes
+supabase db query --remote --file supabase/production-bootstrap.sql
 ```
 
-Anything missing means the corresponding migration has not run. Apply the
-**missing** files from `supabase/migrations/` in filename order; never edit a
-migration that has already been applied. The complete list is in `README.md` §4.
-If you are unsure what state the project is in, the safest route is a fresh
-project and a full ordered apply.
-
-**Option B — a fresh Supabase project.** Create it, copy the keys, run every
-migration in filename order, then `supabase/seed.sql`. Sign up once in the app,
-then set the first role in the SQL Editor (README §4, "Choose your role"). After
-that, the owner can set roles from the app's Team tab.
+Then do the two dashboard steps above. Do **not** run `seed.sql` on it. Sign up
+once in the app and set the first role in the SQL Editor (README §4, "Choose your
+role"); after that the owner sets roles from the app's Team tab.
 
 > The 28 demo photo URLs in `supabase/demo-images.sql` are **absolute URLs to the
 > current hosted project's Storage bucket**. On a brand-new project, either copy
@@ -498,22 +570,67 @@ model.
 ### 6.1 Owner / launch actions (code cannot finish these)
 
 1. **Run it on a real phone** (C4). Every "verified" in this repo means
-   typecheck/lint/tests, not a screen. This is the first thing to do.
-2. **Phone OTP + SMS provider + DLT registration** (C1). The only release
-   sign-in; currently disabled on the hosted project.
-3. **Apply the newest migrations to the hosted project** and remove demo
-   accounts/data (C7).
-4. **Play closed-test calendar** — 12 testers for 14 days (C6) — and the
+   typecheck/lint/tests, not a screen. **This is now the only thing standing
+   between the project and a pilot** — and it is unblocked: sign-in works
+   (`phone_provider_disabled` is gone; a test number issues a real session),
+   the shelf has six demo products, and `docs/launch/DEVICE-RUN.md` is the whole
+   run in order. Do this first.
+2. **Real SMS for phone OTP** (C1). The **test-number route is DONE 2026-11-11
+   and proved** — a session was issued against the live project, so sign-in
+   works on a phone today. What remains is real SMS for real numbers: enable a
+   paid provider and, in India, a TRAI DLT registration (entity, then a
+   6-letter sender ID, then an approved template), because every commercial
+   SMS to an Indian number must carry one. The template must match the wording
+   in the Phone provider screen exactly, or the operator silently drops every
+   message. Everything else is in `docs/launch/SMS-SETUP.md`.
+   **Remove the three test numbers before launch.**
+3. **CAPTCHA on the OTP endpoint.** Not built. Supabase's own production
+   checklist requires it, and it is what stops the OTP endpoint being used to
+   run up an SMS bill once real SMS is live. Small app change; do not launch
+   without it.
+4. **Create the four `storage.objects` policies** in the dashboard — **DONE
+   2026-11-11, and proved working** (see `docs/launch/STORAGE-POLICIES.md`). The
+   dashboard wrote **six** rows because its *For full customization* flow
+   pre-selects `SELECT` when you pick `UPDATE` or `DELETE`; both extras are
+   harmless (SELECT policies union, so an admin-only SELECT next to the public
+   one changes nothing) and should be left alone. The one thing still unproved is
+   that an owner can *upload* — that needs an admin session.
+5. **The rest of the shop identity.** The **name is now set: Kunigal Bazaar**
+   (applied 2026-11-11, `supabase/production-shop-name.sql`). Phone, street
+   address, FSSAI and GST are still NULL and still owner-side — an absent number
+   shows nothing rather than a fake one (migration `20261020000002`).
+   **Two new owner steps, both in the app:**
+   - **Drop the shop pin.** Today tab → *Delivery area* → *Use my current
+     location*, standing in the shop. Until that is done the 10 km rule cannot
+     run and delivery falls back to the 572130 pincode zone. A guessed coordinate
+     would refuse real addresses from the wrong point, so it is left to the owner.
+   - **Set each product's GST rate and HSN** on the Shelf tab, once the
+     accountant says what applies. Products start at 0 = "not classified yet" and
+     print as 0% — never a guessed slab. With `stores.gstin` still NULL, every
+     document is a **bill of supply**, which is correct for an unregistered shop.
+   - **Do not turn on `store_settings.online_payments_enabled`** until a gateway
+     can actually settle the money. There is no UI switch on purpose; it is SQL
+     only (`PRODUCTION.md`).
+   - **Razorpay, when the owner has an account.** Create a free Razorpay
+     account (test mode needs no KYC), set three function secrets, deploy the
+     three functions in `supabase/functions/`, point the webhook at
+     `razorpay-webhook`, then flip `online_payments_enabled` to true. The
+     operator steps are in `PRODUCTION.md` §15. **Until that, checkout greys the
+     online methods and no payment path is live.**
+6. **Play closed-test calendar** — 12 testers for 14 days (C6) — and the
    owner's Play/Apple accounts.
-5. **Statutory numbers:** FSSAI licence, GST decision/cash-memo wording, Legal
+7. **Statutory numbers:** FSSAI licence, GST decision/cash-memo wording, Legal
    Metrology declarations, privacy-policy URL, LICENSE (C5, H6–H8).
-6. **Kannada sign-off** by a Kunigal local, including the new consent/tracking
-   strings (M7).
-7. **Real product photographs** — 28 of 34 are development stock; 6 have none
-   (M8).
-8. **Backup / restore / rollback runbook** and a named on-call person (H13).
-9. **iOS build path** — needs a Mac or a cloud build (M12).
-10. **Confirm the app identifier** `in.kunigal.grocery` is really owned/desired
+8. **Kannada sign-off** by a Kunigal local, including the new consent/tracking,
+   shop-door and money-desk strings (M7).
+9. **The production shelf holds six DEMO products** (`supabase/demo-catalogue.sql`,
+   added 2026-11-11 so the shelf is renderable for the device run). Remove them
+   with `demo-catalogue-remove.sql` — one command, exact ids, cannot touch a real
+   product. Real products are added by the owner from the Shelf tab, in Kannada,
+   at real prices, with real photographs (M8).
+10. **Backup / restore / rollback runbook** and a named on-call person (H13).
+11. **iOS build path** — needs a Mac or a cloud build (M12).
+12. **Confirm the app identifier** `in.kunigal.grocery` is really owned/desired
     before the first store upload; it becomes permanent.
 
 `docs/launch/` holds the external-launch drafts written for the items above:
@@ -528,13 +645,32 @@ is what turns them from drafts into the shop's policy.
 ### 6.2 Code work, in the intended order
 
 1. **A real device pass** on the current build; fix what it finds.
-2. **Push notifications** (Phase 4): `expo-notifications`, `device_tokens`, an
+2. **Per-customer coupon limits — built 2026-11-09.** `coupons.per_customer_limit`
+   and a `coupon_per_customer_limit` refusal in both `validate_coupon()` and
+   `place_order()` (migration `20261109000004`, test 33, 26 assertions). The
+   count excludes cancelled orders, the global cap is checked first, and the
+   owner sets the cap in the coupon form.
+3. **Admin cancel on a customer's behalf, and force-complete — built 2026-11-09.**
+   `admin_cancel_order(p_order_id, p_reason)` and `admin_force_complete(p_order_id)`
+   (migration `20261109000005`, test 34, 26 assertions). Cancel puts the stock
+   back and stores the reason; force-complete sets `delivered_at` once and never
+   touches stock or money. Both are admin-only, refuse a terminal order, and a
+   `failed` delivery can still never be reopened as `delivered`. The component is
+   `components/order-admin-actions.tsx` on the owner's order screen, and the
+   customer sees the reason on theirs.
+4. **Resend OTP with a visible cooldown — built 2026-11-11.** `login.tsx`'s code
+   step now has a resend button with a 30-second countdown (Batch 6, §6.2 item
+   4). Disabled while counting, re-enabled at zero, and a rate-limit refusal
+   still lands in the translated error box. The countdown is a legible wait, not
+   the limit — Supabase's own rate limit stays server-side.
+   `scripts/check-resend-otp.mjs` (14 assertions) is in the lint chain.
+5. **Push notifications** (Phase 4): `expo-notifications`, `device_tokens`, an
    Edge Function on order insert; rider gets "new order", customer gets "out for
    delivery". Needs an EAS development build.
-3. **Razorpay** (Phase 5): online payment as a second method beside COD; the
+6. **Razorpay** (Phase 5): online payment as a second method beside COD; the
    order is placed only after the server verifies the signature. Needs an EAS
    development build. COD stays the default.
-4. **The map is built** (`df71cd5` + `433e611`): OSM raster tiles composited by
+7. **The map is built** (`df71cd5` + `433e611`): OSM raster tiles composited by
    the app, no SDK, no API key, no billing account, with an OSRM road route and
    an honest straight-line fallback. The door pin now exists, so the route and
    the ETA work. What remains of Phase 6 is the **live follow-the-rider view on
@@ -542,29 +678,38 @@ is what turns them from drafts into the shop's policy.
    a device run rather than on a decision. The vendor is chosen and it is
    OpenStreetMap; the map is `components/rider-map.tsx` and is replaceable, as
    planned.
-5. **P5 — post-delivery "was everything right?"** — **built 2026-11-06**
+8. **P5 — post-delivery "was everything right?"** — **built 2026-11-06**
    (`order_feedback`, migration `20261106000001`, test 25, the card on
-   `order/[id]`). The record exists; aggregating it for the owner is a later,
-   smaller step. No client decision was needed.
-6. **Refund visibility to the customer** — **built 2026-11-06**
+   `order/[id]`); **aggregated for the owner 2026-11-08**
+   (`shop_feedback_totals()` / `shop_feedback_reasons()`, migration
+   `20261108000001`, test 29, on the Today tab as counts, never a rating).
+9. **Refund visibility to the customer** — **built 2026-11-06**
    (`orders.refund_due_paise` as a generated column, migration
    `20261106000002`, test 26, `src/components/refund-due.tsx`). The owner's
    liability and the customer's screen now read the same number.
-7. **B3 — ₹saved in the basket**, **the free-delivery "add ₹X more" nudge**,
-   and **B4 — the cycling search placeholder** — **all three built 2026-11-06**
-   (`useCart.mrpSavingsPaise` on the cart screen and in the Home basket bar; the
-   nudge in `lib/delivery.ts` with `check:delivery`, under the cart total; the
-   placeholder in `components/home-search.tsx`, rotating real in-stock shelf
-   names in the customer's language). No migration and no new promise in any of
-   them.
-8. **P6 — partial fulfilment** (needs the owner's decision: short order or
-   cancel?).
-9. **P7 — scheduled delivery** (needs the owner's answer about rider days).
-10. **Decide whether `apps/admin` earns its keep, or retire it.** It is *not*
-   behind on packs — corrected 2026-11-03: it reads and writes `sold_by`,
-   `pack_size` and `pack_unit` (grep-verified), so the old "two shelf tools
-   disagree" worry is gone. The remaining question is whether a second shelf tool
-   with no tests is worth maintaining when the phone already does the job.
+10. **The shop's door** — **built 2026-11-09** (`set_shop_open()`, migration
+    `20261109000002`, test 31, `components/shop-door-card.tsx` as the first card
+    on Today). `place_order()` had refused a closed shop since migration 08; the
+    write path was the missing half.
+11. **The money desk** — **built 2026-11-09** (`mark_cod_collected()` and
+    `mark_refund_paid()`, migration `20261109000003`, test 32,
+    `components/order-money-actions.tsx` on the owner's order screen). Both
+    numbers Today reports can now be settled, and a retry cannot count twice.
+12. **B3 — ₹saved in the basket**, **the free-delivery "add ₹X more" nudge**,
+    and **B4 — the cycling search placeholder** — **all three built 2026-11-06**
+    (`useCart.mrpSavingsPaise` on the cart screen and in the Home basket bar; the
+    nudge in `lib/delivery.ts` with `check:delivery`, under the cart total; the
+    placeholder in `components/home-search.tsx`, rotating real in-stock shelf
+    names in the customer's language). No migration and no new promise in any of
+    them.
+13. **P6 — partial fulfilment** (needs the owner's decision: short order or
+    cancel?).
+14. **P7 — scheduled delivery** (needs the owner's answer about rider days).
+15. **Decide whether `apps/admin` earns its keep, or retire it.** It is *not*
+    behind on packs — corrected 2026-11-03: it reads and writes `sold_by`,
+    `pack_size` and `pack_unit` (grep-verified), so the old "two shelf tools
+    disagree" worry is gone. The remaining question is whether a second shelf tool
+    with no tests is worth maintaining when the phone already does the job.
 
 ### 6.3 Known limitations, stated so nobody rediscovers them
 
@@ -597,6 +742,21 @@ is what turns them from drafts into the shop's policy.
   customer's order screen, which is what `rider_directory` exists to avoid.
 - The feedback card is code-complete but has never been seen on a phone, like
   every other screen here.
+- **The shop door and the money desk are also unseen on a phone** (2026-11-09).
+  Both are proved by the database suite (14 and 25 assertions) and by typecheck,
+  but no finger has pressed either button. They are also the two screens where a
+  wrong label costs money, so put them first in the device pass.
+- ~~**The owner cannot cancel a customer's order from the app, and cannot
+  force-complete one.**~~ **DONE 2026-11-09** — `admin_cancel_order()` and
+  `admin_force_complete()` (migration `20261109000005`, test 34). Both are
+  admin-only, refuse a terminal order, and a `failed` delivery can never be
+  reopened as `delivered`. Cancel puts the stock back; force-complete sets
+  `delivered_at` once and touches neither stock nor money.
+- ~~**A coupon has a shop-wide usage cap but no per-customer cap.** One customer
+  can reuse a code until `usage_limit` runs out. Batch 4 in §6.2.~~
+  **DONE 2026-11-09** — `coupons.per_customer_limit`, enforced by
+  `validate_coupon()` and `place_order()` (migration `20261109000004`, test 33).
+  Cancelled orders release the slot; the global cap is still checked first.
 - **The map has never been rendered anywhere.** Tiles, pinch, the OSRM call, the
   door pin and the recentre button are all proved as code and as pure arithmetic
   (`check:map-tiles`, 55 assertions; `check:route`, 45; the DB suite, 39 new
@@ -783,7 +943,7 @@ the reasoning. None of them changes a promise or a price.
    `SKILLS.md`'s status note for the version differences and the two repointed
    council models. Independent of the steps below — the app builds without it.
 1. `npm run typecheck && npm run lint && npm run test:db` — all green on Windows.
-   (2026-11-09: **732 | 0 | 732**, typecheck clean, lint clean across sixteen
+   (2026-11-11: **850 | 0 | 850**, typecheck clean, lint clean across seventeen
    chained checks, `expo-doctor` 21/21.)
 2. Open the app on a real Android phone with Expo Go; walk the customer flow
    end to end, then rider, then owner.
@@ -800,23 +960,18 @@ the reasoning. None of them changes a promise or a price.
    numbers, **A4** after decision 5, and **A9/A10** which need the owner and a CA
    (§6.5). Each should ship with its own CHANGELOG entry; A1 changes a
    customer-visible promise, so confirm it first.
-5. **Apply the missing migrations to the hosted project** and clean the demo data.
-   Re-probed 2026-11-09 with the publishable key, read-only, through
-   `npm run check:hosted` (new today, one marker per migration): the hosted
-   project carries everything through `20261014000004_coupons.sql` and is
-   missing the **fourteen** after it — `account_deletion`, `shop_identity`,
-   `order_tracker`, `shop_totals`, `product_guard`, `pack_sizes`,
-   `create_product`, `my_name`, `rider_positions`, `order_feedback`,
-   `refund_due`, `delivery_otp`, `door_pin`, `shop_feedback`. The docs used to
-   claim it stopped at `20261013000001`; that was wrong (`favourites`, `coupons`
-   and `products.emoji` are all later and are present), which is exactly why this
-   is now a command rather than a paragraph to re-derive. The app degrades
-   politely — the rider card falls back to "your rider" and the refund card shows
-   ₹0.00 — which is exactly why this went unnoticed: **the fallback hid the
-   drift.** `supabase db push` needs the project credentials, and three of the
-   fourteen are guard triggers, so it is the owner's call, not a background fix.
-   Do this *before* step 2, or the device run will test fourteen missing
-   features.
+5. ~~**Rebuild the hosted project from all 32 migrations, in filename order.**~~
+   **DONE 2026-11-09.** The fresh project is **Kunigal Bazaar**
+   (`argahiagpywluxpqtnpp`, Mumbai, PostgreSQL 17.11); all **35** migrations are
+   applied in filename order and `supabase migration list --remote` reports
+   **0 pending**. The production bootstrap has run (1 store, 1 settings row, 1
+   zone, 8 categories, **0 products**). `npm run check:hosted` reports **30
+   present, 0 missing, 5 unproven** (RLS/publication/index-only files, proved by
+   `test:db`). The old project was retired, not patched.
+   **What is left of this step is dashboard-only:** the four `storage.objects`
+   policies (`docs/launch/STORAGE-POLICIES.md`) and the SMS provider. Re-probe
+   with `npm run check:hosted` after any push; never trust a migration count
+   written in a doc.
 6. Set up OTP/SMS + DLT and prove one real sign-in.
 7. Create an EAS development build; test location consent, a real rider fix,
    the customer's text tracker, the map and the door pin, and native crash
@@ -911,6 +1066,7 @@ These are in `AGENTS.md` in full; this is the short list for a new session.
 | Deep path errors during `npm ci` | 260-character path limit | Clone to `C:\dev\eCommerce`; enable Win32 long paths if needed |
 | Admin panel typecheck trips on `.next/types` | Stale Next output | Delete `apps/admin/.next` and `apps/admin/tsconfig.tsbuildinfo`, rerun |
 | Kannada appears as `????` in the test output | Console code page | The runner forces `PGCLIENTENCODING=UTF8`; the data and assertions are still correct. Use Windows Terminal for readable output |
+| `npm run mobile` dies with `FATAL ERROR: Ineffective mark-compacts near heap limit — JavaScript heap out of memory` | Node caps V8's old-space at ~2 GB by default; the Metro **dev server** (module graph, watching, source maps, and the web bundle) needs more | **Already fixed in the repo**: `npm run mobile` now runs `scripts/start-mobile.mjs`, which spawns Node with `--max-old-space-size=6144`. Raise or lower it with `KUNIGAL_MOBILE_HEAP_MB`. Do not reach for `expo start --android` — that makes Expo look for adb and fails with *"Failed to resolve the Android SDK path"* on a machine that has Expo Go and no SDK, a different and misleading error. Scan the QR with Expo Go instead |
 | `npm run mobile` starts but web export fails | Node prerender | Should not happen; the storage/location guards are tested. Run `npm run check:storage` and `npm run check:location` |
 
 ---
@@ -944,7 +1100,9 @@ When asking a future session for help, paste the failing command and the first
 ## 12. Where the history is
 
 - `CHANGELOG.md` — newest first. The top entries cover the rider position work,
-  the Blinkit/Zepto teardown, the UI/perf pass, and the pack/name/product work.
+  the Blinkit/Zepto teardown, the UI/perf pass, the pack/name/product work, and
+  the three 2026-11-12 sessions: screenshots/PDF, GST + five methods + radius,
+  and Razorpay.
 - `git log --oneline` — 40+ focused commits; each commit message says what it
   proves.
 - `PRODUCTION.md` §12 — the 41-item register, with current status.
@@ -952,7 +1110,8 @@ When asking a future session for help, paste the failing command and the first
 - `SCALE-AND-TRACKING.md` §8 — T0–T7 status.
 - `FEATURE-PARITY.md` §5 — P1–P8 status.
 - `COMPETITOR-TEARDOWN.md` §7–§8 — the measured A/B/C gap list and the five open
-  decisions. It is a plan, not a build log: none of A1–A6 was built (§6.4).
+  decisions. A2, A3-card, A5, A6, A7 and A8 are built; A1, A4, A9 and A10 are
+  not (§6.4).
 - `.council/runs/20261019-1731-kunigal-production-review/` — the adversarial
   review that produced `PRODUCTION.md` (read-only history; not part of the app).
 
@@ -960,12 +1119,33 @@ When asking a future session for help, paste the failing command and the first
 
 ## 13. The one-sentence state
 
-The software is built and proven at the database/type/lint level — **732 database
+The software is built and proven at the database/type/lint level — **957 database
 assertions, clean typecheck and lint, a working web export and a Metro bundle that
 serves** — and it has never been seen on a phone; the first real milestone is a
-device run, not more features. **The hosted Supabase project is ten migrations
-behind** (it stops at `20261013000001`), so anything the app does beyond rider
-assignment has only ever run against the throwaway PostgreSQL that `test:db`
-boots — apply those migrations before doing any live test (§7 step 5). The
-Blinkit/Zepto design gaps (A1–A10) are measured and prioritised but **not
-built** — see §6.4.
+device run, not more features. **The hosted Supabase project is real now**: all
+**43** migrations are applied in filename order (0 pending), the production
+bootstrap has run, and `check:hosted` reports 38 present / 0 missing / 5
+RLS-only. From the phone the owner can close the shop, settle cash and refunds,
+cancel an order for a customer who asked by phone, and complete a delivery the
+rider's phone never reported; the customer can now resend a code, see an offer's
+own scope, ask the shop for something the shelf does not carry, and read the
+order they just placed on the confirmation itself. **The shop now issues GST
+documents** — tax extracted from MRP-inclusive prices, CGST/SGST or IGST, a
+sequence-numbered invoice, and a PDF the customer can keep — offers five payment
+methods (online ones honestly greyed until a gateway exists), promises 30-minute
+express inside its own circle, and refuses an address outside the owner's 10 km
+radius in a sentence that names the distance. The radius, the express promise and
+the shop's own pin are editable from the owner's phone; the pin itself is the one
+step still waiting for the owner to stand in the shop. The shop is called
+**Kunigal Bazaar** now. **Sign-in works** — a phone OTP was issued and verified
+against the live project and a real session came back, with the `profiles` trigger
+creating the customer row; that door is open, so the device run is unblocked and
+`docs/launch/DEVICE-RUN.md` is the whole run in order. What is left is real SMS
+for real numbers (a paid provider plus India's TRAI DLT registration) and a
+**CAPTCHA gate**, which is not built and must not launch without it. The four
+`storage.objects` policies were created and proved on 2026-11-11
+(`docs/launch/STORAGE-POLICIES.md`), so photo upload is no longer broken — only
+the upload-by-an-actual-owner is unproved, because that needs a sign-in. Blinkit
+is now measured in depth (`COMPETITOR-TEARDOWN.md` §11) and the five courtesies
+it does better are built; what it does that we do not want — server-driven
+merchandising, a wallet, pharmacy — is recorded as refused, with reasons.

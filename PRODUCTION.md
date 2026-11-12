@@ -19,10 +19,25 @@ item.
 > be done on the new laptop).
 > The launch blockers that remain are **owner actions or device work**, not
 > missing code: OTP/SMS (C1), a first run on a real phone (C4), the Play
-> closed-test calendar (C6), demo accounts on the hosted project (C7), the
-> hosted-project migration sweep, FSSAI/GST/Legal Metrology numbers, Kannada
+> closed-test calendar (C6), FSSAI/GST/Legal Metrology numbers, Kannada
 > sign-off (M7), and real product photographs (M8). See `HANDOFF.md` for the
 > one-page state and the laptop-move checklist.
+
+> **Status update 2026-11-09 (second session).** The hosted project was retired
+> and **rebuilt** rather than patched, because it was **out of order** — later
+> migrations present while earlier ones were missing. The new project is
+> **Kunigal Bazaar** (`argahiagpywluxpqtnpp`, Mumbai, PostgreSQL 17.11): all
+> **35** migrations applied in filename order, `supabase migration list --remote`
+> reports **0 pending**, and `supabase/production-bootstrap.sql` has run (1 store,
+> 1 settings row, 1 zone, 8 categories, **0 products** — the shelf is the owner's
+> to fill). `npm run check:hosted` reports 30 present / 0 missing / 5
+> RLS-publication-index-only. The local suite is **787 assertions, 0 failed**
+> (2026-11-09). The owner can now close the shop and settle COD cash and refunds
+> from the phone (`set_shop_open`, `mark_cod_collected`, `mark_refund_paid`;
+> migrations `20261109000002`–`20261109000003`, tests 31–32). What remains is
+> **dashboard-only or owner-side**: the four `storage.objects` policies
+> (`docs/launch/STORAGE-POLICIES.md`), an SMS provider for phone OTP, the real
+> shop identity, C4 (first device run) and C6 (Play closed-test calendar).
 
 ---
 
@@ -102,7 +117,8 @@ Three showstoppers, all of them facts about this repository:
 
 …and the meta-flaw that made all three easy to miss: **nothing has ever run on a
 device or an emulator.** When this was written, every "DONE" in `ROADMAP.md`
-meant "type-checks and 348 SQL assertions pass"; it is 590 now. That is a real
+meant "type-checks and 348 SQL assertions pass"; it is **850** now (590 when
+this paragraph was written). That is a real
 achievement about Postgres; it is not evidence about Kunigal. — register C4.
 
 Finally, the cash loop was open when this was written: the owner's "Today" totals
@@ -119,17 +135,17 @@ the item-by-item tracker.
 
 | Area | State |
 | --- | --- |
-| Database | **31 migrations**, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement |
-| Database tests | **732 assertions, 0 failures**, against throwaway PostgreSQL (`npm run test:db`); now runs on Windows, macOS and Linux |
-| Typecheck / lint / i18n | Clean. **702 keys in parity** across `en.json` and `kn.json`; every chained check passes with zero warnings (sixteen of them, `check:metro` now included) |
-| Mobile app | Three faces by `profiles.role` (customer / rider / admin), realtime order updates, light **and** dark themes, design system in `src/components/ui/`, responsive skeletons, offline catalogue persistence |
+| Database | **38 migrations**, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement. Hosted project **Kunigal Bazaar** has all 38 applied, 0 pending |
+| Database tests | **850 assertions, 0 failures**, against throwaway PostgreSQL (`npm run test:db`); now runs on Windows, macOS and Linux |
+| Typecheck / lint / i18n | Clean. **717 keys in parity** across `en.json` and `kn.json`; every chained check passes with zero warnings (sixteen of them, `check:metro` now included) |
+| Mobile app | Three faces by `profiles.role` (customer / rider / admin), realtime order updates, light **and** dark themes, design system in `src/components/ui/`, responsive skeletons, offline catalogue persistence, shop door and money desk on the owner's face |
 | Rider tracking | Text-first position sharing is built (consent, foreground throttle, distance/ETA, "Picked up"), **with a key-free OpenStreetMap map and a door pin**; still no background location |
 | Install path | `app.json` + `eas.json` exist. **Still never built by EAS** |
 | Device runs | **None. Ever.** No screenshot, no emulator session, no APK. The closest thing that exists is the static web export driven in headless Chrome (CHANGELOG 2026-11-09), which is not a phone |
 | Sign-in | Phone OTP only in release builds; email+password demo path is `__DEV__`-gated; the hosted project has OTP disabled (C1) |
 | CI | Exists — `.github/workflows/checks.yml` runs typecheck, lint, session, database suite and `expo-doctor` (H12) |
 | Crash reporting / analytics | Sentry for JavaScript errors (`src/lib/crash-reporting.ts`, H11); native crashes need a real build; no analytics |
-| Payments, push, maps | Deliberately not started |
+| Payments, push, maps | Payments and push deliberately not started; the **map is built** (OSM raster tiles + OSRM route, no SDK/key), and rider positions are text-first |
 | Expo SDK | `~57.0.31` `[VERIFIED]`; an SDK 58 upgrade is Phase 8 work, not a pilot-week change |
 | Deployable admin panel | `apps/admin` is a skeleton, optional, kept only for bulk catalogue edits |
 
@@ -289,12 +305,12 @@ checked with the shop's accountant before the plan hardens.
 
 Also in this phase:
 
-- **Remove every demo account from the hosted project** (register C7). The
-  `supabase/demo-accounts.sql` header says clearly that the file is
-  development-only and that the passwords are not in the repository; but this
-  machine's git-ignored `.env` defines the demo addresses, so the script has been
-  run against *some* project. Check Auth → Users on the hosted project and delete
-  anything named `demo`. The owner's own account must have MFA.
+- **Remove every demo account from the hosted project** (register C7). **DONE
+  2026-11-09**: the hosted project was replaced by a fresh **Kunigal Bazaar**
+  project and the production bootstrap creates **no accounts at all** — no
+  `demo.sql`, `demo-accounts.sql` or `demo-images.sql` has ever run there. The
+  only account is whatever the owner signs up with. The owner's own account must
+  have MFA.
 - **No developer text on a customer screen** (register M9). ~~`auth.testNumbers`
   in `en.json`/`kn.json` is developer text showing on the login screen. It is now
   `__DEV__`-only…~~ **DONE 2026-11-09 — deleted, not hidden.** The key is gone
@@ -792,6 +808,62 @@ text cannot drift, and that a customer can **read** the product the owner just a
 
 ---
 
+### GST documents, payment choices, a measured delivery circle — DONE (register H3/M2, owner request 2026-11-12)
+
+The owner asked for five things: GST with correct tax, several payment methods,
+30-minute express, a 10 km radius measured by GPS, and all of it configurable
+without a code change. Five migrations, three test files (107 new assertions),
+and both admin screens are in the app.
+
+**The rules, in one place each:**
+
+- **Tax is inside the price.** Prices are MRP-inclusive, so
+  `taxable = round(net * 10000 / (10000 + rate_bp))` and `tax = net - taxable`.
+  `order_invoice()` is the only arithmetic. The coupon discount is allocated
+  across goods lines proportionally with the remainder on the last line, so
+  `sum(line discounts) = order discount` and `taxable + tax = total_paise` hold
+  exactly. The delivery fee is its own 18% line.
+- **No GSTIN means a bill of supply.** `stores.gstin is null` sets
+  `is_tax_invoice = false` and the document prints no CGST/SGST. A small shop
+  below the threshold may issue exactly that; printing tax it may not collect
+  would be a false document. When the real GSTIN arrives, set it and the same
+  screen starts issuing tax invoices.
+- **The rate is basis points from a closed set** (0/500/1200/1800/2800), chosen
+  from chips on the Shelf tab, so 1800%-instead-of-18% is unreachable. 0 means
+  "not classified yet" and prints as 0%, never as a guess.
+- **Distance decides when both pins exist**, and the pincode zone decides
+  otherwise — that is what keeps every address saved before this migration
+  working. Express has its own radius, ETA, fee and basket cap and is refused
+  with a reason, never a silent downgrade.
+
+**Two operator rules that are deliberate, not oversights:**
+
+1. **`store_settings.online_payments_enabled` has no switch in the app.** It
+   defaults to **false** and is moved by SQL only:
+   ```sql
+   update public.store_settings set online_payments_enabled = true;  -- only once a gateway settles money
+   ```
+   Flipping it before the gateway can settle money would let a customer place a
+   UPI order nobody can settle — the shop would owe a refund it cannot see.
+   Until then, checkout shows the four online methods greyed with the reason on
+   screen, and `mark_online_payment_paid()` is the manual path if money arrives
+   another way. The account setup that unlocks this is §15.
+2. **The shop pin is the owner's step.** Today tab → *Delivery area* → *Use my
+   current location*, standing in the shop. Until then `stores.lat/lng` is NULL,
+   the distance rule cannot run, and delivery falls back to the 572130 zone. A
+   guessed coordinate would refuse real addresses measured from the wrong point,
+   so it is not seeded.
+
+**What is *not* claimed:** no Razorpay keys exist, so **no payment path is live
+and no real payment has ever been made** (the three Edge Functions answer
+`gateway_not_configured` until the secrets are set — §15); the checkout sheet has
+never been opened on a device, which needs the EAS development build; no PDF has
+been produced on a real device (`expo-print` needs it too); and no invoice has
+been checked by an accountant. The arithmetic is proved against PostgreSQL; the
+*statutory wording* of the document is the owner's accountant's call.
+
+---
+
 ## 9. Phase 5 — the store calendar (this is the real launch date)
 
 `[EXTERNAL]`, checked 2026-10-19. Store rules change; re-read them before you
@@ -934,13 +1006,13 @@ From the council chairman, item for item. "Owner" is who can actually move it.
 
 | ID | Sev | Item | Phase | Owner |
 | --- | --- | --- | --- | --- |
-| C1 | Critical | Only sign-in path is phone OTP, and OTP is disabled; no SMS provider / DLT | 2 | Owner + dev |
+| C1 | Critical | Only sign-in path is phone OTP, and OTP is disabled; no SMS provider / DLT | 2 — **owner action only**; nothing in the repo can configure it | Owner |
 | C2 | Critical | Session could not persist (no `storage` adapter) | **0 — done** | Dev |
 | C3 | Critical | No installable artefact (no bundle ids, no `eas.json`) | **0 — done** | Dev |
 | C4 | Critical | Nothing has ever run on a device | 1 | Dev + owner |
 | C5 | Critical | No privacy policy, terms, LICENSE, or in-app account deletion | **0 in-app done**, hosted URL + LICENSE left | Owner + dev |
 | C6 | Critical | Play closed-test calendar gate (12 testers / 14 days) | 5 | Owner |
-| C7 | Critical | Demo accounts may be live on the hosted project | 3 | Owner |
+| C7 | Critical | Demo accounts may be live on the hosted project | **0 — done 2026-11-09**: fresh project, bootstrap creates no accounts, no demo SQL ever run | Owner |
 | C8 | Critical | Store reviewers cannot log in (OTP-only, dev path compiled out) | **2 — code done**, owner action left | Dev + owner |
 | H1 | High | ₹100 minimum refuses the modal first basket | 6 | Owner + dev |
 | H2 | High | Realtime cannot reach a pocketed phone; no push | **trust half done** (rider name/photo/call); push still missing | Dev |
@@ -949,11 +1021,11 @@ From the council chairman, item for item. "Owner" is who can actually move it.
 | H5 | High | DPDP consent notice, in Kannada | **0 — done** | Owner + dev |
 | H6 | High | FSSAI licence display missing | **fields done**, number needed | Owner |
 | H7 | High | Legal Metrology declarations absent | **fields done**, wording unverified | Owner + CA |
-| H8 | High | No GST decision / cash memo | **field done**, decision needed | Owner + CA |
+| H8 | High | No GST decision / cash memo | **code done** (GST billing, invoice + PDF, bill of supply when unregistered); the *decision* — register or not, and each product's slab/HSN — is the CA's | Owner + CA |
 | H9 | High | No account recovery, customer or owner | **2 — code done**, owner action left | Dev + owner |
 | H10 | High | Identity assumes one phone = one person | **0 — done.** `set_my_name()` + a name editor on the account screen, migration `20261021000006`, test 23 (22 assertions). The owner now names their own account from the app; refusals on blank names; the function acts only on `auth.uid()`; and the account screen explains the household model. | Dev + owner |
 | H11 | High | No crash reporting or analytics | **0 — done** (Sentry; native crashes need a real build, not Expo Go) | Dev |
-| H12 | High | No CI | **0 — done** (`.github/workflows/checks.yml`) | Dev |
+| H12 | High | No CI | **0 — done** (`.github/workflows/checks.yml`, now including `next build` and both `expo export` platforms) | Dev |
 | H13 | High | No backup / restore / rollback runbook; nobody on call | 4 | Dev + owner |
 | M1 | Medium | No persisted offline catalogue | **0 — done.** `query-persistence.ts`: allowlist persistence of the public catalogue only, `check:persist` (27 assertions, and it found a launch-time crash) | Dev |
 | M2 | Medium | No in-app price/stock edit; no admin totals screen | **0 — done** (totals 20261021000002 + test 19; shelf edit 20261021000003 + test 20) | Dev |
@@ -962,7 +1034,7 @@ From the council chairman, item for item. "Owner" is who can actually move it.
 | M5 | Medium | Free-text address; the town has no reliable house numbering | **0 — done.** Landmark column, checkout field, order snapshot, and a rider card that leads with it | Dev |
 | M6 | Medium | i18n is read-only; no Kannada data entry for the owner | **0 — done.** `create_product_from_shop()` + an in-app Add-a-product panel that requires a real Kannada name; migration `20261021000005`, test 22 (28 assertions) | Dev |
 | M7 | Medium | No Kannada dialect review by a Kunigal local | 6 | Owner |
-| M8 | Medium | 6 products have no image; the rest are dev stock photos | 4 | Owner |
+| M8 | Medium | 6 products have no image; the rest are dev stock photos | 4 — **the production shelf is empty on purpose**; the owner adds products with real photos from the Shelf tab | Owner |
 | M9 | Medium | Developer text on the customer's first screen | **0 — done, deleted outright** (2026-11-09). `auth.testNumbers` was hidden behind `__DEV__` (never in a release build) but the rule was "delete before public", not "hide", so it was removed from `login.tsx`, from both locale files (i18n now 701 keys, parity checked) and its now-unused style with it. Nothing else on a customer screen mentioned development. | Dev |
 | M10 | Medium | Jargon with no glossary; "done" used two ways | 3 | Dev |
 | M11 | Medium | Doc contradictions (OTA, images, order count, "DONE") | **3 — done.** Order count fixed; the two stale image claims swept (`README.md` and the `seed.sql` header both said "no product photos on purpose" while `demo-images.sql` loads 28 of them). OTA claims verified absent: no `expo-updates` in the repo, and `PRODUCTION.md` §3's "`expo-updates`, push, Sentry all absent" was true when written — Sentry has since landed, so that one line is now corrected in place. | Dev |
@@ -989,7 +1061,11 @@ edited. Each of the four was re-verified against `supabase/migrations/`,
 the highest-value work; the rest of the council held that it is unusable while
 the front door is shut. One advisor would refuse push notifications and payments
 outright; another notes that refusing push refuses the rider alert. The UPI/Razorpay
-question is genuinely open, and `AGENTS.md` still lists payments as not-built.
+question is genuinely open. Since 2026-11-12 the *methods* are chosen at checkout
+and settled by hand (`mark_online_payment_paid()`), and since the third session
+that day a full Razorpay path exists and is proved — but it is dark until keys
+arrive, and `online_payments_enabled` stays false until then, so the customer-facing
+choice exists without any money moving automatically.
 
 ---
 
@@ -1044,7 +1120,69 @@ doing on a quiet week rather than during a pilot.
 
 ---
 
-## 15. What would change this plan
+## 15. Turning Razorpay on (the owner's account, then six commands)
+
+The payment path is **built and proved** (`supabase/functions/`, migration
+`20261112000006`, test 39) but deliberately **dark**: there are no keys, so the
+three Edge Functions answer `gateway_not_configured` and checkout still greys
+the online methods. Nothing below is necessary for the shop to run today. Do it
+when the owner has an account, and do it in this order.
+
+**Before anything: a test payment must succeed before a live one.** Razorpay's
+test mode needs **no KYC**. Run the whole flow on test keys, with a real card
+from the shop, and confirm the order row says `payment_status = 'paid'` with a
+`pay_...` reference. Then switch to live keys after KYC and repeat once.
+
+1. **Create the account.** razorpay.com → sign up → *Settings → API Keys*.
+   Generate a **Key Id** (`rzp_test_...` / `rzp_live_...`) and a **Key Secret**.
+   The secret is shown once.
+2. **Push the two local migrations** (they are not on the hosted project yet):
+   ```powershell
+   npx supabase db push --remote --yes
+   ```
+3. **Set the key secrets** — the CLI writes them to the hosted project; they
+   never appear in any file in this repo:
+   ```powershell
+   npx supabase secrets set RAZORPAY_KEY_ID=rzp_test_xxxx
+   npx supabase secrets set RAZORPAY_KEY_SECRET=your-key-secret
+   ```
+4. **Deploy the functions.** The webhook must be deployed with
+   `--no-verify-jwt`: Razorpay sends no Supabase JWT, and the function
+   authenticates it by re-computing Razorpay's HMAC over the raw body instead.
+   `razorpay-order` and `razorpay-verify` keep the JWT gate on.
+   ```powershell
+   npx supabase functions deploy razorpay-order
+   npx supabase functions deploy razorpay-verify
+   npx supabase functions deploy razorpay-webhook --no-verify-jwt
+   ```
+5. **Point Razorpay at the webhook.** Dashboard → *Settings → Webhooks* → add
+   `https://<project-ref>.supabase.co/functions/v1/razorpay-webhook`, tick
+   `payment.captured` and `order.paid`, and copy the **webhook secret** it
+   shows:
+   ```powershell
+   npx supabase secrets set RAZORPAY_WEBHOOK_SECRET=your-webhook-secret
+   ```
+6. **Then, and only then, open the shop to online money**:
+   ```sql
+   update public.store_settings set online_payments_enabled = true;
+   ```
+
+**What each piece is responsible for**, because this is the part that matters if
+something looks wrong:
+
+| Symptom | Look here |
+| --- | --- |
+| "Payment not completed" every time | `RAZORPAY_KEY_*` not set (503 `gateway_not_configured`), or the sheet was actually dismissed — the app tells the two apart by code |
+| Money left the account but the order says pending | `razorpay-verify` was never called; the **webhook** settles it. If it is still pending after a minute, check the webhook secret and that `order.paid` is ticked |
+| The owner's Today tab shows a refund owed on a live order | That is correct: a payment was captured after the order was cancelled. `mark_refund_paid()` clears it once the money goes back |
+
+**What is deliberately absent:** there is no admin switch for
+`online_payments_enabled` (§8). A toggle that flips this on before the gateway
+works is a customer placing an order nobody can settle.
+
+---
+
+## 15a. Changelog of this file
 
 - A real device run of the full order flow in Kannada.
 - A funded SMS provider plus one successful real OTP sign-in.
@@ -1060,6 +1198,28 @@ proves the product works.
 
 ## 15a. Changelog of this file
 
+- **2026-11-12 (third)** — **Razorpay is built and dark.** Three Edge Functions
+  (`razorpay-order`, `razorpay-verify`, `razorpay-webhook`), migration
+  `20261112000006`, test 39, `check:payments`. One payable object per basket; the
+  signature is re-checked server-side before the money is recorded; the webhook
+  settles a capture the app never saw; a dismissed sheet does **not** cancel the
+  order, it offers *Pay now*. **No keys, so no payment path is live and none has
+  ever been made** — §15 is the six-step operator path. Two real money bugs
+  fixed on the way by `20261112000007`: `refund_due_paise` and
+  `shop_day_totals()` only counted `payment_method = 'online'`, so a cancelled
+  **UPI** payment showed the customer nothing owed; and `mark_refund_paid()`
+  raised "cash on delivery" for every non-`online` method on the very screen
+  where the owner was refunding.
+- **2026-11-12 (second)** — **GST billing, payment choices, a measured delivery circle.**
+  The owner asked for GST invoices, several payment methods, 30-minute express, a
+  10 km radius and all of it configurable without a code change. Five migrations
+  (`20261112000001`–`0005`), tests 36–38 (107 assertions). The two decisions this
+  file exists to keep straight: **`online_payments_enabled` has no UI switch** and
+  stays false until a gateway settles money (SQL only, documented above), and
+  **the shop pin is the owner's step** — the distance rule cannot run until they
+  stand in the shop and tap *Use my current location*, and a guessed coordinate
+  would refuse real addresses from the wrong point. Also recorded: a shop without
+  a GSTIN issues a **bill of supply**, not a tax invoice.
 - **2026-10-20** — Register **M6 done**. The web panel could already create a
   product; the *app* could not, which contradicted the whole phone-first premise of
   the Shelf tab. Added `create_product_from_shop()` — which refuses a blank Kannada

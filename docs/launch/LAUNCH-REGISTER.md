@@ -28,7 +28,7 @@ Every row is tagged `DEV` (I prepare it), `OWNER` (only the client can do it) or
 | 5 | **Screenshots** | DEV | Blocked on the first device run (nothing has ever rendered on a phone). §4.3 |
 | 6 | **Play Console + Apple accounts** | OWNER | §6 |
 | 7 | **OTP sign-in working** (phone auth + SMS + DLT) | OWNER + DEV | §7 — the longest pole, start today |
-| 8 | **Hosted Supabase migrated** (currently 10 migrations behind) | OWNER + DEV | §8 |
+| 8 | **Hosted Supabase rebuilt** from all 32 migrations in filename order | OWNER + DEV | §8 — the old project was out of order; `npm run check:hosted` is the live answer |
 | 9 | **Demo accounts/data removed; reviewer account created** | OWNER | §9 |
 | 10 | **Play closed test: 12 testers, 14 continuous days** (personal accounts created after 13 Nov 2023) | OWNER | §6.1 — calendar time, start the day a build exists |
 
@@ -163,19 +163,23 @@ failure in Kannada. What is missing is all on the owner's desk:
 
 ---
 
-## 8. Hosted Supabase is ten migrations behind
+## 8. Hosted Supabase: rebuild, do not patch
 
-Probed today: the live project has migrations only up to
-`20261013000001` (rider assignment). Missing: `rider_directory`, `shop_day_totals`,
-`update_product_from_shop`, `create_product_from_shop`, `product_pack_options`,
-`record_my_position`, `order_rider_position`, `order_feedback`,
-`orders.refund_due_paise`, `addresses.lat/lng`, `shop_feedback_totals`.
+The old project was **out of order**, not merely behind: later migrations were
+present while earlier ones were missing. Patching the gaps would leave a schema
+nobody can prove, so it is retired. The replacement is a **fresh project** with
+all 32 migrations applied in filename order, then a deliberate production
+bootstrap (store, settings, zones, categories — **never** `seed.sql`,
+`demo.sql`, `demo-accounts.sql` or `demo-images.sql`).
 
-`TODO(OWNER)` give me project credentials (or run the SQL-editor sweep yourself)
-so the missing files can be applied **in filename order** — never edit an applied
-migration. Three of them are guard triggers; this runs against live data, so it is
-the owner's call. The local suite proves them (732 assertions); the live project
-has never run them.
+`npm run check:hosted` is the live answer and the only count worth trusting. It
+probes one REST-visible marker per migration and says "no REST-visible object"
+rather than pretending for the RLS/publication/index-only files; `npm run
+test:db` remains the proof of the schema itself (748 assertions on 2026-11-09).
+
+`TODO(OWNER)`: create the fresh project, run `supabase login`, and give the dev
+the project ref (not a secret) so the 32 migrations can be pushed in filename
+order.
 
 ---
 
