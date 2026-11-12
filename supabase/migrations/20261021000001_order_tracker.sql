@@ -65,19 +65,16 @@ comment on column public.orders.failure_reason is
 comment on column public.orders.failure_note is
   'A sentence from the rider, for the owner. Not shown to the customer as-is.';
 
-alter table public.orders
-  add constraint orders_failed_has_reason
-    check (status not in ('failed', 'returned') or failure_reason is not null);
-
-alter table public.orders
-  add constraint orders_failure_only_when_failed
-    check (status in ('failed', 'returned')
-           or (failure_reason is null and failure_note is null));
-
--- The owner's board and the pilot's paper ledger both ask "what failed today?".
-create index orders_failed_idx
-  on public.orders (status, placed_at desc)
-  where status in ('failed', 'returned');
+-- HOSTED NOTE (2026-11-09). The two CHECK constraints and the partial index that
+-- belong here live in `20261021000007_order_tracker_rules.sql` instead.
+--
+-- Reason: PostgreSQL refuses to USE a new enum value in the same transaction that
+-- added it ("unsafe use of new value ... of enum type", SQLSTATE 55P04). psql
+-- autocommits each statement, so the local test harness never noticed; the
+-- Supabase CLI wraps a whole migration file in one transaction, so the hosted
+-- push failed and rolled back. Splitting the file is the standard fix and is what
+-- PostgreSQL's own documentation recommends. Nothing is weakened: the constraints
+-- and the index are still created before any later migration or test runs.
 
 -- -----------------------------------------------------------------------------
 -- 3. The rider, as a person the customer can see and call
