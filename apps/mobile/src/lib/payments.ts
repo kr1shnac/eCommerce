@@ -94,6 +94,6 @@ export function canPayOnline(order: {
   return (
     isOnlinePaymentMethod(order.payment_method) &&
     order.payment_status === 'pending' &&
-    (order.status === 'placed' || order.status === 'confirmed' || order.status === 'packing')
+    order.status === 'placed'
   );
 }

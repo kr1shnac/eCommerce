@@ -84,16 +84,25 @@ for (const name of [...captchaSource.matchAll(/(EXPO_PUBLIC_[A-Z0-9_]+)/g)].map(
 }
 
 // --- 3. The key comes from the environment -----------------------------------
-if (/EXPO_PUBLIC_CAPTCHA_SITEKEY\s*[:=]\s*['"][^'"]+['"]/.test(captchaSource)) {
-  problems.push('captcha.ts hard-codes a site key; it must come from process.env');
+// The name is READ FROM THE CODE, not typed into this check. An earlier version
+// hard-coded the spelling the docs used, the code used a different one, and the
+// check compared the docs against themselves and passed — the exact blind spot
+// this section now removes.
+const SITE_KEY_NAME = (/EXPO_PUBLIC_[A-Z0-9_]+/.exec(captchaSource) ?? [])[0];
+if (!SITE_KEY_NAME) {
+  problems.push('captcha.ts does not read the site key from an EXPO_PUBLIC_ variable');
+} else {
+  if (/EXPO_PUBLIC_[A-Z0-9_]+\s*[:=]\s*['"][^'"]+['"]/.test(captchaSource)) {
+    problems.push('captcha.ts hard-codes a site key; it must come from process.env');
+  }
+  if (!envExample.includes(SITE_KEY_NAME)) {
+    problems.push(`.env.example has no ${SITE_KEY_NAME}, which is the name the code reads`);
+  }
 }
 // A real Turnstile site key is 20+ hex characters. Anything that looks like one
 // is a key somebody pasted in.
 if (/\b0x[0-9a-fA-F]{24,}\b/.test(captchaSource)) {
   problems.push('captcha.ts contains what looks like a literal Turnstile key');
-}
-if (!envExample.includes('EXPO_PUBLIC_CAPTCHA_SITEKEY')) {
-  problems.push('.env.example does not document EXPO_PUBLIC_CAPTCHA_SITEKEY');
 }
 
 // --- 4. A stale token is refused, not sent -----------------------------------

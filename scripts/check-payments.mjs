@@ -72,6 +72,37 @@ if (!codesMatch) {
 }
 const appCodes = new Set([...codesMatch[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
 
+// --- 4. The app may only offer what the database will accept -----------------
+// `canPayOnline()` decides whether the customer is shown a **Pay now** button.
+// `set_order_payment_intent()` decides whether the server honours it. When the
+// two disagree the customer gets a button that fails, and the first version of
+// this app shipped exactly that: the screen offered `confirmed` and `packing`
+// while the database accepts only `placed`. No gate compared the two lists, so
+// nothing caught it. This one does.
+const appPayableStatuses = [
+  ...paymentsFile.matchAll(/order\.status === '([a-z_]+)'/g),
+].map((match) => match[1]);
+const dbPayableStatus = (
+  /if v_order\.status <> '([a-z_]+)' then/.exec(
+    readFileSync(join(root, 'supabase/migrations/20261112000006_razorpay.sql'), 'utf8'),
+  ) ?? []
+)[1];
+
+if (appPayableStatuses.length === 0) {
+  problems.push('could not read the payable statuses from canPayOnline()');
+} else if (!dbPayableStatus) {
+  problems.push('could not read the payable status from set_order_payment_intent()');
+} else {
+  for (const status of appPayableStatuses) {
+    if (status !== dbPayableStatus) {
+      problems.push(
+        `canPayOnline() offers "${status}" but set_order_payment_intent() only accepts ` +
+          `"${dbPayableStatus}" — that is a Pay now button the server refuses`,
+      );
+    }
+  }
+}
+
 // --- 1 & 2: every code has a sentence, in both languages --------------------
 for (const code of [...serverCodes, ...appCodes].sort()) {
   const key = `pay.error.${code}`;
