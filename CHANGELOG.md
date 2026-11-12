@@ -6,6 +6,78 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-12 (eighth session) — the owner's board gained its buttons, and every card opens the order
+
+The owner's face could SHOW an order but could not DO anything to one. The two
+action cards (`OrderAdminActions`, `OrderMoneyActions`) were built last session
+and mounted on the shared order screen — but the board never navigated there,
+so from the owner's side they were unreachable. And of the four-rung status
+ladder (`placed → confirmed → packing → out_for_delivery`), nobody in the app
+could climb the first two rungs: the rider's face starts at claim and pickup,
+and "the shop accepted your order" never happened.
+
+### What changed, by path
+
+- `apps/mobile/src/app/admin/index.tsx` — **the door**: every board card is
+  now a `Pressable` that opens `/order/[id]` (the same deep-link shape the
+  customer's history uses). Taps on the assign buttons and rider chips still
+  go to them — React Native resolves nested pressables to the deepest one.
+  **The two rungs**: a `placed` card gets an *Accept order* button and a
+  `confirmed` card gets *Start packing*, reusing the rider face's own
+  `action.confirm` / `action.pack` words (one vocabulary for one ladder) and
+  the existing `useAdvanceOrder` hook. The variant is `primary` — the button
+  documentation itself names "Accept" as the primary-action example.
+- `apps/mobile/src/components/order-shortage-panel.tsx` — **new**. Mounted on
+  the order screen beside the two existing admin cards, only while the order
+  is `placed`/`confirmed`/`packing`. Each line shows its count and line total
+  with two actions and NO more:
+  - *One less* — calls `admin_adjust_order_item` for `quantity − 1`. There is
+    deliberately no "+" button: the database refuses an increase, and a
+    control that always ends in an error is a lie with a border.
+  - *Take off the order* (`ತೆಗೆದುಹಾಕಿ`, the same word the cart uses) — sets
+    the line to 0. Disabled with the sentence *cancel it instead* when the
+    order has only one line, so the screen states the database's refusal
+    before the tap, not after it.
+  Each tap is one safe call: released packs return to the shelf and the
+  totals are recomputed in the same transaction, so an intermediate state
+  after a dropped call is still an honest state.
+- `apps/mobile/src/hooks/use-orders.ts` — `useAdminAdjustOrderItem`, the
+  house shape (`admin_cancel_order`'s twin): RPC + invalidation of the order
+  detail, the list, `['cart-products']` (stock moved) and the day's totals.
+- `apps/mobile/src/types/database.ts` — the RPC registered in the `Functions`
+  interface (`p_order_id`, `p_item_id`, `p_quantity` → `Order`), which is what
+  makes `supabase.rpc('admin_adjust_order_item', …)` typecheck.
+- `apps/mobile/src/i18n/locales/en.json` + `kn.json` — `order.shortage*`
+  (five keys) and `admin.advanceError`. The Kannada was written in the
+  KUNIGAL.md voice against the glossary: the title is **ಸ್ಟಾಕ್ ಮುಗಿಯಿತಾ?** ("did
+  the stock run out" — the shopkeeper's own sentence, glossary ಮುಗಿಯಿತು), the
+  hint lowers the line to ಕೊಡಬಹುದಾದಷ್ಟಕ್ಕೆ ("as much as you can give") and says
+  ಒಟ್ಟು ಮತ್ತು ಸ್ಟಾಕ್ ತಾನೇ ಸರಿಯಾಗುತ್ತದೆ ("the total and the stock straighten
+  themselves" — the same ಒಟ್ಟು the checkout uses), and the last-line sentence
+  ends in ಆರ್ಡರ್ ರದ್ದು ಮಾಡಿ ("cancel the order" — spoken form, rule 1).
+  A first draft said ಕೊಡಬಹುದಾಷ್ಟಕ್ಕೆ, which drops a syllable (ದಾದ) — caught
+  and fixed before commit.
+
+### Verified how
+
+- `npm run typecheck` — exit 0 (it caught the missing RPC registration).
+- `npm run lint` — exit 0, twice (after the locale edits too): both
+  workspaces + all 22 chained checks, including i18n key parity.
+- `npm run test:db` — **1054 passed / 0 failed** from a scratch cluster (no
+  database change in this batch; run anyway per rule 9.10).
+- Not yet done on a device: the buttons and the panel need a real phone run
+  (`docs/launch/DEVICE-RUN.md` is still waiting on the owner-side items).
+
+### Open gaps
+
+- The rider face never navigates to `/order/[id]` either — its screen is
+  self-contained, so this does not block anyone today, but a rider who wants
+  the order's full document must go through the customer tab path.
+- Owner-blocked items unchanged (SMS test numbers, staging project, `eas
+  login`, store enrolments, shop pin + radius, then `DEVICE-RUN.md`).
+
+---
+
 ## 2026-11-12 (seventh session) — a shortage is settled by one function, and the books cannot be edited by hand
 
 The next item from the sixth session's list: the owner could, until today,

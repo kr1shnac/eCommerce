@@ -456,6 +456,38 @@ export function useAdminForceComplete() {
   });
 }
 
+/**
+ * The shop settles a shortage: one line goes down or off, the released units
+ * go back on the shelf, and the database recomputes the order's totals in the
+ * same transaction (migration 20261112000009). There is no "more" — a shortage
+ * means less; the RPC refuses an increase and refuses to empty the order.
+ *
+ * The same invalidations as a cancellation: stock moved, so the catalogue is
+ * stale, and the day's totals follow the order.
+ */
+export function useAdminAdjustOrderItem() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { orderId: string; itemId: string; quantity: number }) => {
+      const { data, error } = await supabase.rpc('admin_adjust_order_item', {
+        p_order_id: input.orderId,
+        p_item_id: input.itemId,
+        p_quantity: input.quantity,
+      });
+      if (error) throw error;
+      if (!data) throw new Error('bad-adjust-response');
+      return data;
+    },
+    onSuccess: async (_order, input) => {
+      await queryClient.invalidateQueries({ queryKey: orderKeys.detail(input.orderId) });
+      await queryClient.invalidateQueries({ queryKey: orderKeys.list });
+      await queryClient.invalidateQueries({ queryKey: ['cart-products'] });
+      await queryClient.invalidateQueries({ queryKey: ['shop', 'totals'] });
+    },
+  });
+}
+
 // -----------------------------------------------------------------------------
 // Coupons
 // -----------------------------------------------------------------------------

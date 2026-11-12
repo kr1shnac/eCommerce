@@ -1213,6 +1213,18 @@ export type Database = {
         Returns: Order;
       };
       /**
+       * The shop settles a shortage: one line goes down or off, the released
+       * units go back to stock, and the order's totals are recomputed from the
+       * remaining lines in the same transaction. Admin-only (42501); refuses a
+       * bag that has left the shop (P0001), an unknown row (P0002), an
+       * increase (a shortage means less), and the last line (cancel it
+       * instead). Returns the stored order row, so a retry is safe.
+       */
+      admin_adjust_order_item: {
+        Args: { p_order_id: string; p_item_id: string; p_quantity: number };
+        Returns: Order;
+      };
+      /**
        * Record the caller's own position while carrying an order. Deliberately
        * takes no rider id — it acts on `auth.uid()` only, so a rider cannot
        * write a fix for somebody else. Refuses unless the caller is a delivery

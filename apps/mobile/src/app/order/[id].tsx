@@ -14,6 +14,7 @@ import { RiderMap } from '@/components/rider-map';
 import { OrderFeedbackCard } from '@/components/order-feedback';
 import { OrderMoneyActions } from '@/components/order-money-actions';
 import { OrderAdminActions } from '@/components/order-admin-actions';
+import { OrderShortagePanel } from '@/components/order-shortage-panel';
 import { RefundDueCard } from '@/components/refund-due';
 import { OrderSkeleton } from '@/components/screen-skeletons';
 import { StateMessage } from '@/components/state-message';
@@ -279,6 +280,7 @@ export default function OrderDetailScreen() {
 
           {isAdmin ? <OrderMoneyActions order={data} /> : null}
           {isAdmin ? <OrderAdminActions order={data} /> : null}
+          {isAdmin ? <OrderShortagePanel order={data} items={data.order_items ?? []} /> : null}
 
           {/*
             The map. Behind a tap, never by default: the text block above is the

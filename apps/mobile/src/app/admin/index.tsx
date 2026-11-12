@@ -14,7 +14,7 @@ import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Radii, Spacing } from '@/constants/theme';
 import { useProfile, useTeam } from '@/hooks/use-profile';
-import { useAdminOrders, useAssignRider } from '@/hooks/use-staff-orders';
+import { useAdminOrders, useAdvanceOrder, useAssignRider } from '@/hooks/use-staff-orders';
 import { useTheme } from '@/hooks/use-theme';
 import { formatPaise } from '@/lib/money';
 import {
@@ -28,7 +28,7 @@ import { orderStatusStyle } from '@/lib/order-status';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import type { OrderWithItems } from '@/hooks/use-orders';
-import type { Profile } from '@/types/database';
+import type { OrderStatus, Profile } from '@/types/database';
 
 /**
  * The owner's live board. Every order that is not cancelled, newest first, with
@@ -40,6 +40,17 @@ import type { Profile } from '@/types/database';
  * an icon + colour + word, and an order nobody has claimed shows how long it has
  * been waiting, so the owner can see the shop is falling behind without reading.
  */
+/**
+ * The two rungs the owner climbs before a rider takes over: accept the order,
+ * and start packing it. `out_for_delivery` and beyond belong to the rider's
+ * face — the same ladder the rider screen climbs, the same words, so the shop
+ * does not learn two vocabularies for one thing.
+ */
+const OWNER_ACTION_KEY: Partial<Record<OrderStatus, string>> = {
+  placed: 'action.confirm',
+  confirmed: 'action.pack',
+};
+
 export default function AdminBoardScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
@@ -50,6 +61,7 @@ export default function AdminBoardScreen() {
   const orders = useAdminOrders();
   const team = useTeam();
   const assign = useAssignRider();
+  const advance = useAdvanceOrder();
   const signOut = useAuthStore((state) => state.signOut);
 
   const [pickerFor, setPickerFor] = useState<string | null>(null);
@@ -76,15 +88,32 @@ export default function AdminBoardScreen() {
     }
   };
 
+  const onAdvance = async (orderId: string, from: OrderStatus) => {
+    setErrorKey(null);
+    try {
+      await advance.mutateAsync({ orderId, from });
+    } catch (error) {
+      console.warn('[admin] could not advance order', error);
+      setErrorKey('admin.advanceError');
+    }
+  };
+
   const renderOrder = ({ item }: { item: OrderWithItems }) => {
     const address = readSnapshotAddress(item);
     const assignedRider = riders.find((person) => person.id === item.assigned_to);
     const picking = pickerFor === item.id;
     const busy = assign.isPending && assign.variables?.orderId === item.id;
     const style = orderStatusStyle(theme, item.status);
+    const advanceKey = OWNER_ACTION_KEY[item.status];
+    const advanceBusy = advance.isPending && advance.variables?.orderId === item.id;
 
     return (
-      <Card style={styles.card}>
+      <Pressable
+        onPress={() => router.push({ pathname: '/order/[id]', params: { id: item.id } })}
+        accessibilityRole="button"
+        accessibilityLabel={`${item.order_number}, ${t(`orders.status.${item.status}`)}, ${formatPaise(item.total_paise)}`}
+        style={({ pressed }) => [pressed && styles.pressed]}>
+        <Card style={styles.card}>
         <View style={styles.cardTop}>
           <ThemedText type="smallBold">{item.order_number}</ThemedText>
           <Badge label={t(`orders.status.${item.status}`)} tone={style.tone} icon={style.icon} />
@@ -177,6 +206,16 @@ export default function AdminBoardScreen() {
           )
         ) : (
           <View style={styles.actionsRow}>
+            {advanceKey ? (
+              <Button
+                label={advanceBusy ? t('common.pleaseWait') : t(advanceKey)}
+                variant="primary"
+                busy={advanceBusy}
+                disabled={advance.isPending}
+                onPress={() => void onAdvance(item.id, item.status)}
+              />
+            ) : null}
+
             <Button
               label={item.assigned_to ? t('admin.change') : t('admin.assign')}
               icon="person-add-outline"
@@ -196,6 +235,7 @@ export default function AdminBoardScreen() {
           </View>
         )}
       </Card>
+      </Pressable>
     );
   };
 
