@@ -6,6 +6,225 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-12 (sixth session) — the rider fix reached production, and a photo is compressed before it leaves the phone
+
+Two items carried over from the fifth session's gap list, done in order. The
+owner approved the push ("go for it, finish one by one") and work continued
+autonomously from there.
+
+### 1. `20261112000008` applied to production
+
+`npx supabase db push --remote --yes` applied the per-order `rider_directory`
+scoping to the live project. `check:hosted` now reports **41 applied
+(proved) / 0 missing** — the script's static `MARKERS` list gained the new
+migration's probe (`GET /rest/v1/rider_directory?select=id&limit=1`), whose
+401/403 answer proves both halves: the view is in the schema cache, and its
+grant is still narrow. The security hole from the fifth session is closed on
+production.
+
+### 2. Photos are compressed before upload
+
+`apps/mobile/src/hooks/use-product-photos.ts` gained `prepareUploadBlob()`.
+Before, the owner's photo went up byte-for-byte as the picker produced it — a
+modern camera square at quality 0.7 is still ~3000×3000 and 1–2 MB, and
+`expo-image` hands that file to every customer who scrolls past the card, on
+metered 4G, forever. Now:
+
+- **On native**, `expo-image-manipulator` is imported lazily inside the async
+  path (the `use-online-payment.ts` shape, AGENTS §3). One
+  `manipulate(uri).renderAsync()` decodes the file to learn its true size;
+  only a picture over **800 px on the longest side** is rendered again —
+  resized with a single axis (the other follows the ratio; both values would
+  stretch) — and saved as **WEBP at 0.8**. Both renders are freed with
+  `SharedRef.release()`.
+- **The smaller file wins.** WEBP usually does, but the rule is measured, not
+  assumed: if the re-encode is somehow larger, the original goes up. A picture
+  already ≤ 800 px is not re-encoded at all — no quality loss for nothing.
+- **Every failure falls back to the original**, still gated by the bucket's
+  5 MB cap at the call site. A photo that arrives the old way beats one that
+  does not arrive; the technical reason stays in the console.
+- **On web the branch is eliminated.** `expo export --platform web` exits 0
+  and a scan of the four emitted JS chunks finds the module in **none of
+  them** — not even an async chunk — so the web export cannot regress on it.
+
+`expo-image-manipulator@~57.0.22` was added with `npx expo install` (hoisted to
+the root `node_modules`; `apps/mobile/package.json` + lockfile updated).
+
+### Verified how
+
+- `npm run test:db`: 1013/0 (no schema change this session — test 40's suite is
+  the standing proof of the migration that shipped).
+- `npm run typecheck`: exit 0, both workspaces.
+- `npm run lint`: exit 0 — 2 workspace lints + 22 chained checks.
+- Push verified by output (`Finished supabase db push`, 1 migration) and
+  `check:hosted` (41 proved, 0 missing).
+- Web export run and its output scanned byte-wise for the module name.
+
+### Decisions and their reasons
+
+- **Decode-once at full size instead of the planned 100 px probe.** A probe
+  resize can state the aspect ratio but not the true dimensions, so it cannot
+  honour "skip when already ≤ 800 px" and would upscale a small shelf photo
+  rather than leave it alone. One transient full decode (freed immediately,
+  same memory profile the legacy `manipulateAsync` always had) knows exactly,
+  and the second render chains from the in-memory `ImageRef` because
+  `manipulate()` accepts `string | SharedRef<'image'>` — that union is what
+  this flow is for.
+- **800 px, not 640.** The grid draws cards a few centimetres tall but on
+  high-density phones at zoom; 640 was the old stock-image size, 800 leaves
+  headroom without approaching a camera's output.
+- **WEBP over JPEG.** The bucket allows it, `EXTENSION` already mapped it, and
+  at equal quality it is smaller than JPEG — one fewer MB per photo the whole
+  town downloads.
+
+### Open gaps
+
+- **The compression path has never run on a phone.** `expo-image-manipulator`
+  is in Expo Go, so the device run (owner-blocked: staging project first,
+  `docs/launch/DEVICE-RUN.md`) exercises it; until then this is gated code
+  that typechecks, lints and exports, not proven behaviour.
+- Owner steps outstanding: dashboard SMS test numbers, staging project,
+  Play/Apple individual enrolment (the two 14-day/paid clocks), `eas login` on
+  this machine, shop pin + radius via Today tab.
+- Next code item: the `admin_adjust_order` shortage RPC and revoking the
+  unguarded direct `order_items` UPDATE for admins.
+
+---
+
+## 2026-11-12 (fifth session) — the rider directory is per-order, and the door values are out of the bundle
+
+Three real fixes and one finding that reverses a "Tier 0" item. The session
+started from a second-opinion review whose fault list was checked line by line
+against the repo before anything was written — four of its items were wrong or
+stale, and the corrections below matter more than the agreement.
+
+### 1. `rider_directory` handed every rider's phone to every signed-in user
+
+`supabase/migrations/20261021000001_order_tracker.sql:100-116` was a
+definer-side view over `profiles where role = 'delivery'`, granted to
+`authenticated` with no caller filter — so any customer who had never placed an
+order could `select * from rider_directory` and read every rider's name,
+photograph and real phone number. The app never asked for more than one rider
+at a time, which is why normal use hid it.
+
+Fix: `supabase/migrations/20261112000008_rider_directory_scoped.sql` re-declares
+the view with an `exists` over `orders` — a rider appears only when they are the
+assigned rider on an order the caller may see (`o.user_id = auth.uid() or
+public.is_admin()`). Same four columns, same grant, `comment` updated.
+
+- **`exists`, not a `join`, on purpose**: a join would return one row per
+  matching ORDER, so a repeat customer would get two identical rows and the
+  order screen's `.maybeSingle()` (`src/hooks/use-profile.ts:77`) would fail.
+  `exists` is one row per rider.
+- **No app change.** `useRider()` already filters `.eq('id', riderId)`; a
+  security-definer function taking the order id was the alternative and was
+  rejected because the view is a drop-in.
+- `supabase/tests/40_rider_directory_scope_test.sql`: 12 assertions — the
+  customer still sees their rider's name and photo; a rider assigned to
+  somebody else's order is invisible to that somebody else; a rider with no
+  order is invisible to everyone but the owner; positive controls prove the
+  view is alive (Ravi reads HIS rider, the owner reads any assigned rider);
+  four columns unchanged; anon still refused (`42501`); profiles RLS intact.
+
+### 2. Four door credentials sat in the file that ships
+
+`apps/mobile/.env` carried `EXPO_PUBLIC_DEMO_PASSWORD` and the three demo
+addresses, active. `__DEV__` compiles the *door* out of a release build
+(`check-auth-doors` proves that), but the strings are inlined into any bundle
+built from that folder — one `eas build --profile production` and the
+password ships.
+
+Fix, three parts:
+
+- `apps/mobile/.env`: the four lines commented out.
+- `scripts/check-prod-env.mjs`, now **check #22** in `npm run lint` (also in
+  `AGENTS.md` §6): refuses while `.env` sets any of the six door variables,
+  while `eas.json` carries a NON-empty value in any build profile (empty strings
+  stay legal there — that is how the `review` profile expresses "per build, from
+  `eas env`", and a half-configured review build already opens no door), and
+  while `.env.example` sets one outside a comment.
+- `.env.example` demo and review blocks now say what the guard does and that a
+  Supabase test number replaces the demo door for development
+  (`docs/launch/SMS-SETUP.md` §Step 1).
+
+Negative-tested three ways before trusting it: an active value in `.env` fails;
+a value in `eas.json build.review` fails; and **a BOM'd `.env` with the
+violation on its first line fails** — that last one only passes now, because
+the first two negative tests exposed a hole in my own guard (a UTF-8 BOM made
+`JSON.parse` of `eas.json` crash with a raw stack trace, and silently hid the
+first key of `.env` from the matcher). PowerShell on Windows writes a BOM by
+default, so that is the realistic shape of the file. `readText()` strips it.
+
+### 3. `demo-images.sql` cannot run any more, and never could again
+
+Its 28 `image_url` values named the **old** hosted project
+(`ncfjzbptbtvkjvnrwyyq`), deleted on 2026-11-09 — the hostname no longer
+resolves in DNS, so those photographs are gone, not merely unreachable.
+`HANDOFF.md` §4.5 said the URLs were "absolute URLs to the current hosted
+project's bucket", which was true when written and false now; it is corrected.
+`seed.sql`'s header no longer points at the file as the photo source.
+
+The file now refuses loudly (`DO $$ RAISE EXCEPTION ... ERRCODE '55000' $$`),
+keeping the licence record, because a plain UPDATE that matches rows reports
+nothing. Verified on a disposable PostgreSQL booted by
+`scripts/db-tests/postgres.mjs`: the file exits with psql status 3 and
+`ERROR: 55000: demo-images.sql is withdrawn...`. The verifier script was
+throwaway and deleted.
+
+### 4. The live shop is 6 products, and that reverses a "Tier 0" item
+
+Read through the REST API with the publishable key (read-only, public rows
+only): **6 active products, 8 categories, 1 store. All six have real Kannada
+names (`ಬಾಳೆಹಣ್ಣು`, `ತೊಗರಿ ಬೇಳೆ`…), paise prices, stock and structured pack
+data. Zero have photographs. `orders` and `profiles` answer 401 to anon — RLS
+holding.** The review's "remove the 6 demo products before store review" was
+backwards: there is nothing to remove and nothing to sell. The store blocker
+is importing the real 150–300 item catalogue with photographs.
+
+### Verified how
+
+- `npm run test:db`: **1013 passed / 0 failed** on real PostgreSQL (was 1001;
+  +12 from test 40).
+- `npm run typecheck`: zero errors, both workspaces.
+- `npm run lint`: exit 0, zero errors and zero warnings — 2 workspace lints +
+  22 chained checks including the new one.
+- Guard negative-tested three ways (values above), `eas.json` and `.env` proven
+  byte-identical to HEAD afterwards.
+- Withdrawal proven on a throwaway PostgreSQL (SQLSTATE 55000).
+- Live shop probed read-only with the publishable key; no secret printed.
+
+### Decisions and their reasons
+
+- **Per-order view over SECURITY DEFINER function** — the single consumer
+  already asks for one rider by id; the view is a drop-in and keeps one
+  permission story (`comment on view` + one grant) instead of two.
+- **Test assertions scoped to this suite's riders** — other suites leave
+  assigned riders behind (test 24 never deletes its last order), so whole-table
+  counts would test tidiness, not this rule.
+- **Lint-time guard, not build-time** — the mistake happens on a Tuesday. The
+  documented dev path no longer needs the demo door at all (test number), so
+  the friction costs nothing.
+- **The review door stays.** Apple 2.1(a) demands a working login; with no SMS
+  the single customer-role review account is the only compliant one. It is
+  configured per build from `eas env`, never from a file that ships.
+
+### Open gaps
+
+- **The fix is local.** `20261112000008` is applied nowhere; the hole is open
+  on the live project until the owner approves `supabase db push --remote`.
+  Everything else is already level there (45 applied, 0 pending).
+- `EXPO_PUBLIC_CAPTCHA_SITE_KEY` is still absent from `.env`: the Turnstile
+  widget has never rendered on a device, so the CAPTCHA switch in the dashboard
+  must stay OFF until a full device login succeeds with the real site key.
+- No staging project exists; `apps/mobile/.env` points at the live shop, so a
+  device run in release mode writes real orders and profiles into production.
+  Staging belongs before the device run.
+- Image upload still sends originals up to 5 MB (`use-product-photos.ts:90`);
+  compression is Batch B.
+- Unverified from here: npm audit counts, the Supabase plan tier and backups,
+  hosted auth settings, the built AAB's targetSdk, and every iOS-side
+  requirement.
+
 ## 2026-11-12 (fourth session) — the CAPTCHA gate on the OTP endpoint, and two migrations that were not where the docs said
 
 The one launch blocker that was mine rather than the owner's, and the git

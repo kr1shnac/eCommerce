@@ -918,7 +918,12 @@ export type Database = {
   public: {
     Tables: TableRowMap;
     Views: {
-      /** Name, photo and phone of every rider. Read-only; rider columns only. */
+      /**
+       * Name, photo and phone of the rider assigned to an order the caller may
+       * see — not a directory of the shop's staff. Migration 20261112000008
+       * scoped the 20261021000001 view: a rider whose only orders belong to
+       * somebody else returns no row.
+       */
       rider_directory: {
         Row: RiderDirectoryEntry;
         Insert: never;

@@ -59,7 +59,8 @@ export function useTeam() {
  *
  * It reads the `rider_directory` VIEW, not `profiles`, because the profiles
  * policy shows a customer only their own row; the view exposes exactly the four
- * columns a rider is meant to show a customer (migration 20261021000001).
+ * columns a rider is meant to show a customer (migration 20261021000001, and
+ * since 20261112000008 only for a rider on an order this caller may see).
  *
  * Returns null when nobody has claimed the order yet, which is a normal state,
  * not an error — the screen simply does not draw the card.

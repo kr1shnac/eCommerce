@@ -484,11 +484,13 @@ Then do the two dashboard steps above. Do **not** run `seed.sql` on it. Sign up
 once in the app and set the first role in the SQL Editor (README §4, "Choose your
 role"); after that the owner sets roles from the app's Team tab.
 
-> The 28 demo photo URLs in `supabase/demo-images.sql` are **absolute URLs to the
-> current hosted project's Storage bucket**. On a brand-new project, either copy
-> the `product-images/seed/*` objects into the new bucket or skip that file;
-> products without a photo fall back to their own emoji, and the app still reads
-> correctly. Never point production at another project's bucket long-term.
+> The 28 demo photo URLs in `supabase/demo-images.sql` named the **old** hosted
+> project (`ncfjzbptbtvkjvnrwyyq`), which was deleted on 2026-11-09 — its
+> hostname no longer resolves, so those photographs no longer exist anywhere.
+> The file refuses to run (`RAISE EXCEPTION`, 2026-11-12). On any project,
+> photograph the shelf from the app's Photos tab; products without a photo fall
+> back to their own emoji, and the app still reads correctly. Never point
+> production at another project's bucket.
 
 **Option C — local Supabase (Docker).** `supabase start`, then
 `supabase db reset` applies every migration + seed. This needs Docker Desktop on

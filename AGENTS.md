@@ -266,6 +266,7 @@ npm run check:saved               # the save-for-later shelf can never overlap t
 npm run check:metro               # the Metro resolver flag that broke the web export
 npm run check:payments            # every gateway error code has a sentence in both languages
 npm run check:captcha             # the OTP gate: token on every path, no secret in the app
+npm run check:prod-env            # no demo or reviewer credential is set anywhere that gets bundled
 npm run test:db                   # all database tests against a throwaway PostgreSQL (Windows/macOS/Linux)
 ```
 

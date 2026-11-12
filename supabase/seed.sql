@@ -19,10 +19,13 @@
 -- comfortably read a product name, so a tomato has to look like a tomato (see
 -- DESIGN.md, KUNIGAL.md §2). The category's own `icon` is the final fallback.
 --
--- The shop's real photographs do NOT live in this file: they were sourced
--- (CC0/PDM), cropped to 640x640 and are written into `products.image_url` by
--- `supabase/demo-images.sql`, which records the mapping and the licences
--- (AGENTS §3). A real photo always wins over the emoji in the card.
+-- The shop's real photographs do NOT live in this file. The stock-photo script
+-- (`supabase/demo-images.sql`) is WITHDRAWN as of 2026-11-12: its 28 URLs named
+-- the old hosted project, which was deleted, so it refuses to run rather than
+-- write 28 broken images. A shelf gets photographs the way a shop does — the
+-- owner photographs it from the app's Photos tab, into this project's own
+-- bucket — and until then the emoji carries the tile, which is the design, not
+-- a gap.
 --
 -- KANNADA: these names are the shop's own words, not a dictionary translation.
 -- "ಟೊಮೆಟೊ", "ಟೀ ಪುಡಿ", "ಮೊಸರು" — the words a Kunigal shopkeeper says out loud.

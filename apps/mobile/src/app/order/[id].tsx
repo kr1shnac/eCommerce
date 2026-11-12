@@ -662,7 +662,8 @@ const TRACK_TITLE_KEY: Record<OrderStatus, string> = {
  * hidden until the shop has actually put somebody on the order. `assigned_to`
  * is a plain uuid on the order row, so it costs nothing to read; the name and
  * photo come from `rider_directory`, which exposes exactly four columns and no
- * other profile data (migration 20261021000001).
+ * other profile data (migration 20261021000001, scoped per-order by
+ * 20261112000008 — a rider with no order of the caller's is not in it).
  */
 function RiderCard({ riderId, status }: { riderId: string | null; status: OrderStatus }) {
   const { t } = useTranslation();

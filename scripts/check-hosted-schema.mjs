@@ -132,6 +132,11 @@ const MARKERS = [
   // the probe cannot show the expression. Its rule (not-cash, not merely
   // `online`) is proved locally by test 39 §10.
   { file: '20261112000007_refund_due_methods.sql', probe: ['GET', '/rest/v1/orders?select=refund_due_paise&limit=1'] },
+  // The per-order rider directory. The view answers an anon call with 401/403
+  // because its grant is `authenticated` only — which is exactly what proves
+  // both halves: the object is in the schema cache (an absent view would be
+  // PGRST205) and the grant has not been widened (test 40's job locally).
+  { file: '20261112000008_rider_directory_scoped.sql', probe: ['GET', '/rest/v1/rider_directory?select=id&limit=1'] },
 ];
 
 /** The three answers a probe can honestly give. */
