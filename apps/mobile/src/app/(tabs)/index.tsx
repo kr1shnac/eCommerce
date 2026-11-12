@@ -6,6 +6,7 @@ import { FlatList, Pressable, RefreshControl, ScrollView, StyleSheet, View } fro
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AddToCart } from '@/components/add-to-cart';
+import { CallShop } from '@/components/call-shop';
 import { CategoryChip } from '@/components/category-chip';
 import { HomeSearch } from '@/components/home-search';
 import { LanguageSwitch } from '@/components/language-switch';
@@ -30,7 +31,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
 import { useCartStore } from '@/store/cart-store';
 import { useLanguageStore } from '@/store/language-store';
-import type { Product } from '@/types/database';
+import type { ActiveOffer, Product } from '@/types/database';
 
 /**
  * The shop window.
@@ -107,7 +108,26 @@ export default function HomeScreen() {
     return sum;
   }, [cartItems, products.data]);
 
-  const query = term.trim().toLowerCase();
+  /**
+ * The scope sentence for an offer card, or null when the code has no cap worth
+ * naming. One line, in the customer's language, stating the shape of the limit
+ * so the refusal at checkout is never a surprise (A15, COMPETITOR-TEARDOWN §11.5).
+ *
+ * The per-person cap wins when both exist: it is the one a single customer will
+ * hit first, and it is the one that feels arbitrary when it arrives unannounced.
+ */
+function offerScope(
+  offer: ActiveOffer,
+  t: (key: string, vars?: Record<string, unknown>) => string,
+): string | null {
+  const per = offer.per_customer_limit;
+  if (per !== null && per > 0) return t('home.offerPerCustomer', { count: per });
+  const total = offer.usage_limit;
+  if (total !== null && total > 0) return t('home.offerFirst', { count: total });
+  return null;
+}
+
+const query = term.trim().toLowerCase();
   const isSearching = query.length > 0;
 
   const visibleProducts = useMemo(() => {
@@ -250,6 +270,17 @@ export default function HomeScreen() {
                 ? `${zoneAreaName(zone, language) ?? defaultAddress.city} ${defaultAddress.pincode}`
                 : t('home.deliveringTo')}
             </ThemedText>
+
+            {/* A19 (COMPETITOR-TEARDOWN §11.5). Blinkit's `LocationBar__EtaContainer`
+                keeps the ETA *in the location bar* `[MEASURED]`, so the number is
+                visible the whole time the customer is browsing, not only on the
+                checkout screen. It appears only when the zone really carries an
+                ETA — same rule the hero below uses, for the same reason. */}
+            {!isClosed && zone?.eta_minutes ? (
+              <ThemedText type="caption" style={{ color: theme.accent }}>
+                {t('home.pillEta', { minutes: zone.eta_minutes })}
+              </ThemedText>
+            ) : null}
           </View>
         </View>
 
@@ -299,6 +330,23 @@ export default function HomeScreen() {
                 <ThemedText type="caption" themeColor="textSecondary">
                   {t('home.offerMin', { amount: formatPaise(offer.min_order_paise) })}
                 </ThemedText>
+
+                {/* A15 (COMPETITOR-TEARDOWN §11.5). Blinkit's rail says
+                    "On first 10 orders" / "Get free delivery on your first
+                    order!" `[MEASURED]` — the offer states its own scope. Without
+                    this line a customer reasonably assumes a code works every
+                    time, and finds out otherwise only when the basket they have
+                    just built is refused at checkout.
+
+                    Only the cap that exists is named, and the per-person number
+                    wins when there is both: it is the one the customer will hit
+                    first. No count of "uses left" — that is a different number
+                    and it makes a shop look like it is running out. */}
+                {offerScope(offer, t) ? (
+                  <ThemedText type="caption" style={{ color: theme.successInk }}>
+                    {offerScope(offer, t)}
+                  </ThemedText>
+                ) : null}
               </View>
             ))}
           </ScrollView>
@@ -477,7 +525,30 @@ export default function HomeScreen() {
               tone="danger"
             />
           ) : isSearching ? (
-            <StateMessage title={t('home.noResults')} hint={t('home.clearSearch')} art="🔍" />
+            <>
+              <StateMessage title={t('home.noResults')} hint={t('home.clearSearch')} art="🔍" />
+
+              {/* A14 (COMPETITOR-TEARDOWN §11.5). Blinkit puts `CantFindText`,
+                  `RaiseRequestText` and `Tell us what you need` on the search screen
+                  itself — the door to "ask for it" is two taps from the search the
+                  customer just typed `[MEASURED]`. A one-shop catalogue in a small
+                  town will *always* be missing something; the difference between a
+                  shop that listens and one that doesn't is whether asking is one tap
+                  or three.
+
+                  The honest version for us: no request table, no promise of
+                  delivery. It is the shop's phone number — which the shop already
+                  publishes — framed as the answer to "you don't have it". The shop
+                  learns what people wanted, and the customer gets a real person
+                  rather than a webhook. `CallShop` renders nothing when the shop has
+                  left `support_phone` empty, so this degrades to the sentence. */}
+              <View style={styles.cantFind}>
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  {t('home.cantFindTitle', { query })}
+                </ThemedText>
+                <CallShop />
+              </View>
+            </>
           ) : (
             <StateMessage title={t('home.empty')} />
           )
@@ -715,6 +786,11 @@ const styles = StyleSheet.create({
     borderRadius: Radii.pill,
   },
   sectionTitle: { marginTop: Spacing.four, marginBottom: Spacing.two },
+  cantFind: {
+    marginTop: Spacing.three,
+    paddingHorizontal: Spacing.four,
+    gap: Spacing.two,
+  },
   chipsRow: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
   dealsRow: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },
   rail: { gap: Spacing.two, paddingRight: Spacing.three, paddingVertical: Spacing.one },

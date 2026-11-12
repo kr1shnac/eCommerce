@@ -59,14 +59,59 @@ function authErrorKey(message: string): AuthErrorKey {
   return 'generic';
 }
 
-/** Digits only, and at most 10: an Indian mobile number without +91. */
-function normalisePhone(raw: string): string {
+/**
+ * The 10 digits a customer types, and nothing else.
+ *
+ * Two jobs, both previously done by two half-behaviours that got them wrong:
+ *
+ *   1. accept what a person types — digits only, everything else dropped, capped
+ *      at the 10 digits of an Indian mobile number;
+ *   2. accept a number that arrives PASTED with its country code.
+ *      `+9196119...` or `9196119...` is 12 nonzero digits; slicing that to 10
+ *      keeps the `91` and throws away the last two real digits, which silently
+ *      becomes a different, wrong number.
+ *
+ * So a pasted international number is stripped to its local 10 before it is
+ * stored, and what the field holds is always exactly what it shows.
+ */
+function localDigits(raw: string): string {
   const digits = raw.replace(/\D/g, '');
-  if (digits.length === 10) return `+91${digits}`;
-  if (digits.length === 12 && digits.startsWith('91')) return `+${digits}`;
-  if (digits.length === 13 && digits.startsWith('919')) return `+${digits.slice(2)}`;
-  return raw.trim();
+  if (digits.length === 12 && digits.startsWith('91')) return digits.slice(2);
+  return digits.slice(0, 10);
 }
+
+/**
+ * What Supabase receives: E.164, always `+91` plus the 10 local digits.
+ *
+ * Kept separate from `localDigits` so exactly one place decides the country code
+ * — the field holds local digits, the wire holds the prefixed form, and nothing
+ * in between guesses. A number that is not 10 digits is returned unchanged so
+ * the caller's length check refuses it, rather than inventing a +91 that would
+ * send a code to the wrong person.
+ */
+function normalisePhone(raw: string): string {
+  const local = localDigits(raw);
+  return local.length === 10 ? `+91${local}` : local;
+}
+
+/**
+ * How long the resend button stays quiet.
+ *
+ * Supabase Auth rate-limits OTP requests for a number to **once every 60
+ * seconds** by default (Authentication → Rate Limits). A shorter countdown here
+ * would put a tappable button on screen *before* the server will accept a tap,
+ * and the customer would get "too many attempts" for having waited the 30
+ * seconds they were told to wait — which reads as a broken shop, not a rule.
+ *
+ * So the client never offers what the server will refuse: this must be **at
+ * least** the server's OTP request frequency, and it is deliberately equal to
+ * the default. If that rate limit is ever lowered in the dashboard, this can come
+ * down with it — change them together.
+ *
+ * The countdown is a *visible* reason to wait, not the limit itself. The real
+ * ceiling stays on the server, where a customer cannot talk their way past it.
+ */
+const RESEND_SECONDS = 60;
 
 export default function LoginScreen() {
   const { t } = useTranslation();
@@ -85,6 +130,8 @@ export default function LoginScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorKey, setErrorKey] = useState<AuthErrorKey | null>(null);
+  /** Seconds until the resend button wakes up. 0 means "tap me". */
+  const [resendIn, setResendIn] = useState(0);
 
   const finish = () => {
     const target = typeof params.returnTo === 'string' && params.returnTo ? params.returnTo : '/(tabs)/cart';
@@ -112,6 +159,7 @@ export default function LoginScreen() {
       await sendCode(normalised);
       setPhone(normalised);
       setStep('code');
+      setResendIn(RESEND_SECONDS);
     } catch (error) {
       // Rule 9.2: the technical message goes to the console, never to the screen.
       console.warn('[auth] could not send the code', error);
@@ -120,6 +168,41 @@ export default function LoginScreen() {
       setBusy(false);
     }
   };
+
+  /**
+   * Batch 6: the resend door.
+   *
+   * `signInWithOtp` has always been callable again — the SMS can be re-requested
+   * — but the screen had no way to ask, so a customer whose code never arrived
+   * (including at a shop whose SMS provider is only now being configured) had to
+   * back out to the phone step and type the number again. The countdown makes
+   * the wait legible, and a refusal from the server still lands in the same
+   * error box as everything else, translated — never a raw PostgREST string.
+   */
+  const onResendCode = async () => {
+    if (busy || !phone || resendIn > 0) return;
+
+    setBusy(true);
+    setErrorKey(null);
+    try {
+      await sendCode(phone);
+      setResendIn(RESEND_SECONDS);
+    } catch (error) {
+      console.warn('[auth] could not resend the code', error);
+      setErrorKey(authErrorKey((error as Error).message ?? ''));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // The countdown. One interval, cleared on the way out; it only runs while the
+  // code step is on screen, so a customer sitting on the phone step for an hour
+  // is not greeted by a stale timer.
+  useEffect(() => {
+    if (step !== 'code' || resendIn <= 0) return;
+    const timer = setInterval(() => setResendIn((left) => (left <= 1 ? 0 : left - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [step, resendIn]);
 
   const onVerifyCode = async () => {
     if (busy) return;
@@ -184,8 +267,8 @@ export default function LoginScreen() {
                   +91
                 </ThemedText>
                 <TextInput
-                  value={phoneInput.replace(/^\+?91?/, '')}
-                  onChangeText={(text) => setPhoneInput(text.replace(/\D/g, '').slice(0, 10))}
+                  value={phoneInput}
+                  onChangeText={(text) => setPhoneInput(localDigits(text))}
                   placeholder={t('auth.phonePlaceholder')}
                   placeholderTextColor={theme.textSecondary}
                   keyboardType="phone-pad"
@@ -274,6 +357,26 @@ export default function LoginScreen() {
         ) : null}
 
         <DemoAccounts />
+
+        {step === 'code' ? (
+          <Pressable
+            onPress={() => void onResendCode()}
+            disabled={busy || resendIn > 0}
+            accessibilityRole="button"
+            accessibilityLabel={t('auth.resend')}
+            accessibilityState={{ disabled: busy || resendIn > 0, busy }}
+            style={styles.linkButton}>
+            <ThemedText
+              type="smallBold"
+              style={{ color: resendIn > 0 || busy ? theme.textSecondary : theme.accent }}>
+              {resendIn > 0
+                ? t('auth.resendIn', { seconds: resendIn })
+                : busy
+                  ? t('common.pleaseWait')
+                  : t('auth.resend')}
+            </ThemedText>
+          </Pressable>
+        ) : null}
 
         {/*
           The door has to be openable by a real customer. If the code never

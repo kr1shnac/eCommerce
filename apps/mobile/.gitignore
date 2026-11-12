@@ -6,6 +6,10 @@ node_modules/
 # Expo
 .expo/
 dist/
+
+# Screenshots and the PDF built from them are generated review artefacts
+# (`npm run export:web && node scripts/screenshot-pdf.mjs`), not source.
+screenshots/
 web-build/
 expo-env.d.ts
 

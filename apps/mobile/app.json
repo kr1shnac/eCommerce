@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Kunigal Grocery",
-    "slug": "kunigal-grocery",
+    "name": "Kunigal Bazaar",
+    "slug": "kunigal-bazaar",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -10,7 +10,10 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "bundleIdentifier": "in.kunigal.grocery",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "LSApplicationQueriesSchemes": ["tez", "phonepe", "paytmmp", "bhim", "upi"]
+      }
     },
     "android": {
       "package": "in.kunigal.grocery",
@@ -22,7 +25,9 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "blockedPermissions": ["android.permission.ACCESS_BACKGROUND_LOCATION"]
+      "blockedPermissions": [
+        "android.permission.ACCESS_BACKGROUND_LOCATION"
+      ]
     },
     "web": {
       "output": "static",
@@ -34,8 +39,8 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Kunigal Grocery needs your photos so you can add a picture to a product on the shelf.",
-          "cameraPermission": "Kunigal Grocery needs the camera so you can photograph a product on the shelf."
+          "photosPermission": "Kunigal Bazaar needs your photos so you can add a picture to a product on the shelf.",
+          "cameraPermission": "Kunigal Bazaar needs the camera so you can photograph a product on the shelf."
         }
       ],
       [
@@ -49,7 +54,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Kunigal Grocery shares your location with the customer only while you are carrying their order, and stops the moment the delivery ends.",
+          "locationWhenInUsePermission": "Kunigal Bazaar shares your location with the customer only while you are carrying their order, and stops the moment the delivery ends.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
           "motionUsagePermission": false,
@@ -64,7 +69,8 @@
           "organization": "kunigal",
           "project": "kunigal-grocery"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -4,6 +4,16 @@
     "appVersionSource": "local"
   },
   "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false
+      }
+    },
     "preview": {
       "distribution": "internal",
       "android": {

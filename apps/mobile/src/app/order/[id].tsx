@@ -12,6 +12,8 @@ import { NavigateButton } from '@/components/navigate-button';
 import { OfflineBanner } from '@/components/offline-banner';
 import { RiderMap } from '@/components/rider-map';
 import { OrderFeedbackCard } from '@/components/order-feedback';
+import { OrderMoneyActions } from '@/components/order-money-actions';
+import { OrderAdminActions } from '@/components/order-admin-actions';
 import { RefundDueCard } from '@/components/refund-due';
 import { OrderSkeleton } from '@/components/screen-skeletons';
 import { StateMessage } from '@/components/state-message';
@@ -22,12 +24,14 @@ import { Card } from '@/components/ui/card';
 import { IconButton } from '@/components/ui/icon-button';
 import { Radii, Spacing } from '@/constants/theme';
 import { CancelOrderRejected, useCancelOrder, useOrder } from '@/hooks/use-orders';
-import { useRider } from '@/hooks/use-profile';
+import { OnlinePaymentFailed, useOnlinePayment } from '@/hooks/use-online-payment';
+import { useProfile, useRider } from '@/hooks/use-profile';
 import { useRiderPosition } from '@/hooks/use-rider-position';
 import { useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
+import { canPayOnline, onlinePaymentErrorKey } from '@/lib/payments';
 import { formatSnapshotAddress, readSnapshotAddress, snapshotFix } from '@/lib/order-view';
 import { orderStatusStyle } from '@/lib/order-status';
 import { etaMinutesFor, hasArrived, positionAgeSeconds } from '@/lib/tracking-rules';
@@ -50,23 +54,43 @@ export default function OrderDetailScreen() {
   const theme = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{ id: string; placed?: string }>();
+  const params = useLocalSearchParams<{
+    id: string;
+    placed?: string;
+    paid?: string;
+    unpaid?: string;
+  }>();
 
   const orderId = typeof params.id === 'string' ? params.id : null;
   const justPlaced = params.placed === '1';
+  const justPaid = params.paid === '1';
+  // The gateway sheet was dismissed or the connection dropped: the order is
+  // written, unpaid, and the customer is offered the same payment again. Saying
+  // so beats a green screen after a payment attempt.
+  const paymentIncomplete = params.unpaid === '1';
 
   const order = useOrder(orderId);
   const cancelOrder = useCancelOrder();
+  const onlinePayment = useOnlinePayment();
   const replaceAll = useCartStore((state) => state.replaceAll);
   const session = useAuthStore((state) => state.session);
   const [cancelError, setCancelError] = useState<string | null>(null);
+  const [payError, setPayError] = useState<string | null>(null);
 
   const data = order.data;
   const canCancel = data?.status === 'placed';
+  // A live, unpaid, non-cash order can be paid from here — the same path the
+  // checkout uses, so a customer who lost the sheet is not made to start over.
+  const canPay = data ? canPayOnline(data) : false;
   // Only the person who placed the order is asked how it went. Staff open this
   // same screen from the rider and owner faces; they see the order, not the
   // question.
   const isOwner = Boolean(session && data && session.user.id === data.user_id);
+
+  // The owner's money actions are shown only on the owner's face. The order
+  // screen is shared by all three; the database still decides who may write.
+  const me = useProfile();
+  const isAdmin = me.data?.role === 'admin';
 
   // The rider's position for this order, only while it is out for delivery.
   // Polled every 30 s — Realtime cannot reach `rider_positions` (no read
@@ -101,6 +125,28 @@ export default function OrderDetailScreen() {
       }
       console.warn('[order] could not cancel', error);
       setCancelError('orders.cancelError.unknown');
+    }
+  };
+
+  /**
+   * Pay an unpaid online order. The order already exists, so this is exactly the
+   * checkout's payment path with the basket step already done.
+   *
+   * A failure leaves the order placed and unpaid and says why in one line. It
+   * never cancels money on a guess: if the customer in fact paid and the app
+   * lost the answer, the webhook settles it, and the row then shows the refund
+   * the shop owes if the order is cancelled.
+   */
+  const onPayNow = async () => {
+    if (!data || onlinePayment.isPending) return;
+    setPayError(null);
+    try {
+      await onlinePayment.mutateAsync({ orderId: data.id, themeColor: theme.accent });
+      setPayError(null);
+    } catch (error) {
+      const code = error instanceof OnlinePaymentFailed ? error.code : 'unknown';
+      console.warn('[order] the payment did not complete', code);
+      setPayError(onlinePaymentErrorKey(code));
     }
   };
 
@@ -167,10 +213,40 @@ export default function OrderDetailScreen() {
           contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + Spacing.five }]}>
           {justPlaced ? (
             <Card tone="accent" style={styles.success}>
-              <Ionicons name="checkmark-circle" size={22} color={theme.accent} />
-              <ThemedText type="smallBold" style={styles.flex}>
-                {t('order.placedTitle')}
+              <View style={styles.successHead}>
+                <Ionicons name="checkmark-circle" size={22} color={theme.accent} />
+                <ThemedText type="smallBold" style={styles.flex}>
+                  {t('order.placedTitle')}
+                </ThemedText>
+              </View>
+
+              {/* A18 (COMPETITOR-TEARDOWN §11.5). Blinkit's confirmation page carries
+                  `ThankYouAddress`, `ThankYouItems` and `ThankYouOrderDetails`
+                  `[MEASURED]` — the order that was just placed is *repeated* on the
+                  receipt, because this is the one moment the customer re-reads what
+                  they bought and where it is going. Everything here is already on
+                  the screen below; what this adds is that it is all in one glance
+                  without a scroll, while the dopamine of "it worked" is still there.
+                  Every number is the order's own snapshot, so it cannot drift. */}
+              <ThemedText type="small" style={{ color: theme.text }}>
+                {t('order.placedTotal', {
+                  amount: formatPaise(data.total_paise),
+                  count: data.order_items?.length ?? 0,
+                })}
               </ThemedText>
+              {address ? (
+                <ThemedText type="small" style={{ color: theme.textSecondary }} numberOfLines={2}>
+                  {t('order.placedTo', {
+                    name: address.full_name,
+                    where: formatSnapshotAddress(address, t('order.near')),
+                  })}
+                </ThemedText>
+              ) : null}
+              {data.estimated_delivery_at ? (
+                <ThemedText type="small" style={{ color: theme.textSecondary }}>
+                  {t('order.placedEta', { when: formatDate(data.estimated_delivery_at) })}
+                </ThemedText>
+              ) : null}
             </Card>
           ) : null}
 
@@ -189,7 +265,20 @@ export default function OrderDetailScreen() {
             ) : null}
             <Row label={t('order.payment')} value={t(`order.pay.${data.payment_method}`)} />
             <Row label={t('order.paymentStatus')} value={t(`order.payStatus.${data.payment_status}`)} />
+            {data.eta_minutes ? (
+              <Row
+                label={t('order.promise')}
+                value={
+                  data.is_express
+                    ? t('order.promiseExpress', { minutes: data.eta_minutes })
+                    : t('order.promiseNormal', { minutes: data.eta_minutes })
+                }
+              />
+            ) : null}
           </Card>
+
+          {isAdmin ? <OrderMoneyActions order={data} /> : null}
+          {isAdmin ? <OrderAdminActions order={data} /> : null}
 
           {/*
             The map. Behind a tap, never by default: the text block above is the
@@ -275,6 +364,25 @@ export default function OrderDetailScreen() {
           ) : null}
 
           {/*
+            Why the shop cancelled it. The customer asked by phone and the owner
+            did the tapping, so the reason is the only explanation the customer
+            ever gets — without it the order simply "stopped". Only the owner's
+            own orders carry it; a rider's screen shows nothing (they cannot read
+            it, and they are not who it is for).
+          */}
+          {data.status === 'cancelled' && data.cancellation_reason ? (
+            <Card tone="warning" style={styles.section}>
+              <View style={styles.failureHead}>
+                <Ionicons name="close-circle-outline" size={20} color={theme.warningInk} />
+                <ThemedText type="smallBold" style={[styles.flex, { color: theme.warningInk }]}>
+                  {t('orders.cancelledByShopTitle')}
+                </ThemedText>
+              </View>
+              <ThemedText type="small">{data.cancellation_reason}</ThemedText>
+            </Card>
+          ) : null}
+
+          {/*
             Money the shop is holding but owes. It sits directly under the
             failure/cancel state because it is the consequence of that state,
             and it renders only for the customer who actually paid — staff see
@@ -322,6 +430,23 @@ export default function OrderDetailScreen() {
             </ThemedText>
           </Card>
 
+          {/*
+            The invoice. It opens the document the database issued for THIS
+            order: invoice number, the GST that was contained in the price, and
+            the shop's GSTIN when it has one. A customer needs it for a
+            reimbursement or a shop's books, and it must be the same document
+            the shop's own records show — so the screen renders `order_invoice()`
+            and nothing is recomputed here.
+          */}
+          <Button
+            label={t('invoice.open')}
+            icon="document-text-outline"
+            variant="outline"
+            fullWidth
+            onPress={() => router.push(`/invoice/${data.id}`)}
+            style={styles.action}
+          />
+
           <ThemedText type="heading" style={styles.sectionTitle}>
             {t('order.deliverToTitle')}
           </ThemedText>
@@ -350,10 +475,51 @@ export default function OrderDetailScreen() {
 
           <CallShop />
 
+          {justPaid ? (
+            <Card tone="accent" style={styles.noticeCard}>
+              <ThemedText type="subtitle">{t('pay.paidTitle')}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('pay.paidBody')}
+              </ThemedText>
+            </Card>
+          ) : null}
+
+          {paymentIncomplete ? (
+            <Card tone="warning" style={styles.noticeCard}>
+              <ThemedText type="subtitle">{t('pay.unpaidTitle')}</ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('pay.unpaidBody')}
+              </ThemedText>
+            </Card>
+          ) : null}
+
           {cancelError ? (
             <ThemedText type="small" style={{ color: theme.danger, textAlign: 'center' }}>
               {t(cancelError)}
             </ThemedText>
+          ) : null}
+
+          {payError ? (
+            <ThemedText type="small" style={{ color: theme.danger, textAlign: 'center' }}>
+              {t(payError)}
+            </ThemedText>
+          ) : null}
+
+          {canPay ? (
+            <Button
+              label={
+                onlinePayment.isPending
+                  ? t('pay.openingSheet')
+                  : t('pay.now', { amount: formatPaise(data?.total_paise ?? 0) })
+              }
+              icon="card-outline"
+              size="lg"
+              fullWidth
+              busy={onlinePayment.isPending}
+              disabled={onlinePayment.isPending || cancelOrder.isPending}
+              onPress={() => void onPayNow()}
+              style={styles.action}
+            />
           ) : null}
 
           <Button
@@ -764,6 +930,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: Spacing.two,
   },
+  successHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+  },
   section: { gap: Spacing.one },
   mapCard: { gap: Spacing.two, padding: 0, overflow: 'hidden' },
   mapHead: {
@@ -818,4 +989,5 @@ const styles = StyleSheet.create({
   positionEmpty: { paddingVertical: Spacing.two },
   line: { width: 18, height: 3, borderRadius: 2, marginTop: 16 },
   action: { marginTop: Spacing.two },
+  noticeCard: { gap: Spacing.one, padding: Spacing.three },
 });

@@ -127,6 +127,13 @@ export default function AdminCouponsScreen() {
         ? t('admin.couponUnlimited')
         : t('admin.couponUsed', { used: item.used_count, limit: item.usage_limit });
 
+    // The per-person cap, when the code has one. It sits under the global usage
+    // line so the owner sees both halves of the limit at once.
+    const perCustomer =
+      item.per_customer_limit === null
+        ? null
+        : t('admin.couponPerCustomerCap', { limit: item.per_customer_limit });
+
     return (
       <Card style={styles.card}>
         <View style={styles.cardTop}>
@@ -157,6 +164,9 @@ export default function AdminCouponsScreen() {
             />
           ) : null}
           <Badge label={usage} tone="neutral" icon="repeat-outline" />
+          {perCustomer ? (
+            <Badge label={perCustomer} tone="neutral" icon="person-outline" />
+          ) : null}
         </View>
 
         <View style={styles.actionsRow}>
@@ -324,6 +334,9 @@ function CouponForm({
   const [usageLimitText, setUsageLimitText] = useState(
     coupon?.usage_limit ? String(coupon.usage_limit) : '',
   );
+  const [perCustomerLimitText, setPerCustomerLimitText] = useState(
+    coupon?.per_customer_limit ? String(coupon.per_customer_limit) : '',
+  );
   const [descriptionEn, setDescriptionEn] = useState(coupon?.description_en ?? '');
   const [descriptionKn, setDescriptionKn] = useState(coupon?.description_kn ?? '');
   const [isActive, setIsActive] = useState(coupon?.is_active ?? true);
@@ -350,6 +363,14 @@ function CouponForm({
 
     if (usageLimit !== null && usageLimit < 1) return 'admin.couponErrorValue';
 
+    // NULL = no per-person cap. 0 would be a code no customer could ever use,
+    // which is not what the blank field means, so it is refused rather than
+    // silently stored as "nobody may use this".
+    const perCustomerLimit =
+      perCustomerLimitText.trim() === '' ? null : parseWhole(perCustomerLimitText);
+
+    if (perCustomerLimit !== null && perCustomerLimit < 1) return 'admin.couponErrorValue';
+
     return {
       storeId,
       code: cleanCode,
@@ -359,6 +380,7 @@ function CouponForm({
       minOrderPaise: minOrder * 100,
       isActive,
       usageLimit,
+      perCustomerLimit,
       descriptionEn,
       descriptionKn,
     };
@@ -505,6 +527,16 @@ function CouponForm({
             keyboardType: 'number-pad',
             hint: t('admin.couponFieldUsageHint'),
           })}
+
+          {field(
+            t('admin.couponFieldPerCustomerLimit'),
+            perCustomerLimitText,
+            setPerCustomerLimitText,
+            {
+              keyboardType: 'number-pad',
+              hint: t('admin.couponFieldPerCustomerHint'),
+            },
+          )}
 
           <View style={styles.field}>
             <ThemedText type="smallBold" themeColor="textSecondary">

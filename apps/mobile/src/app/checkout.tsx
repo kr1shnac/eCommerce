@@ -22,15 +22,77 @@ import {
   usePlaceOrder,
   useValidateCoupon,
 } from '@/hooks/use-orders';
+import { OnlinePaymentFailed, useOnlinePayment } from '@/hooks/use-online-payment';
+import { isOnlinePaymentMethod } from '@/lib/payments';
 import { previewFee } from '@/lib/delivery';
 import { useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
+import { expressVerdict, radiusKmLabel, radiusVerdict } from '@/lib/geo';
 import { makeIdempotencyKey } from '@/lib/idempotency';
 import { localizedName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
 import { isStoreOpen } from '@/lib/store-hours';
+import { formatDistance } from '@/lib/tracking-rules';
 import { currentLanguage } from '@/store/language-store';
-import type { PlaceOrderError as PlaceOrderErrorCode } from '@/types/database';
+import type {
+  ExpressRefusalReason,
+  PaymentMethod,
+  PlaceOrderError as PlaceOrderErrorCode,
+} from '@/types/database';
+
+/** The methods the checkout offers, in the order a customer in Kunigal thinks of them. */
+const PAYMENT_METHODS: {
+  method: PaymentMethod;
+  labelKey: string;
+  hintKey: string;
+  icon: keyof typeof Ionicons.glyphMap;
+  /** Online money needs a way to collect it; cash never does. */
+  online: boolean;
+}[] = [
+  {
+    method: 'cod',
+    labelKey: 'checkout.method.cod',
+    hintKey: 'checkout.method.codHint',
+    icon: 'cash-outline',
+    online: false,
+  },
+  {
+    method: 'upi',
+    labelKey: 'checkout.method.upi',
+    hintKey: 'checkout.method.upiHint',
+    icon: 'phone-portrait-outline',
+    online: true,
+  },
+  {
+    method: 'card',
+    labelKey: 'checkout.method.card',
+    hintKey: 'checkout.method.cardHint',
+    icon: 'card-outline',
+    online: true,
+  },
+  {
+    method: 'netbanking',
+    labelKey: 'checkout.method.netbanking',
+    hintKey: 'checkout.method.netbankingHint',
+    icon: 'business-outline',
+    online: true,
+  },
+  {
+    method: 'wallet',
+    labelKey: 'checkout.method.wallet',
+    hintKey: 'checkout.method.walletHint',
+    icon: 'wallet-outline',
+    online: true,
+  },
+];
+
+/** A refusal the customer has to read in words, with the numbers that explain it. */
+type Blocked = {
+  code: PlaceOrderErrorCode | 'unknown';
+  distanceM?: number | null;
+  radiusM?: number | null;
+  reason?: ExpressRefusalReason | null;
+};
 
 /**
  * Review the basket, pick an address, place the order. Cash on delivery only.
@@ -62,13 +124,27 @@ export default function CheckoutScreen() {
   const zones = useDeliveryZones();
   const addresses = useAddresses();
   const placeOrder = usePlaceOrder();
+  const onlinePayment = useOnlinePayment();
   const validateCoupon = useValidateCoupon();
 
   const [addressId, setAddressId] = useState<string | null>(params.addressId ?? null);
   const [note, setNote] = useState('');
   const [idempotencyKey] = useState(makeIdempotencyKey);
-  const [blockedCode, setBlockedCode] = useState<PlaceOrderErrorCode | null>(null);
+  const [blocked, setBlocked] = useState<Blocked | null>(null);
   const [now, setNow] = useState(() => new Date());
+  /**
+   * Where the customer is on the payment path. `placed` is the order row written
+   * and paid; `paying` is the gateway sheet open, which is the moment the screen
+   * says "do not close this" rather than letting a second order be placed.
+   */
+  type Stage = 'idle' | 'placing' | 'paying' | 'placed';
+  const [stage, setStage] = useState<Stage>('idle');
+
+  // How the customer wants to pay, and whether they want the 30-minute promise.
+  // Both are only INTENT: the database re-checks that the shop can collect the
+  // method and that express can be kept (rule 9.1).
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cod');
+  const [wantsExpress, setWantsExpress] = useState(false);
 
   // Coupon state. `applied` holds only what the DATABASE said the code is worth,
   // and the basket size it was checked against. Nothing is recomputed here.
@@ -115,6 +191,40 @@ export default function CheckoutScreen() {
   const minOrderPaise = settings.data?.min_order_value_paise ?? 0;
   const freeOverPaise = settings.data?.free_delivery_above_paise ?? null;
 
+  // ---------------------------------------------------------------------------
+  // The radius and the 30-minute promise.
+  //
+  // Computed HERE, from the pins the phone already has, so the answer appears
+  // the moment an address is tapped — no round trip, no spinner on a 2G
+  // connection. `lib/geo.ts` is the same haversine and the same comparisons as
+  // `delivery_quote()` and `place_order()` in the database, pinned by
+  // `npm run check:geo` against the same three points as the SQL test. The
+  // database still makes the decision; this only lets the customer read it
+  // before filling a basket.
+  // ---------------------------------------------------------------------------
+  const shop = store.data;
+  const shopFix = { lat: shop?.lat ?? null, lng: shop?.lng ?? null };
+  const radius = settings.data
+    ? radiusVerdict(shopFix, selected, settings.data.delivery_radius_m)
+    : { kind: 'unknown' as const, reason: 'no_shop_pin' as const };
+
+  const express = settings.data
+    ? expressVerdict(settings.data, shopFix, selected, cart.unitCount)
+    : ({ kind: 'unavailable', reason: 'disabled' } as const);
+
+  const expressAvailable = express.kind === 'available';
+  const expressFeePaise = wantsExpress && expressAvailable ? express.feePaise : 0;
+  // A basket that grows past the cap silently loses the promise rather than
+  // charging for a 30-minute delivery the shop cannot make.
+  const useExpress = wantsExpress && expressAvailable;
+
+  // A method the shop cannot collect is not a choice. If the owner switches
+  // online payments off while somebody is on this screen, the screen falls back
+  // to cash instead of offering a button the database will refuse.
+  const onlineAllowed = settings.data?.online_payments_enabled ?? false;
+  const methodIsAllowed = paymentMethod === 'cod' || onlineAllowed;
+  const effectivePayment: PaymentMethod = methodIsAllowed ? paymentMethod : 'cod';
+
   // A code is tied to the basket it was checked against. If the basket changes,
   // the code is stale: its minimum may no longer be met or its cap may differ.
   // Rather than show a discount the database will refuse, treat it as gone and
@@ -122,13 +232,77 @@ export default function CheckoutScreen() {
   const couponIsStale = applied !== null && applied.subtotalPaise !== cart.subtotalPaise;
   const activeCoupon = couponIsStale ? null : applied;
   const discountPaise = activeCoupon?.discountPaise ?? 0;
-  const totalPaise = cart.subtotalPaise + (fee.deliveryFeePaise ?? 0) - discountPaise;
+
+  // The express fee sits INSIDE the delivery line, after the free-delivery
+  // rule — `place_order()` adds it the same way, and the invoice prints the two
+  // together as one delivery line. Adding it here keeps the total the customer
+  // reads equal to the total the database writes, to the paisa.
+  const totalPaise =
+    cart.subtotalPaise + (fee.deliveryFeePaise ?? 0) - discountPaise + expressFeePaise;
   const couponNotice = couponError ?? (couponIsStale ? t('checkout.couponRemoved') : null);
 
   const couponMessage = (code: string, minPaise: number | null) =>
     code === 'coupon_min_order'
       ? t('checkout.couponError.coupon_min_order', { amount: formatPaise(minPaise ?? 0) })
       : t(`checkout.couponError.${code}`);
+
+  /**
+   * A measured distance as a sentence fragment: "14.5 km away" / "350 m away".
+   * The unit word is translated, the number is rounded by `formatDistance` (a
+   * GPS pin cannot honestly claim 5 m precision), and the caller never does
+   * arithmetic on the result.
+   */
+  const distanceLabel = (metres: number | null): string | null => {
+    const formatted = formatDistance(metres);
+    if (!formatted) return null;
+    return formatted.unit === 'km'
+      ? t('order.distanceKilometers', { value: formatted.value })
+      : t('order.distanceMeters', { value: formatted.value });
+  };
+
+  /**
+   * Why express is not on offer, in words the customer can act on.
+   *
+   * Every branch says something true and useful: "come closer", "make the
+   * basket smaller", "add a door pin", or "the shop is not doing this today".
+   * There is no branch that simply says no.
+   */
+  const expressReasonText = (reason: ExpressRefusalReason | null | undefined): string => {
+    switch (reason) {
+      case 'too_far':
+        return t('checkout.express.tooFar', {
+          radius: radiusKmLabel(settings.data?.express_radius_m ?? 0),
+        });
+      case 'too_many_items':
+        return t('checkout.express.tooManyItems', {
+          count: settings.data?.express_max_units ?? 0,
+        });
+      case 'no_location':
+        return t('checkout.express.noLocation');
+      default:
+        return t('checkout.express.disabled');
+    }
+  };
+
+  /**
+   * A refusal from the database, in words. The numbers come from the refusal
+   * itself (`PlaceOrderRejected`), so the sentence names the real distance and
+   * the real radius even if the owner changed the radius a moment ago.
+   */
+  const blockedMessage = (block: Blocked): string => {
+    if (block.code === 'outside_delivery_radius') {
+      const radiusM = block.radiusM ?? settings.data?.delivery_radius_m ?? null;
+      // No radius known: say the honest, numberless version rather than
+      // interpolating a zero into "within a 0 KM radius".
+      return radiusM === null
+        ? t('checkout.error.outside_delivery_radius')
+        : t('checkout.outsideRadius', { radius: radiusKmLabel(radiusM) });
+    }
+    if (block.code === 'express_not_available') {
+      return `${t('checkout.error.express_not_available')} ${expressReasonText(block.reason)}`;
+    }
+    return t(`checkout.error.${block.code}`);
+  };
 
   const onApplyCoupon = async () => {
     const code = couponInput.trim();
@@ -178,13 +352,30 @@ export default function CheckoutScreen() {
   }
   if (cart.adjustments.length > 0) reasons.push(t('checkout.cartChanged'));
 
+  // The door is outside the shop's radius. This is a REASON not to place the
+  // order, shown before the tap, because `place_order()` would refuse it in
+  // exactly the same words a second later (migration 20261112000004).
+  //
+  // `radius.kind === 'unknown'` deliberately says nothing: one of the two pins
+  // is missing, the distance is not known, and the pincode rule above is still
+  // the one that decides. Inventing a distance there would be worse than silence.
+  if (radius.kind === 'outside') {
+    reasons.push(t('checkout.outsideRadius', { radius: radiusKmLabel(radius.radiusM) }));
+  }
+
   const canPlace =
-    reasons.length === 0 && !placeOrder.isPending && store.isSuccess && settings.isSuccess && zones.isSuccess;
+    reasons.length === 0 &&
+    stage === 'idle' &&
+    !placeOrder.isPending &&
+    !onlinePayment.isPending &&
+    store.isSuccess &&
+    settings.isSuccess &&
+    zones.isSuccess;
 
   const onPlaceOrder = async () => {
     if (!canPlace || !store.data || !selected) return;
 
-    setBlockedCode(null);
+    setBlocked(null);
     try {
       const result = await placeOrder.mutateAsync({
         storeId: store.data.id,
@@ -195,9 +386,48 @@ export default function CheckoutScreen() {
         // Only the CODE. The database recomputes the discount and refuses the
         // order if the code is no longer valid (rule 9.1).
         couponCode: activeCoupon?.code ?? null,
+        // The method and the express promise are INTENT. Both are re-checked
+        // against the same rows in the database, which is what actually charges
+        // or refuses (rule 9.1).
+        paymentMethod: effectivePayment,
+        express: useExpress,
       });
 
-      router.replace({ pathname: '/order/[id]', params: { id: result.order_id, placed: '1' } });
+      // Cash: the money arrives with the bag. Nothing else to do.
+      if (!isOnlinePaymentMethod(result.payment_method ?? effectivePayment)) {
+        router.replace({
+          pathname: '/order/[id]',
+          params: { id: result.order_id, placed: '1' },
+        });
+        return;
+      }
+
+      // Online money: the sheet opens BEFORE this screen is left, so a second
+      // tap on the green button cannot place a second order.
+      setStage('paying');
+      try {
+        await onlinePayment.mutateAsync({
+          orderId: result.order_id,
+          themeColor: theme.accent,
+        });
+        router.replace({
+          pathname: '/order/[id]',
+          params: { id: result.order_id, placed: '1', paid: '1' },
+        });
+      } catch (paymentError) {
+        const code =
+          paymentError instanceof OnlinePaymentFailed ? paymentError.code : 'unknown';
+
+        // The order exists and is unpaid. Sending the customer to it is the
+        // honest outcome: it offers "Pay now", and a payment the app never saw
+        // is still settled by the webhook and shown as a refund if the order
+        // is later cancelled. Nothing here cancels money on a guess.
+        console.warn('[checkout] the payment did not complete', code);
+        router.replace({
+          pathname: '/order/[id]',
+          params: { id: result.order_id, placed: '1', unpaid: '1' },
+        });
+      }
     } catch (error) {
       if (error instanceof PlaceOrderRejected) {
         // Stock moved under us. Fix the basket, and make the customer look at
@@ -216,14 +446,28 @@ export default function CheckoutScreen() {
           return;
         }
 
-        setBlockedCode(error.code);
+        // Express was asked for but the shop cannot keep it: drop the promise
+        // rather than keep a tick on a 30-minute delivery that will not happen,
+        // and say why. The customer can place the order again at the normal pace.
+        if (error.code === 'express_not_available') {
+          setWantsExpress(false);
+        }
+
+        // The refusal carries its own numbers so the sentence can name them:
+        // "14.5 km away, we deliver to 10 km" rather than a flat no.
+        setBlocked({
+          code: error.code,
+          distanceM: error.distanceM,
+          radiusM: error.radiusM,
+          reason: error.expressReason,
+        });
         // The basket did not change, so the same key stays correct.
         return;
       }
 
       // Network / permission / something unexpected: log it, show nothing raw.
       console.warn('[checkout] could not place the order', error);
-      setBlockedCode('unknown' as any);
+      setBlocked({ code: 'unknown' });
     }
   };
 
@@ -328,6 +572,68 @@ export default function CheckoutScreen() {
           </View>
         )}
 
+        {/*
+          Delivery speed. Shown ABOVE the total because it changes it, and
+          because "when will it arrive" is the second question a customer in
+          Kunigal asks after "how much".
+
+          Express is offered only when it can be kept: inside the express
+          circle, under the basket cap, and switched on by the owner. When it is
+          not, the card still says WHY in a sentence the customer can act on —
+          never a greyed-out toggle with no explanation.
+        */}
+        <ThemedText type="heading" style={styles.sectionTitle}>
+          {t('checkout.express.title')}
+        </ThemedText>
+        {expressAvailable ? (
+          <Pressable
+            onPress={() => setWantsExpress((previous) => !previous)}
+            disabled={placeOrder.isPending}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: useExpress, disabled: placeOrder.isPending }}
+            accessibilityLabel={t('checkout.express.available', { minutes: express.etaMinutes })}
+            style={({ pressed }) => [
+              styles.expressCard,
+              {
+                borderColor: useExpress ? theme.accent : theme.border,
+                backgroundColor: useExpress ? theme.accentSoft : theme.card,
+                borderWidth: useExpress ? 2 : StyleSheet.hairlineWidth,
+              },
+              pressed && styles.pressed,
+            ]}>
+            <Ionicons
+              name={useExpress ? 'checkbox' : 'square-outline'}
+              size={24}
+              color={useExpress ? theme.accent : theme.textSecondary}
+            />
+            <View style={styles.flexColumn}>
+              <ThemedText type="bodyStrong" style={useExpress ? { color: theme.accent } : undefined}>
+                {t('checkout.express.available', { minutes: express.etaMinutes })}
+              </ThemedText>
+              <ThemedText type="small" themeColor="textSecondary">
+                {express.feePaise > 0
+                  ? t('checkout.express.availableHint', {
+                      amount: formatPaise(express.feePaise),
+                      minutes: express.etaMinutes,
+                    })
+                  : t('checkout.express.availableFreeHint', { minutes: express.etaMinutes })}
+              </ThemedText>
+            </View>
+          </Pressable>
+        ) : (
+          <Card style={styles.section}>
+            <View style={styles.methodRow}>
+              <Ionicons name="time-outline" size={22} color={theme.textSecondary} />
+              <View style={styles.flexColumn}>
+                <ThemedText type="smallBold">{t('checkout.express.normalTitle')}</ThemedText>
+                <ThemedText type="caption" themeColor="textSecondary">
+                  {expressReasonText(express.kind === 'unavailable' ? express.reason : null)}
+                </ThemedText>
+              </View>
+            </View>
+          </Card>
+        )}
+
         <ThemedText type="heading" style={styles.sectionTitle}>
           {t('checkout.itemsTitle', { count: cart.unitCount })}
         </ThemedText>
@@ -358,6 +664,21 @@ export default function CheckoutScreen() {
               {fee.deliveryFeePaise === null ? t('checkout.notAvailable') : formatPaise(fee.deliveryFeePaise)}
             </ThemedText>
           </View>
+
+          {/*
+            The express fee, named separately so the customer can see what the
+            30 minutes costs. The database puts it inside the delivery line on
+            the order and on the invoice; here it is broken out because the
+            customer is deciding whether to pay it right now.
+          */}
+          {useExpress ? (
+            <View style={styles.summaryLine}>
+              <ThemedText type="small" themeColor="textSecondary">
+                {t('checkout.express.fee', { minutes: express.etaMinutes })}
+              </ThemedText>
+              <ThemedText type="small">{formatPaise(expressFeePaise)}</ThemedText>
+            </View>
+          ) : null}
 
           {activeCoupon ? (
             <View style={styles.summaryLine}>
@@ -442,15 +763,58 @@ export default function CheckoutScreen() {
         <ThemedText type="heading" style={styles.sectionTitle}>
           {t('checkout.paymentTitle')}
         </ThemedText>
-        <Card tone="accent" style={styles.cod}>
-          <Ionicons name="cash-outline" size={24} color={theme.accent} />
-          <View style={styles.flexColumn}>
-            <ThemedText type="bodyStrong">{t('checkout.cod')}</ThemedText>
-            <ThemedText type="small" themeColor="textSecondary">
-              {t('checkout.codHint')}
+        <View style={styles.methodList}>
+          {PAYMENT_METHODS.map((option) => {
+            // Online money needs a way to collect it. A method the shop cannot
+            // settle is shown, greyed, WITH the reason — hiding it would leave
+            // the customer wondering whether the app is broken.
+            const disabled = option.online && !onlineAllowed;
+            const active = effectivePayment === option.method;
+
+            return (
+              <Pressable
+                key={option.method}
+                onPress={() => setPaymentMethod(option.method)}
+                disabled={disabled || placeOrder.isPending}
+                accessibilityRole="radio"
+                accessibilityState={{ selected: active, disabled: disabled || placeOrder.isPending }}
+                accessibilityLabel={t(option.labelKey)}
+                accessibilityHint={t(option.hintKey)}
+                style={({ pressed }) => [
+                  styles.method,
+                  {
+                    borderColor: active ? theme.accent : theme.border,
+                    backgroundColor: active ? theme.accentSoft : theme.card,
+                    borderWidth: active ? 2 : StyleSheet.hairlineWidth,
+                    opacity: disabled ? 0.55 : 1,
+                  },
+                  pressed && styles.pressed,
+                ]}>
+                <Ionicons
+                  name={active ? 'radio-button-on' : 'radio-button-off'}
+                  size={22}
+                  color={active ? theme.accent : theme.textSecondary}
+                />
+                <Ionicons name={option.icon} size={20} color={active ? theme.accent : theme.textSecondary} />
+                <View style={styles.flexColumn}>
+                  <ThemedText type="smallBold">{t(option.labelKey)}</ThemedText>
+                  <ThemedText type="caption" themeColor="textSecondary">
+                    {t(option.hintKey)}
+                  </ThemedText>
+                </View>
+              </Pressable>
+            );
+          })}
+        </View>
+
+        {!onlineAllowed ? (
+          <View style={styles.noticeRow}>
+            <Ionicons name="information-circle-outline" size={15} color={theme.textSecondary} />
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.flex}>
+              {t('checkout.method.onlineOff')}
             </ThemedText>
           </View>
-        </Card>
+        ) : null}
 
         <ThemedText type="heading" style={styles.sectionTitle}>
           {t('checkout.noteTitle')}
@@ -470,12 +834,21 @@ export default function CheckoutScreen() {
           ]}
         />
 
-        {blockedCode ? (
-          <View style={styles.errorRow}>
-            <Ionicons name="alert-circle-outline" size={16} color={theme.danger} />
-            <ThemedText type="small" style={[styles.flex, { color: theme.danger }]}>
-              {t(`checkout.error.${blockedCode}`)}
-            </ThemedText>
+        {blocked ? (
+          <View style={styles.blocked}>
+            <View style={styles.errorRow}>
+              <Ionicons name="alert-circle-outline" size={16} color={theme.danger} />
+              <ThemedText type="small" style={[styles.flex, { color: theme.danger }]}>
+                {blockedMessage(blocked)}
+              </ThemedText>
+            </View>
+            {blocked.code === 'outside_delivery_radius' && blocked.distanceM != null ? (
+              <ThemedText type="caption" themeColor="textSecondary">
+                {t('checkout.measuredDistance', {
+                  distance: distanceLabel(blocked.distanceM) ?? '',
+                })}
+              </ThemedText>
+            ) : null}
           </View>
         ) : null}
       </ScrollView>
@@ -504,23 +877,44 @@ export default function CheckoutScreen() {
           </View>
         ) : (
           <View style={styles.reasonRow}>
-            <Ionicons name="cash-outline" size={15} color={theme.textSecondary} />
-            <ThemedText type="caption" themeColor="textSecondary">
-              {t('checkout.payOnDelivery')}
+            <Ionicons
+              name={effectivePayment === 'cod' ? 'cash-outline' : 'shield-checkmark-outline'}
+              size={15}
+              color={theme.textSecondary}
+            />
+            <ThemedText type="caption" themeColor="textSecondary" style={styles.flex}>
+              {effectivePayment === 'cod'
+                ? t('checkout.payOnDelivery')
+                : t('checkout.payOnlineHint', {
+                    method: t(`checkout.method.${effectivePayment}`),
+                  })}
             </ThemedText>
           </View>
         )}
 
         <Button
-          label={placeOrder.isPending ? t('common.pleaseWait') : t('checkout.placeOrder')}
+          label={
+            placeOrder.isPending || onlinePayment.isPending
+              ? t('common.pleaseWait')
+              : isOnlinePaymentMethod(effectivePayment)
+                ? t('checkout.payAmount', { amount: formatPaise(totalPaise) })
+                : t('checkout.placeOrder')
+          }
           iconRight="checkmark-circle-outline"
           size="lg"
           fullWidth
-          busy={placeOrder.isPending}
+          busy={placeOrder.isPending || onlinePayment.isPending}
           disabled={!canPlace}
           onPress={() => void onPlaceOrder()}
           style={styles.place}
         />
+
+        {/* While the gateway sheet is open this screen must not be used again. */}
+        {onlinePayment.isPending ? (
+          <ThemedText type="caption" themeColor="textSecondary" style={styles.paymentNote}>
+            {t('pay.openingSheet')}
+          </ThemedText>
+        ) : null}
       </View>
     </View>
   );
@@ -584,6 +978,26 @@ const styles = StyleSheet.create({
     marginTop: Spacing.two,
   },
   cod: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  expressCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    minHeight: 64,
+    borderRadius: Radii.lg,
+    padding: Spacing.three,
+  },
+  methodList: { gap: Spacing.two },
+  method: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    minHeight: 56,
+    borderRadius: Radii.lg,
+    padding: Spacing.three,
+  },
+  methodRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  noticeRow: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.one },
+  blocked: { gap: 2 },
   couponApplied: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   couponRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   couponInput: {
@@ -616,6 +1030,10 @@ const styles = StyleSheet.create({
   },
   reasons: { gap: Spacing.one, marginBottom: Spacing.two },
   reasonRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  paymentNote: {
+    marginTop: Spacing.one,
+    textAlign: 'center',
+  },
   place: { marginTop: Spacing.one },
   pressed: { opacity: 0.8 },
 });

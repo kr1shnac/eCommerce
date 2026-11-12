@@ -4,10 +4,13 @@ import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
+import { DeliverySettingsCard } from '@/components/delivery-settings-card';
+import { ShopDoorCard } from '@/components/shop-door-card';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
-import { Spacing } from '@/constants/theme';import { useShopDayByRider, useShopDayTotals } from '@/hooks/use-shop-totals';
+import { Spacing } from '@/constants/theme';
+import { useShopDayByRider, useShopDayTotals } from '@/hooks/use-shop-totals';
 import { useShopFeedbackReasons, useShopFeedbackTotals } from '@/hooks/use-shop-feedback';
 import { useTheme } from '@/hooks/use-theme';
 import { formatPaise } from '@/lib/money';
@@ -92,6 +95,16 @@ export default function AdminTodayScreen() {
               tintColor={theme.accent}
             />
           }>
+          {/* 0. The door. Above the money, because a shop that is closed by
+              mistake takes orders it cannot deliver — and every one of those is
+              a refund. */}
+          <ShopDoorCard />
+
+          {/* 0b. How far the shop reaches, and how fast. Directly under the
+              door: both answer "can we serve this person?", and both are the
+              owner's own decision rather than a code change. */}
+          <DeliverySettingsCard />
+
           {/* 1. The day in one line. */}
           <Card tone="accent">
             <ThemedText type="caption" style={{ color: theme.accent }}>

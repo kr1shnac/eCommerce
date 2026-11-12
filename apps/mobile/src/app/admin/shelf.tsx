@@ -22,6 +22,7 @@ import { kannadaInputFont } from '@/constants/fonts';
 import { Elevation, Radii, Spacing } from '@/constants/theme';
 import { useShelfProducts, useUpdateShelf, type ShelfEdit } from '@/hooks/use-product-shelf';
 import { AddProductPanel } from '@/components/add-product-panel';
+import { GstField } from '@/components/gst-field';
 import { PackField } from '@/components/pack-field';
 import { useStore } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
@@ -342,6 +343,12 @@ export default function AdminShelfScreen() {
           busy={busy}
           onSave={(pack) => void save({ productId: item.id, pack })}
         />
+
+        {/* GST rate and HSN. A legal classification, set once when the
+            accountant says what it is — never guessed by the app, and never a
+            free text box that could print 1800% on a tax invoice. Read-only
+            until tapped, exactly like the pack above. */}
+        <GstField product={item} busy={busy} />
       </Card>
     );
   };
