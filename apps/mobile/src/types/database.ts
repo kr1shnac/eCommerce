@@ -45,7 +45,21 @@ export type FeedbackReason =
   | 'wrong_address'
   | 'wrong_item'
   | 'other';
-export type PaymentMethod = 'cod' | 'online';
+/**
+ * How the customer pays (migration 20261112000002).
+ *
+ * `online` is the original generic value from the first schema and still means
+ * "an online payment of some kind". The specific values are what the checkout
+ * offers now, because the shop settles them differently. GPay, PhonePe and
+ * Paytm are UPI apps, not separate integrations, so they are all `upi`.
+ */
+export type PaymentMethod =
+  | 'cod'
+  | 'upi'
+  | 'card'
+  | 'netbanking'
+  | 'wallet'
+  | 'online';
 export type PaymentStatus = 'pending' | 'paid' | 'failed' | 'refunded';
 
 export type Store = {
@@ -63,6 +77,19 @@ export type Store = {
   gstin: string | null;
   /** Where a customer complaint reaches a person. Falls back to `phone`. */
   grievance_phone: string | null;
+  /**
+   * Two-digit GST state code (29 = Karnataka). Decides CGST+SGST vs IGST on an
+   * invoice. Migration 20261112000001.
+   */
+  state_code: string;
+  /** State name as written in addresses, used to detect an inter-state supply. */
+  state_name: string;
+  /**
+   * The shop's own pin, for the distance rule. Null until the owner drops it;
+   * the pincode zone then decides, exactly as before (migration 20261112000004).
+   */
+  lat: number | null;
+  lng: number | null;
 };
 
 export type Profile = {
@@ -164,7 +191,19 @@ export type Product = {
   pack_size: number | null;
   /** The unit `pack_size` is measured in. Null for a plain piece product. */
   pack_unit: PackUnit | null;
+  /**
+   * GST rate in basis points: 0, 500, 1200, 1800 or 2800. The shelf price is
+   * INCLUSIVE of this tax, so it is extracted on the invoice, never added.
+   * 0 means "not classified yet" and prints as 0% rather than inventing a rate.
+   * Migration 20261112000001.
+   */
+  gst_rate_bp: number;
+  /** HSN classification, 4 to 8 digits. Null prints as a dash, never a guess. */
+  hsn_code: string | null;
 };
+
+/** The five rates an Indian grocery actually uses, in basis points. */
+export type GstRateBp = 0 | 500 | 1200 | 1800 | 2800;
 
 export type ProductSoldBy = 'piece' | 'measure';
 export type PackUnit = 'g' | 'kg' | 'ml' | 'l' | 'piece';
@@ -231,6 +270,8 @@ export type Coupon = {
   /** NULL means unlimited uses. */
   usage_limit: number | null;
   used_count: number;
+  /** NULL means no per-person cap. Migration 20261109000004. */
+  per_customer_limit: number | null;
   description_en: string | null;
   description_kn: string | null;
   created_at: string;
@@ -265,6 +306,28 @@ export type StoreSettings = {
   updated_at: string;
   /** The line printed at the bottom of a cash memo. Null means the app's own. */
   receipt_footer: string | null;
+  /**
+   * GST rate applied to the delivery fee, in basis points. 1800 = 18%. Delivery
+   * is a service and is taxed as its own line on the invoice.
+   */
+  delivery_gst_rate_bp: number;
+  /**
+   * True only when the shop can actually collect an online payment. While it is
+   * false the checkout shows the methods greyed with an honest explanation, and
+   * `place_order()` refuses them (migration 20261112000003).
+   */
+  online_payments_enabled: boolean;
+  /** How far the shop delivers, in metres. 10000 = 10 km. */
+  delivery_radius_m: number;
+  express_enabled: boolean;
+  /** Express is only promised inside this radius, in metres. */
+  express_radius_m: number;
+  /** The express promise shown to the customer, in minutes. */
+  express_eta_minutes: number;
+  /** Extra fee for express, in paise. Added after the free-delivery rule. */
+  express_fee_paise: number;
+  /** Largest basket (sum of quantities) still promised in express time. */
+  express_max_units: number;
 };
 
 export type Order = {
@@ -305,6 +368,39 @@ export type Order = {
   failure_reason: FailureReason | null;
   /** The rider's own words, for the owner. Not shown to the customer. */
   failure_note: string | null;
+  /**
+   * Why the SHOP cancelled this order on the customer's behalf. NULL for every
+   * order the customer cancelled themselves, and never changed once written.
+   * Migration 20261109000005.
+   */
+  cancellation_reason: string | null;
+  /**
+   * `INV/<financial year>/<6-digit serial>`, assigned once on insert by a
+   * trigger in IST and never rewritten (migration 20261112000001). The number
+   * on the document the customer keeps.
+   */
+  invoice_number: string | null;
+  /** Two-digit state code of the supply, copied from the shop. */
+  place_of_supply_state_code: string | null;
+  /** True when the delivery state matches the shop's: CGST+SGST, not IGST. */
+  is_intra_state: boolean;
+  /** The reference the shop recorded when an online payment arrived. */
+  payment_reference: string | null;
+  /**
+   * Which gateway holds the money: NULL (cash, or no gateway connected) or
+   * 'razorpay'. Written by `set_order_payment_intent()` — never by the app.
+   */
+  payment_provider: string | null;
+  /**
+   * The gateway's own order id (`order_XXX`) for THIS order. One per order: a
+   * second, different id would mean two payable objects for one basket.
+   * Migration 20261112000006.
+   */
+  payment_provider_order_id: string | null;
+  /** True when the customer paid for the 30-minute promise. */
+  is_express: boolean;
+  /** The delivery estimate promised at checkout, in minutes. */
+  eta_minutes: number | null;
   placed_at: string;
   /** When the shop promised this would arrive, from the zone's ETA. */
   estimated_delivery_at: string | null;
@@ -324,6 +420,10 @@ export type OrderItem = {
   price_paise: number;
   quantity: number;
   line_total_paise: number;
+  /** The product's rate at the moment of sale, frozen by trigger. */
+  gst_rate_bp: number;
+  /** The product's HSN at the moment of sale. Null when not recorded. */
+  hsn_code: string | null;
 };
 
 /**
@@ -379,7 +479,21 @@ export type PlaceOrderError =
   | 'coupon_not_started'
   | 'coupon_expired'
   | 'coupon_used_up'
-  | 'coupon_min_order';
+  // This customer has already used the code `per_customer_limit` times
+  // (migration 20261109000004). Cancelled orders do not count.
+  | 'coupon_per_customer_limit'
+  | 'coupon_min_order'
+  // The door is outside the radius the shop delivers to, and both pins exist so
+  // the distance is known (migration 20261112000004). The refusal carries
+  // `distance_m` and `radius_m` so the app can say how far and how far it
+  // delivers.
+  | 'outside_delivery_radius'
+  // Express was asked for where it cannot be promised: too far, no pin, the
+  // basket is too big, or the shop has switched it off.
+  | 'express_not_available'
+  | 'invalid_payment_method'
+  // The shop has not connected a way to collect online money yet.
+  | 'online_payment_unavailable';
 
 /** A coupon the checkout screen can show before the order is placed. */
 export type CouponValidationResult =
@@ -402,6 +516,10 @@ export type ActiveOffer = {
   description_en: string | null;
   description_kn: string | null;
   min_order_paise: number;
+  /** NULL means no shop-wide cap. Migration 20261109000006. */
+  usage_limit: number | null;
+  /** NULL means no per-person cap. Migration 20261109000004. */
+  per_customer_limit: number | null;
 };
 
 /**
@@ -418,6 +536,12 @@ export type UnavailableItem = {
   reason: 'unavailable' | 'insufficient_stock';
 };
 
+export type ExpressRefusalReason =
+  | 'disabled'
+  | 'no_location'
+  | 'too_far'
+  | 'too_many_items';
+
 export type PlaceOrderResult =
   | {
       ok: true;
@@ -428,6 +552,14 @@ export type PlaceOrderResult =
       discount_paise?: number;
       coupon_code?: string | null;
       total_paise: number;
+      /** What the order was actually written as. */
+      payment_method?: PaymentMethod;
+      is_express?: boolean;
+      /** The express fee contained in `delivery_fee_paise`, when express. */
+      express_fee_paise?: number;
+      eta_minutes?: number | null;
+      /** The measured distance to the door, when both pins existed. */
+      distance_m?: number | null;
       /** True when this exact request had already been placed. */
       replayed: boolean;
     }
@@ -440,7 +572,141 @@ export type PlaceOrderResult =
       /** Smallest basket this COUPON accepts. */
       min_order_paise?: number;
       subtotal_paise?: number;
+      /** Why express was refused: disabled, no_location, too_far, too_many_items. */
+      reason?: ExpressRefusalReason;
+      /** On `outside_delivery_radius` and `too_far`: the measured distance. */
+      distance_m?: number;
+      /** On `outside_delivery_radius`: how far the shop delivers. */
+      radius_m?: number;
+      /** On `too_far`: the express circle. */
+      express_radius_m?: number;
+      /** On `too_many_items`: the basket and the cap. */
+      units?: number;
+      max_units?: number;
     };
+
+/**
+ * One line of an invoice, as `order_invoice()` computes it. The tax figures are
+ * derived in the database from an MRP-inclusive price, so they always satisfy
+ * `taxable_paise + tax_paise = net_paise` and the nets add up to the total.
+ */
+export type InvoiceLine = {
+  name_en: string;
+  name_kn: string;
+  hsn_code: string | null;
+  unit: string;
+  quantity: number;
+  price_paise: number;
+  line_total_paise: number;
+  /** This line's share of the order's coupon discount. */
+  discount_paise: number;
+  net_paise: number;
+  gst_rate_bp: number;
+  taxable_paise: number;
+  tax_paise: number;
+};
+
+export type InvoiceTotals = {
+  subtotal_paise: number;
+  discount_paise: number;
+  /** Taxable value of the goods AND the delivery line. */
+  taxable_paise: number;
+  cgst_paise: number;
+  sgst_paise: number;
+  igst_paise: number;
+  tax_paise: number;
+  total_paise: number;
+  round_off_paise: number;
+};
+
+/**
+ * The whole document from `order_invoice()` (migration 20261112000001).
+ *
+ * `is_tax_invoice` is false when the shop has no GSTIN: an unregistered shop
+ * issues a bill of supply, and printing CGST on it would be a false document.
+ * The app renders whatever this says and never recomputes a tax figure.
+ */
+export type Invoice = {
+  ok: true;
+  invoice_number: string;
+  order_number: string;
+  order_id: string;
+  placed_at: string;
+  order_status: OrderStatus;
+  is_tax_invoice: boolean;
+  is_intra_state: boolean;
+  place_of_supply_state_code: string | null;
+  seller: {
+    name: string;
+    address_line: string | null;
+    city: string | null;
+    phone: string | null;
+    gstin: string | null;
+    fssai_number: string | null;
+    state_code: string | null;
+  };
+  buyer: {
+    full_name: string | null;
+    phone: string | null;
+    line1: string | null;
+    line2: string | null;
+    landmark: string | null;
+    city: string | null;
+    state: string | null;
+    pincode: string | null;
+  };
+  payment_method: PaymentMethod;
+  payment_status: PaymentStatus;
+  payment_reference: string | null;
+  is_express: boolean;
+  lines: InvoiceLine[];
+  delivery: {
+    fee_paise: number;
+    taxable_paise: number;
+    tax_paise: number;
+    gst_rate_bp: number;
+  };
+  totals: InvoiceTotals;
+  notes: string | null;
+};
+
+export type InvoiceResult = Invoice | { ok: false; error: 'not_logged_in' | 'not_found' };
+
+/**
+ * What the checkout is allowed to say BEFORE an order is placed, from
+ * `delivery_quote()` (migration 20261112000004). Read-only and about the
+ * caller's own address only.
+ *
+ * `has_fix` false means one of the two pins is missing. The screen then says
+ * the distance is not known and falls back to the pincode rule — it never
+ * invents a distance or a confident "eligible".
+ */
+export type DeliveryQuote =
+  | {
+      ok: true;
+      has_fix: boolean;
+      distance_m: number | null;
+      radius_m: number;
+      /** Null when `has_fix` is false: unknown, not "no". */
+      within_radius: boolean | null;
+      express_available: boolean;
+      express_reason: ExpressRefusalReason | null;
+      express_eta_minutes: number;
+      express_fee_paise: number;
+      express_radius_m: number;
+      express_max_units: number;
+    }
+  | { ok: false; error: 'not_logged_in' | 'address_not_found' | 'store_not_found' };
+
+/**
+ * The two rows `update_delivery_settings()` returns: the settings as stored and
+ * the store (whose pin it may have moved). The screen shows what the database
+ * holds, never what it hoped it wrote.
+ */
+export type DeliverySettingsResult = {
+  settings: StoreSettings;
+  store: Store;
+};
 
 export type CancelOrderResult =
   | { ok: true; order_id: string; order_number: string }
@@ -681,8 +947,78 @@ export type Database = {
           p_idempotency_key: string;
           p_note?: string | null;
           p_coupon_code?: string | null;
+          /** Refused unless the shop has switched online payments on. */
+          p_payment_method?: PaymentMethod;
+          /** The 30-minute promise. Refused with a reason when it cannot be kept. */
+          p_express?: boolean;
         };
         Returns: PlaceOrderResult;
+      };
+      /**
+       * The one GST arithmetic in the system. Renders the order as an invoice:
+       * lines with tax extracted from the inclusive price, the coupon allocated
+       * proportionally, CGST+SGST or IGST, and the grand total. Answers the
+       * order's owner or staff only; everybody else gets `not_found`.
+       */
+      order_invoice: {
+        Args: { p_order_id: string };
+        Returns: InvoiceResult;
+      };
+      /**
+       * Distance and express eligibility for one of the caller's own addresses,
+       * before anything is written. Says `has_fix = false` rather than guessing
+       * when a pin is missing.
+       */
+      delivery_quote: {
+        Args: {
+          p_store_id: string;
+          p_address_id: string;
+          p_units?: number | null;
+        };
+        Returns: DeliveryQuote;
+      };
+      /**
+       * Admin-only: the delivery radius, the express promise and the shop pin,
+       * in one transaction. A null means "leave alone". Bounds are checked with
+       * messages the owner can act on; a non-admin raises 42501 rather than
+       * matching zero rows.
+       */
+      update_delivery_settings: {
+        Args: {
+          p_delivery_radius_m?: number | null;
+          p_express_enabled?: boolean | null;
+          p_express_radius_m?: number | null;
+          p_express_eta_minutes?: number | null;
+          p_express_fee_paise?: number | null;
+          p_express_max_units?: number | null;
+          p_lat?: number | null;
+          p_lng?: number | null;
+          p_clear_location?: boolean;
+        };
+        Returns: DeliverySettingsResult;
+      };
+      /**
+       * Admin-only: one product's GST rate and HSN. Separate from the daily
+       * shelf edit because a rate is a once-a-year classification, and because
+       * adding parameters to a function with defaults creates an ambiguous
+       * overload. Raises instead of matching zero rows.
+       */
+      set_product_gst: {
+        Args: {
+          p_product_id: string;
+          p_gst_rate_bp: GstRateBp;
+          p_hsn_code?: string | null;
+        };
+        Returns: Product;
+      };
+      /**
+       * Admin-only: record that an online payment arrived, with its reference.
+       * Refuses cash orders and closed orders; a second call returns the stored
+       * row unchanged rather than writing twice.
+       */
+      mark_online_payment_paid: {
+        Args: { p_order_id: string; p_reference: string };
+        Returns: Order;
       };
       cancel_order: {
         Args: { p_order_id: string };
@@ -816,6 +1152,62 @@ export type Database = {
         Returns: Profile;
       };
       /**
+       * Open or close the active shop. Takes no store id: the server picks the
+       * active shop, so a client cannot close somebody else's. Returns the row
+       * as stored, and raises 42501 for a non-admin instead of the silent
+       * zero-row no-op a plain `.update()` would produce.
+       */
+      set_shop_open: {
+        Args: { p_is_open: boolean };
+        Returns: StoreSettings;
+      };
+      /**
+       * The owner confirms a rider handed over the cash for a delivered COD
+       * order. A repeat call returns the row unchanged; a wrong state raises.
+       */
+      mark_cod_collected: {
+        Args: { p_order_id: string };
+        Returns: Order;
+      };
+      /**
+       * The owner records that a refund actually left the shop, on an
+       * online-paid order that was cancelled, failed or returned. Clears
+       * `refund_due_paise`. A repeat call returns the row unchanged.
+       */
+      mark_refund_paid: {
+        Args: { p_order_id: string };
+        Returns: Order;
+      };
+      /**
+       * The order's own customer records which gateway order will pay for this
+       * basket. One per order: the same id twice is a safe retry, a different
+       * id is refused. Never sets `payment_status`.
+       */
+      set_order_payment_intent: {
+        Args: { p_order_id: string; p_provider_order_id: string };
+        Returns: Order;
+      };
+      /**
+       * The shop cancels a live order on the customer's behalf: stock back,
+       * the reason stored, and every money column untouched. Returns the stored
+       * row. Admin-only (42501), refuses a terminal order (P0001) and an
+       * unknown one (P0002).
+       */
+      admin_cancel_order: {
+        Args: { p_order_id: string; p_reason?: string | null };
+        Returns: Order;
+      };
+      /**
+       * The shop marks a live order delivered — the case where the rider's
+       * phone never reported back. Sets `delivered_at` once and never rewrites
+       * it. An already-delivered order returns unchanged (safe to retry);
+       * cancelled/failed/returned orders are refused (P0001).
+       */
+      admin_force_complete: {
+        Args: { p_order_id: string };
+        Returns: Order;
+      };
+      /**
        * Record the caller's own position while carrying an order. Deliberately
        * takes no rider id — it acts on `auth.uid()` only, so a rider cannot
        * write a fix for somebody else. Refuses unless the caller is a delivery
@@ -834,6 +1226,21 @@ export type Database = {
           p_accuracy_m?: number | null;
         };
         Returns: Record<string, unknown>;
+      };
+      /**
+       * Service-role only (or an admin): the gateway has verified the payment,
+       * so record it. Refuses cash orders, treats a verified capture on a closed
+       * order as a refund liability rather than pretending it never happened,
+       * returns the stored row on a retry with the same reference, and raises
+       * `23505` on a second, different charge.
+       *
+       * Called only by the `razorpay-verify` / `razorpay-webhook` Edge Functions,
+       * which have already checked Razorpay's HMAC signature. Migration
+       * 20261112000006.
+       */
+      settle_online_payment: {
+        Args: { p_order_id: string; p_payment_id: string };
+        Returns: Order;
       };
       /**
        * The shop's own answers: two counts over a window (30 days by default).

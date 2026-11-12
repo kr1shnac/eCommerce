@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { supabase } from '@/lib/supabase';
-import type { PackUnit, Product, ProductSoldBy } from '@/types/database';
+import type { GstRateBp, PackUnit, Product, ProductSoldBy } from '@/types/database';
 
 /**
  * The shelf, from the counter.
@@ -110,6 +110,49 @@ export function useUpdateShelf() {
       // The cart reads prices and stock from its own key, so a price the owner
       // just changed mid-shop-window must reach a basket already holding it.
       await queryClient.invalidateQueries({ queryKey: ['cart-products'] });
+    },
+  });
+}
+
+/**
+ * One product's GST rate and HSN, from the owner's phone.
+ *
+ * WHY THIS IS A SEPARATE CALL FROM THE SHELF SAVE
+ *
+ * A rate is a once-a-year classification, not a number that changes with the
+ * morning's stock. `set_product_gst()` is its own admin-only function
+ * (migration 20261112000001) because adding parameters to
+ * `update_product_from_shop()` would have created an ambiguous overload against
+ * the version already in use — and because a tax rate deserves a deliberate
+ * second step, not a slip of the thumb next to the price.
+ *
+ * The rate is BASIS POINTS (0, 500, 1200, 1800, 2800), never a percentage and
+ * never a rupee amount. The shelf price already includes it; the invoice
+ * extracts it.
+ */
+export function useSetProductGst() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      productId: string;
+      rateBp: GstRateBp;
+      hsnCode: string | null;
+    }): Promise<Product> => {
+      const { data, error } = await supabase.rpc('set_product_gst', {
+        p_product_id: input.productId,
+        p_gst_rate_bp: input.rateBp,
+        p_hsn_code: input.hsnCode,
+      });
+      if (error) throw error;
+      return data as unknown as Product;
+    },
+    onSuccess: async (product) => {
+      // The customer never sees the rate, but the invoice does — and the
+      // product screen reads the same row.
+      await queryClient.invalidateQueries({ queryKey: ['shelf'] });
+      await queryClient.invalidateQueries({ queryKey: ['product', product.id] });
+      await queryClient.invalidateQueries({ queryKey: ['products'] });
     },
   });
 }

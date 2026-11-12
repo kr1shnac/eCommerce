@@ -35,6 +35,8 @@ export type CouponDraft = {
   isActive: boolean;
   /** NULL means unlimited uses. */
   usageLimit: number | null;
+  /** NULL means no per-person cap. Migration 20261109000004. */
+  perCustomerLimit: number | null;
   descriptionEn: string;
   descriptionKn: string;
 };
@@ -68,6 +70,7 @@ function toColumns(draft: Omit<CouponDraft, 'storeId'>) {
     min_order_paise: draft.minOrderPaise,
     is_active: draft.isActive,
     usage_limit: draft.usageLimit,
+    per_customer_limit: draft.perCustomerLimit,
     description_en: draft.descriptionEn.trim() || null,
     description_kn: draft.descriptionKn.trim() || null,
   };

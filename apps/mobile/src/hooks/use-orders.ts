@@ -8,8 +8,10 @@ import type {
   CancelOrderResult,
   CouponValidationResult,
   DeliveryCodeResult,
+  ExpressRefusalReason,
   Order,
   OrderItem,
+  PaymentMethod,
   PlaceOrderError as PlaceOrderErrorCode,
   PlaceOrderResult,
   UnavailableItem,
@@ -27,6 +29,14 @@ export class PlaceOrderRejected extends Error {
   readonly minOrderPaise: number | null;
   /** Smallest basket the applied COUPON accepts, when it is the reason. */
   readonly couponMinOrderPaise: number | null;
+  /** On `outside_delivery_radius`: the measured distance and the shop's radius. */
+  readonly distanceM: number | null;
+  readonly radiusM: number | null;
+  /** On `express_not_available`: why, and the numbers that explain it. */
+  readonly expressReason: ExpressRefusalReason | null;
+  readonly expressRadiusM: number | null;
+  readonly units: number | null;
+  readonly maxUnits: number | null;
 
   constructor(result: Extract<PlaceOrderResult, { ok: false }>) {
     super(result.error);
@@ -35,6 +45,12 @@ export class PlaceOrderRejected extends Error {
     this.items = result.items ?? [];
     this.minOrderPaise = result.min_order_value_paise ?? null;
     this.couponMinOrderPaise = result.min_order_paise ?? null;
+    this.distanceM = result.distance_m ?? null;
+    this.radiusM = result.radius_m ?? null;
+    this.expressReason = result.reason ?? null;
+    this.expressRadiusM = result.express_radius_m ?? null;
+    this.units = result.units ?? null;
+    this.maxUnits = result.max_units ?? null;
   }
 }
 
@@ -273,6 +289,10 @@ export function usePlaceOrder() {
       note: string | null;
       idempotencyKey: string;
       couponCode?: string | null;
+      /** The method the customer picked. The database refuses one it cannot collect. */
+      paymentMethod?: PaymentMethod;
+      /** The 30-minute promise, only when the quote said it was available. */
+      express?: boolean;
     }): Promise<Extract<PlaceOrderResult, { ok: true }>> => {
       const items = Object.entries(useCartStore.getState().items).map(([product_id, quantity]) => ({
         product_id,
@@ -287,6 +307,9 @@ export function usePlaceOrder() {
         p_note: input.note,
         // The code only. The discount comes back from the database.
         p_coupon_code: input.couponCode ?? null,
+        // Both are re-checked server-side; sending them only states the intent.
+        p_payment_method: input.paymentMethod ?? 'cod',
+        p_express: input.express ?? false,
       });
 
       if (error) throw error;
@@ -320,6 +343,115 @@ export function useCancelOrder() {
       await queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
       // Cancelling puts stock back on the shelf, so the catalogue is stale too.
       await queryClient.invalidateQueries({ queryKey: ['cart-products'] });
+    },
+  });
+}
+
+/**
+ * The owner settles the day's cash: a rider handed over the COD money.
+ *
+ * The write goes through `mark_cod_collected()` because the two things that
+ * matter are checked by the database, not the phone: the order must be a
+ * DELIVERED COD order, and a second tap must not count the same bundle twice.
+ * The mutation invalidates the order AND the shop totals, so "cash in hand"
+ * and "cash collected" move on the Today tab without a manual refresh.
+ */
+export function useMarkCodCollected() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const { data, error } = await supabase.rpc('mark_cod_collected', { p_order_id: orderId });
+      if (error) throw error;
+      if (!data) throw new Error('bad-mark-cod-response');
+      return data;
+    },
+    onSuccess: async (_order, orderId) => {
+      await queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
+      await queryClient.invalidateQueries({ queryKey: orderKeys.list });
+      await queryClient.invalidateQueries({ queryKey: ['shop', 'totals'] });
+    },
+  });
+}
+
+/**
+ * The owner records that a refund actually left the shop.
+ *
+ * `mark_refund_paid()` only accepts an online-paid order that was cancelled,
+ * failed or returned — exactly the set `refund_due_paise` counts — so the button
+ * and the liability can never disagree. Invalidating the order and the totals
+ * clears the customer's refund card and the owner's Today figure together.
+ */
+export function useMarkRefundPaid() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const { data, error } = await supabase.rpc('mark_refund_paid', { p_order_id: orderId });
+      if (error) throw error;
+      if (!data) throw new Error('bad-mark-refund-response');
+      return data;
+    },
+    onSuccess: async (_order, orderId) => {
+      await queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
+      await queryClient.invalidateQueries({ queryKey: orderKeys.list });
+      await queryClient.invalidateQueries({ queryKey: ['shop', 'totals'] });
+    },
+  });
+}
+
+/**
+ * The owner cancels an order for a customer who asked by phone.
+ *
+ * Cancelling puts the stock back, so the catalogue and the shop totals both
+ * move. The reason is optional and travels with the order — the customer sees
+ * why their order stopped, which is the difference between "cancelled" and
+ * "cancelled, because your brother already brought the milk".
+ */
+export function useAdminCancelOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: { orderId: string; reason?: string | null }) => {
+      const { data, error } = await supabase.rpc('admin_cancel_order', {
+        p_order_id: input.orderId,
+        p_reason: input.reason ?? null,
+      });
+      if (error) throw error;
+      if (!data) throw new Error('bad-admin-cancel-response');
+      return data;
+    },
+    onSuccess: async (_order, input) => {
+      // Stock went back on the shelf, so the catalogue is stale too.
+      await queryClient.invalidateQueries({ queryKey: orderKeys.detail(input.orderId) });
+      await queryClient.invalidateQueries({ queryKey: orderKeys.list });
+      await queryClient.invalidateQueries({ queryKey: ['cart-products'] });
+      await queryClient.invalidateQueries({ queryKey: ['shop', 'totals'] });
+    },
+  });
+}
+
+/**
+ * The owner marks an order delivered when the rider's phone never reported back.
+ *
+ * Deliberately does NOT touch `payment_status`: for a COD order the money is
+ * still "in the rider's pocket" until somebody hands it over and the money desk
+ * records it. A status change must not quietly claim cash nobody counted.
+ */
+export function useAdminForceComplete() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (orderId: string) => {
+      const { data, error } = await supabase.rpc('admin_force_complete', { p_order_id: orderId });
+      if (error) throw error;
+      if (!data) throw new Error('bad-force-complete-response');
+      return data;
+    },
+    onSuccess: async (_order, orderId) => {
+      await queryClient.invalidateQueries({ queryKey: orderKeys.detail(orderId) });
+      await queryClient.invalidateQueries({ queryKey: orderKeys.list });
+      await queryClient.invalidateQueries({ queryKey: ['shop', 'totals'] });
     },
   });
 }
@@ -361,7 +493,9 @@ export function useValidateCoupon() {
 
 /**
  * The codes on offer right now, for the Home rail. Safe signed out: it exposes
- * only the marketing wording, never usage counts.
+ * only the marketing wording and the SHAPE of the limits (is there a cap, how
+ * many), never how many uses have already happened. A rail that hides its own
+ * scope makes the customer discover the refusal at checkout.
  */
 export function useActiveOffers(storeId: string | null) {
   return useQuery<ActiveOffer[]>({
