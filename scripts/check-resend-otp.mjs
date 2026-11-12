@@ -49,11 +49,16 @@ console.log('=== 1. the resend door exists, and only where it is wanted ===');
 check('the screen declares a resend cooldown constant', has(/RESEND_SECONDS\s*=\s*\d+/, screen));
 check(
   'the resend handler calls the same send the phone step uses',
-  has(/onResendCode[\s\S]{0,600}?sendCode\(phone\)/, screen),
+  // Both paths must go through the same send, token and all: Supabase demands a
+  // token on a resend exactly as on the first send.
+  has(/onResendCode[\s\S]{0,900}?sendCode\(phone, captchaToken/, screen),
 );
 check(
   'sending a code starts the cooldown',
-  has(/await sendCode\(normalised\);[\s\S]{0,400}?setResendIn\(RESEND_SECONDS\)/, screen),
+  has(
+    /await sendCode\(normalised, captchaToken \?\? undefined\);[\s\S]{0,400}?setResendIn\(RESEND_SECONDS\)/,
+    screen,
+  ),
 );
 check(
   'the button only renders on the code step',
