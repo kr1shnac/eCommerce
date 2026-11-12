@@ -259,6 +259,11 @@
       "offline": "No network right now. Check your connection and try again."
     },
     "trouble": "Code not coming? Call the shop and we will help you.",
+    "captcha": {
+      "notReady": "Checking that you are a person. One moment.",
+      "stale": "The check went stale. Send it again.",
+      "failed": "The check did not load. Check your connection and try again — or call the shop and we will sign you in."
+    },
     "review": {
       "title": "App reviewer access",
       "hint": "For store review. Sign in to look through the app; orders are sample data.",

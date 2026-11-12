@@ -15,12 +15,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { OfflineBanner } from '@/components/offline-banner';
 import { CallShop } from '@/components/call-shop';
+import { CaptchaGate } from '@/components/captcha-gate';
 import { DemoAccounts } from '@/components/demo-accounts';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { kannadaInputFont } from '@/constants/fonts';
 import { Radii, Spacing } from '@/constants/theme';
+import { useCaptchaToken } from '@/hooks/use-captcha-token';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/supabase';
 import { useAuthStore } from '@/store/auth-store';
@@ -44,6 +46,12 @@ type AuthErrorKey =
   | 'notEnabled'
   | 'offline'
   | 'generic';
+
+/**
+ * The three ways the gate can stop a sign-in, in the customer's words. Each is
+ * a translation key; `check-captcha` proves all three exist in both languages.
+ */
+type CaptchaErrorKey = 'notReady' | 'stale' | 'failed';
 
 function authErrorKey(message: string): AuthErrorKey {
   const text = message.toLowerCase();
@@ -130,6 +138,13 @@ export default function LoginScreen() {
   const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorKey, setErrorKey] = useState<AuthErrorKey | null>(null);
+  /**
+   * The captcha gate. Its failure is a DIFFERENT kind of error from the auth
+   * ones: "the check did not load" is something the customer can retry in a
+   * moment, while "invalid code" is not. So it gets its own key and its own box.
+   */
+  const captcha = useCaptchaToken();
+  const [captchaKey, setCaptchaKey] = useState<CaptchaErrorKey | null>(null);
   /** Seconds until the resend button wakes up. 0 means "tap me". */
   const [resendIn, setResendIn] = useState(0);
 
@@ -145,6 +160,28 @@ export default function LoginScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session]);
 
+  /**
+   * Spend the gate, or explain why not. Returns the token to send, or null when
+   * the request must not be made.
+   *
+   * This is the function that makes the gate worth building: every OTP call —
+   * first send, resend, verify — goes through it, and it refuses to return
+   * because a token is missing rather than letting the server refuse the
+   * customer in words they cannot act on.
+   */
+  const spendGate = async (): Promise<string | null> => {
+    if (!captcha.enabled) return null;
+    try {
+      const fresh = await captcha.requestFresh();
+      setCaptchaKey(null);
+      return fresh.token;
+    } catch (error) {
+      console.warn('[auth] the captcha check did not produce a token', error);
+      setCaptchaKey('failed');
+      return null;
+    }
+  };
+
   const onSendCode = async () => {
     if (busy) return;
     const normalised = normalisePhone(phoneInput);
@@ -155,8 +192,16 @@ export default function LoginScreen() {
 
     setBusy(true);
     setErrorKey(null);
+    setCaptchaKey(null);
     try {
-      await sendCode(normalised);
+      const captchaToken = await spendGate();
+      // The gate could not answer. The SMS has NOT been sent, so the customer is
+      // told why in one line instead of handed a server refusal.
+      if (captchaToken === null && captcha.enabled) {
+        setBusy(false);
+        return;
+      }
+      await sendCode(normalised, captchaToken ?? undefined);
       setPhone(normalised);
       setStep('code');
       setResendIn(RESEND_SECONDS);
@@ -184,8 +229,14 @@ export default function LoginScreen() {
 
     setBusy(true);
     setErrorKey(null);
+    setCaptchaKey(null);
     try {
-      await sendCode(phone);
+      const captchaToken = await spendGate();
+      if (captchaToken === null && captcha.enabled) {
+        setBusy(false);
+        return;
+      }
+      await sendCode(phone, captchaToken ?? undefined);
       setResendIn(RESEND_SECONDS);
     } catch (error) {
       console.warn('[auth] could not resend the code', error);
@@ -210,8 +261,14 @@ export default function LoginScreen() {
 
     setBusy(true);
     setErrorKey(null);
+    setCaptchaKey(null);
     try {
-      await verifyCode(phone, code.trim());
+      const captchaToken = await spendGate();
+      if (captchaToken === null && captcha.enabled) {
+        setBusy(false);
+        return;
+      }
+      await verifyCode(phone, code.trim(), captchaToken ?? undefined);
       finish();
     } catch (error) {
       console.warn('[auth] could not verify the code', error);
@@ -315,6 +372,17 @@ export default function LoginScreen() {
             </View>
           ) : null}
 
+          {/* The captcha's own failure, separate from the auth errors because it
+              is the one thing on this screen the customer can simply retry. */}
+          {captchaKey ? (
+            <View style={styles.errorRow}>
+              <Ionicons name="shield-checkmark-outline" size={16} color={theme.danger} />
+              <ThemedText type="small" style={[styles.errorText, { color: theme.danger }]}>
+                {t(`auth.captcha.${captchaKey}`)}
+              </ThemedText>
+            </View>
+          ) : null}
+
           {!isSupabaseConfigured ? (
             <View style={styles.errorRow}>
               <Ionicons name="alert-circle-outline" size={16} color={theme.danger} />
@@ -396,6 +464,18 @@ export default function LoginScreen() {
             </View>
           </View>
         ) : null}
+
+        {/*
+          The captcha widget. Mounted on BOTH steps, because it needs a moment
+          to wake up and a customer should never be held at a "waiting for the
+          check" step. It renders nothing at all when no site key is configured,
+          which is why a shop without one sees no difference.
+        */}
+        <CaptchaGate
+          onToken={captcha.onToken}
+          onFailure={captcha.onFailure}
+          controlsRef={captcha.controlsRef}
+        />
 
       </ScrollView>
     </KeyboardAvoidingView>
