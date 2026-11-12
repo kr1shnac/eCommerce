@@ -6,6 +6,129 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-12 (fourth session) — the CAPTCHA gate on the OTP endpoint, and two migrations that were not where the docs said
+
+The one launch blocker that was mine rather than the owner's, and the git
+housekeeping that had to come before it.
+
+*Written last, one thing at a time: this session destroyed the whole build log
+twice by writing a file instead of prepending to it, and restored it twice from
+`git checkout HEAD -- CHANGELOG.md`. The log is intact (59 entries, verified by
+entry count and length); the method was wrong, not the outcome. Never `write` a
+file this size — see AGENTS.md §3.*
+
+### 1. The work is committed, for the first time in three sessions
+
+77 changed and untracked paths, last commit `a457112`. Six focused commits:
+
+| Commit | What |
+| --- | --- |
+| `30fc488` | Schema: GST, five methods, radius, Razorpay settlement + tests 36–39 |
+| `e89de85` | The three Edge functions |
+| `d6fa593` | App layer: payments, geo, invoice, owner panels |
+| `8ec8563` | Screens: pay any method, PDF invoice, owner tabs |
+| `126efb2` | Gates: `check:payments`, CI bundle job |
+| `e85a5c2` | Docs: the third session's log and `PRODUCTION.md` §15 |
+
+Two already-applied migrations showed as modified before I committed them, and I
+stopped to read them rather than committing blind. Both were the documented
+2026-11-09 hosting fixes: `20261003000001` split so `postgres` is not asked to
+own `storage.objects`, and `20261021000001` split so the CLI does not hit
+PostgreSQL's "unsafe use of new value of enum type" (`55P04`). Each carries an
+in-file note explaining why, and `npm run test:db` re-proves both nightly. The
+append-only rule is not broken by carrying content into a *new* file.
+
+### 2. The hosted project was two migrations behind, and is not now
+
+`20261112000006_razorpay.sql` and `20261112000007_refund_due_methods.sql` were
+written, proved locally, and local-only. Pushed with the owner's approval
+(`npx supabase db push --remote --yes`). `npm run check:hosted` now reports
+**45 applied, 0 missing**, with 5 having no REST-visible object (RLS,
+publication and index files, proved by `test:db` instead).
+
+The functions are deliberately **not** deployed. A gateway nobody has tested is
+the risk to avoid; the schema being level means the day keys arrive is one flag,
+not a migration.
+
+### 3. The CAPTCHA gate on the OTP endpoint
+
+`scripts/check-captcha.mjs` is now the 22nd check in the lint chain. It fails the
+build unless:
+
+- all three OTP paths — first send, resend, verify — pass a token. **The resend
+  path is the one that is usually missed**: Supabase demands a token there too,
+  so a login that works on the first tap and dies on the resend is exactly the
+  bug this catches;
+- no captcha secret appears anywhere in the app. The SITE key is public by
+  design (`EXPO_PUBLIC_`, in the shipped bundle, like the Supabase publishable
+  key); the *secret* goes only in the Supabase dashboard;
+- the site key comes from `process.env`, never a literal, so a test key cannot
+  be copy-pasted into a release build;
+- a stale token is refused rather than sent — `captchaTokenIsFresh` gates
+  `captchaOptions`, and the screen never calls without one;
+- both locales carry all three sentences;
+- the widget renders nothing when no key is configured — an empty widget is a
+  spinner that never resolves.
+
+**The decision that makes it work at all:** a token is single-use and expires in
+five minutes. One token fetched at mount does not protect a customer who read
+the screen for four minutes — by the time they tap *Send code* it is stale and
+the request is refused for a reason they cannot understand. So
+`useCaptchaToken().requestFresh()` *spends* the held token and waits for a fresh
+one, which is why the gate returns a promise rather than a value. Twelve seconds
+is the ceiling; a login screen that spins forever is worse than one that says
+the check did not load.
+
+**Widget:** `react-native-webview` 13.16.1 (via `npx expo install`), mounted
+ONE PIXEL and hidden from screen readers. One pixel and not zero, because a
+zero-height WebView is treated as not-visible by some builds and the script then
+never runs. `appearance: 'interaction-only'`, so a customer Cloudflare can
+identify without a puzzle never sees one — the only way a captcha is acceptable
+to somebody buying salt.
+
+### 4. Bugs found while building it
+
+- The first draft of `requestFresh` set the waiter twice and left a timer that
+  could fire after the promise had resolved. Caught on re-read, before it ran.
+- The first draft of `captcha-gate.tsx` defined `reset` and gave the screen no
+  way to reach it. Then the second draft wrote `controlsRef.current` during
+  render, which React's rules forbid and eslint caught.
+- **My own `check-captcha` was wrong twice before it was right.** It first
+  reported a missing `verifyCode` token that was present — the regex could not
+  cross the `)` in `code.trim()`. Then it counted `sendCode(` three times
+  because `onSendCode(` and `onResendCode(` also match. A check that fails while
+  seeing a call that does not exist is worse than no check at all; both are now
+  function-scoped. **That is exactly why the check was worth running rather than
+  writing.**
+- `check-resend-otp.mjs` then failed on two assertions searching for the literal
+  `sendCode(phone)` — the signature I had just changed. The behaviour was
+  correct, so the check was updated to assert the same behaviour through the new
+  call, including that the resend path carries the token.
+
+### 5. Gates, and what each one actually proved
+
+- `npm run typecheck` — clean, both apps.
+- `npm run lint` — 0 errors, 0 warnings, **22 chained checks** (was 21).
+- `npm run test:db` — 1000 assertions, 0 failed, unchanged by this session.
+- `expo export --platform web` — exit 0, 25 routes, `react-native-webview`
+  bundled for web without disturbing the entry graph.
+
+### 6. Open gaps — the honest ones
+
+- **The widget has never rendered.** It needs a Cloudflare Turnstile site key
+  and a device. What is proved is the wiring and the rules; what is not proved
+  is that Cloudflare's script runs inside the WebView on a phone.
+- **The dashboard switch must come second.** If `enable_captcha_protection` is
+  turned on before the app can send a token, GoTrue refuses every code request
+  and **nobody can sign in — customers included.** `.env.example` and
+  `PRODUCTION.md` §16 both say so, in that order.
+- No SMS provider, so the bill the gate protects against is not yet real.
+- No EAS build, no device run.
+- The three test phone numbers and the six demo products are still on the hosted
+  project; both come off before launch.
+
+---
+
 ## 2026-11-12 (second session) — GST bills, real payment choices, and a 10 km circle the owner controls
 
 The owner's list was: GST invoices with correct tax, several payment methods,

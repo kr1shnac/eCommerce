@@ -1182,7 +1182,7 @@ works is a customer placing an order nobody can settle.
 
 ---
 
-## 15a. Changelog of this file
+## 17. What would change this plan
 
 - A real device run of the full order flow in Kannada.
 - A funded SMS provider plus one successful real OTP sign-in.
@@ -1196,9 +1196,61 @@ proves the product works.
 
 ---
 
+## 16. Turning the CAPTCHA gate on (the owner's half, and it must come second)
+
+`scripts/check-captcha.mjs` proves the **app-side** gate: a fresh token on every
+OTP path, no secret in the shipped code, both languages. The other half lives in
+the Supabase dashboard, and the order is not negotiable.
+
+**Step 1 — the site key (app side, safe on its own).**
+
+1. Cloudflare dashboard → **Turnstile** → *Add site*. The app has no web origin —
+   the SDK is embedded in a WebView — so leave the hostnames permissive and rely
+   on Cloudflare's risk score rather than a domain list.
+2. Copy the **Site Key** into `apps/mobile/.env`:
+   ```
+   EXPO_PUBLIC_CAPTCHA_SITE_KEY=0x...
+   ```
+3. Restart with `npm run mobile -- -c`. Env vars are inlined at bundle time, so
+   the Metro cache has to go.
+
+With no site key the app behaves exactly as before, so this step alone changes
+nothing a customer can see. That is deliberate: it is the step you can take with
+no risk at all.
+
+**Step 2 — the secret (dashboard side, locks the door).**
+
+Authentication → **Providers** → **Phone** → *Enable CAPTCHA protection*, and
+paste the **Secret Key** from the same Turnstile site.
+
+**Why the order matters.** Once that second switch is on, GoTrue *demands* a
+token on every OTP request. Turning it on before the app can send one makes
+GoTrue refuse every request — so **every customer is locked out, not only the
+script the gate was built to stop.** Supabase's own docs say to do it in this
+order; this is the reason.
+
+**How to check it worked.** Sign in on a device, confirm the code arrives, and
+confirm **resend** also works. The resend path carries its own token and it is
+the one a half-wired gate drops.
+
+**How to undo it, fast.** Untick *Enable CAPTCHA protection*. The app-side site
+key staying set is harmless, so this is a one-click rollback that needs no build.
+
+---
+
 ## 15a. Changelog of this file
 
-- **2026-11-12 (third)** — **Razorpay is built and dark.** Three Edge Functions
+- **2026-11-12 (fourth)** — **The CAPTCHA gate, and the commit that should have
+  happened two sessions earlier.** 77 paths were committed for the first time in
+  six focused commits, and the two Razorpay-era migrations were pushed to the
+  hosted project (`check:hosted`: 45 applied, 0 missing). `check:captcha` is the
+  22nd lint check and proves the app side of the OTP gate: a fresh token on all
+  three paths, no secret in the shipped code, stale tokens refused, both
+  languages. §16 is the owner's half and records the one thing that must not be
+  got wrong — enabling the dashboard switch before the site key exists locks
+  every customer out, not just the attackers. Two **real** bugs were found in my
+  *own* check before it was right: a regex that could not cross `code.trim()`,
+  and one that counted `onSendCode(` as `sendCode(`. Three Edge Functions
   (`razorpay-order`, `razorpay-verify`, `razorpay-webhook`), migration
   `20261112000006`, test 39, `check:payments`. One payable object per basket; the
   signature is re-checked server-side before the money is recorded; the webhook

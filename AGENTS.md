@@ -140,6 +140,12 @@ two languages are written side by side, not translated one from the other.
   in the entry bundle and never runs on web. `expo-print` and `expo-sharing` are
   the same shape. A static top-level import of any of these "works" until the web
   export — or the Expo Go start — proves otherwise.
+- **Prepend to a log with `edit`, never write one with `write`.** `write`
+  replaces the whole file, so using it on `CHANGELOG.md` destroys every earlier
+  session's history in one keystroke. It has happened twice. `git checkout HEAD
+  -- <file>` is the rescue — and do NOT redirect `git show` through `>` in
+  PowerShell, which writes UTF-16 and makes it worse. Verify by counting
+  entries afterwards.
 - **Device storage goes through `src/lib/storage.ts`.** It is the only module
   that may import `@react-native-async-storage/async-storage`, because it is the
   module that decides — by `typeof window`, not by build type — whether a device
@@ -259,6 +265,7 @@ npm run check:route               # OSRM's URL order, and every malformed body r
 npm run check:saved               # the save-for-later shelf can never overlap the bag
 npm run check:metro               # the Metro resolver flag that broke the web export
 npm run check:payments            # every gateway error code has a sentence in both languages
+npm run check:captcha             # the OTP gate: token on every path, no secret in the app
 npm run test:db                   # all database tests against a throwaway PostgreSQL (Windows/macOS/Linux)
 ```
 
@@ -486,7 +493,10 @@ As of this build, the app is a working end-to-end flow on one shop:
   for the RLS/publication/index-only files. Never trust a migration count written
   in a doc; re-probe. `test:db` is the real proof of the schema (**1001
   assertions** as of 2026-11-12, third session — 957 before the Razorpay and
-  refund-rule suites). No launch step blocks *starting* any more:
+  refund-rule suites). A **CAPTCHA gate** on the OTP endpoint was built in the
+  fourth session and is proved by `check:captcha`; the dashboard half of it is
+  the owner's step and must come *after* the site key is in `.env`, or nobody
+  can sign in. No launch step blocks *starting* any more:
   sign-in works, because a phone OTP was issued and verified against the live
   project and a real session came back — the device run is unblocked. What
   remains is real SMS for real numbers (a paid provider plus India's TRAI DLT
@@ -631,10 +641,11 @@ As of this build, the app is a working end-to-end flow on one shop:
   coordinate would refuse real addresses from the wrong point, so the card says
   so on screen and the distance rule waits.
 - **Not built yet**, in the intended order: upload progress/retry states (A16),
-  push notifications, a CAPTCHA gate on the OTP endpoint, a live
+  push notifications, a live
   map / background location. The text-first rider position, the key-free OSM
-  map, and the Razorpay path above *are* built — Razorpay's **keys** are the
-  only thing missing from it, and they are owner-side.
+  map, the Razorpay path and the CAPTCHA gate above *are* built — Razorpay's
+  **keys** and the Turnstile **site key** are the only things missing, and both
+  are owner-side.
   Everything except location still runs in Expo Go; push notifications, the
   Razorpay sheet and the location screens need an EAS development build.
 - **The competitor-derived design plan is measured, not built.**

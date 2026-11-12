@@ -106,10 +106,22 @@ Paste the credentials into the same **Phone provider** screen.
 
 ## Two more things before real launch
 
-- **CAPTCHA.** Supabase's own production checklist requires it, and it is the
-  difference between a bad actor running up your SMS bill and them not being able
-  to. Turnstile (Cloudflare) is free. **This needs a code change in the app** —
-  tell me when you want it and it is a small one, but do not launch without it.
+- **CAPTCHA — now built, and this bullet is the one to read carefully.** The
+  app-side gate is done and proved (`check:captcha`): a fresh token on the send,
+  the resend and the verify, none of them skipped. **What is left is yours, and
+  the order matters more than the doing.**
+
+  1. Turnstile (Cloudflare, free) → *Add site* → copy the **Site Key** into
+     `apps/mobile/.env` as `EXPO_PUBLIC_CAPTCHA_SITE_KEY=0x...` and restart with
+     `npm run mobile -- -c`. On its own this changes nothing a customer sees,
+     which is exactly why it is safe to do first.
+  2. Only then, in Supabase: Authentication → Providers → Phone → *Enable
+     CAPTCHA protection*, and paste the **Secret Key**.
+
+  **Do not swap those two.** Once the switch is on, Supabase demands a token on
+  every code request. Switching it on before the app can send one locks out
+  **every customer**, not just the script the gate was built to stop. Full
+  detail, and the one-click undo, is `PRODUCTION.md` §16.
 - **The first sign-in.** Sign yourself up once, then set your own role:
 
   ```sql

@@ -586,10 +586,20 @@ model.
    in the Phone provider screen exactly, or the operator silently drops every
    message. Everything else is in `docs/launch/SMS-SETUP.md`.
    **Remove the three test numbers before launch.**
-3. **CAPTCHA on the OTP endpoint.** Not built. Supabase's own production
-   checklist requires it, and it is what stops the OTP endpoint being used to
-   run up an SMS bill once real SMS is live. Small app change; do not launch
-   without it.
+3. **CAPTCHA on the OTP endpoint — BUILT 2026-11-12 (fourth session), and
+   proved by `check:captcha`.** The app-side gate is complete: a fresh token per
+   attempt on all three OTP paths (send, resend, verify), the widget in a
+   one-pixel WebView, `EXPO_PUBLIC_CAPTCHA_SITE_KEY` documented, both locales
+   covered, and `scripts/check-captcha.mjs` in the lint chain.
+   **What is left is the owner's, and the ORDER MATTERS:** create the Cloudflare
+   Turnstile widget and paste its **public site key** into `.env` first; then,
+   only once that is live, tick *enable CAPTCHA protection* under
+   Authentication → Providers → Phone and paste the **secret**. Turning the
+   switch on before the app can send a token makes GoTrue refuse every code
+   request, which locks out every customer, not just the attackers. See
+   `docs/launch/SMS-SETUP.md`.
+   Not yet proved: that the widget renders on a real device — needs a site key
+   and a build.
 4. **Create the four `storage.objects` policies** in the dashboard — **DONE
    2026-11-11, and proved working** (see `docs/launch/STORAGE-POLICIES.md`). The
    dashboard wrote **six** rows because its *For full customization* flow
