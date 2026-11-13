@@ -112,8 +112,9 @@ export function useSetShopOpen() {
 // same rule, tested against the same points; `place_order()` is the authority.
 
 /**
- * The owner's delivery settings: the radius, the express promise, and the
- * shop's own pin — one RPC, one transaction (migration 20261112000004).
+ * The owner's delivery settings: the radius, the express promise, the shop's
+ * own pin and the door-pin gate — one RPC, one transaction (migrations
+ * 20261112000004 and 20261113000002).
  *
  * A null means "leave this field alone", which is what lets the card send only
  * what changed. The function raises for a non-admin instead of matching zero
@@ -138,6 +139,7 @@ export function useUpdateDeliverySettings() {
       lat?: number | null;
       lng?: number | null;
       clearLocation?: boolean;
+      addressPinRequired?: boolean | null;
     }
   >({
     mutationFn: async (input) => {
@@ -151,6 +153,7 @@ export function useUpdateDeliverySettings() {
         p_lat: input.lat ?? null,
         p_lng: input.lng ?? null,
         p_clear_location: input.clearLocation ?? false,
+        p_address_pin_required: input.addressPinRequired ?? null,
       });
       if (error) throw error;
       if (!data || typeof data !== 'object') throw new Error('bad-delivery-settings-response');

@@ -142,6 +142,7 @@ function DeliveryForm({ settings, store }: { settings: StoreSettings; store: Sto
   const [eta, setEta] = useState(String(settings.express_eta_minutes));
   const [fee, setFee] = useState(() => rupeeText(settings.express_fee_paise));
   const [units, setUnits] = useState(String(settings.express_max_units));
+  const [pinRequired, setPinRequired] = useState(settings.address_pin_required);
 
   const [locating, setLocating] = useState(false);
   const [pinError, setPinError] = useState(false);
@@ -222,6 +223,7 @@ function DeliveryForm({ settings, store }: { settings: StoreSettings; store: Sto
         expressEtaMinutes: values.etaMinutes,
         expressFeePaise: values.feePaise,
         expressMaxUnits: values.maxUnits,
+        addressPinRequired: pinRequired,
       });
       setSaved(true);
     } catch (error) {
@@ -432,6 +434,23 @@ function DeliveryForm({ settings, store }: { settings: StoreSettings; store: Sto
           </ThemedText>
         ) : null}
       </Field>
+
+      <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+      {/*
+        The pilot gate. It lives under the shop pin on purpose: the gate reads
+        as a quiet lie until the pin exists — `place_order()` lets every order
+        through while the shop has no pin of its own, whatever this switch
+        says. So the row warns when the pin is missing, and the hint explains
+        what turning it on actually does at the door.
+      */}
+      <ToggleRow
+        label={t('admin.addressPinGate')}
+        hint={pin ? t('admin.addressPinGateHint') : t('admin.addressPinGateNoPinHint')}
+        value={pinRequired}
+        disabled={busy}
+        onChange={setPinRequired}
+      />
 
       {problem ? (
         <View style={styles.problemRow}>

@@ -133,6 +133,24 @@ it still has not been seen on the owner's phone, which is C4.
 column. This table replaced the 2026-10-19 snapshot; the register in §12 remains
 the item-by-item tracker.
 
+> **Deployment rules (owner directives, 2026-11-13) — they stand above every
+> step in this file.**
+>
+> 1. `supabase db push --remote` runs **only when the owner says yes, that
+>    time**. Never by routine, never batched into another step.
+> 2. A **staging** Supabase project must exist and receive every new migration
+>    **before** any migration reaches production. Until it exists, new
+>    migrations stay local-only and `check:hosted`'s MISSING lines are the
+>    expected state, not an incident to fix.
+> 3. Test numbers and dummy SMS providers are **staging-only**. The live
+>    project's one exception is a single plain customer reviewer number with an
+>    expiry, added by hand on the owner's say-so; no test number is ever
+>    promoted to `admin` or `delivery` on production (`docs/launch/SMS-SETUP.md`).
+> 4. Build profiles map to projects via `eas env` — `preview`/`development` →
+>    staging, `production`/`review` → live (`docs/launch/DEVICE-RUN.md` §1a).
+>    `eas.json` and the repo carry no project keys beyond the app's public
+>    pair; staging's pair lives in git-ignored `apps/mobile/.env.staging`.
+
 | Area | State |
 | --- | --- |
 | Database | **38 migrations**, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement. Hosted project **Kunigal Bazaar** has all 38 applied, 0 pending |

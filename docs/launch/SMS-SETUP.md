@@ -10,18 +10,25 @@ POST /auth/v1/otp  {"phone":"+919000000001"}
 So **no customer, rider or owner can sign in at all.** This is the single
 remaining launch blocker. Everything else on the list is either done or cosmetic.
 
-There are two ways through, and you should do the first one **today**, because it
-takes ten minutes and unblocks the device run immediately.
+> **Two projects now, and the rule that separates them (owner directive,
+> 2026-11-13).** Create a **staging** Supabase project first. Everything in
+> Step 1 — the dummy provider, the test numbers — happens on **staging, and
+> only on staging**. The live project gets the real provider (Step 2) and
+> **nothing from this step, ever**: its only test number is the one plain
+> customer reviewer number described at the bottom, added by hand, only when
+> the owner asks, with an expiry. No test number on the live project may ever
+> be given the `admin` or `delivery` role — a test number is a door that
+> bypasses SMS, and a door with the owner's powers is the worst door there is.
 
 ---
 
-## Step 1 — Today, ~10 minutes: a test number so the app works end to end
+## Step 1 — Today, ~10 minutes: a test number so the app works end to end (STAGING ONLY)
 
 This lets you sign in on a real phone with a code you choose, sends no SMS, and
 costs nothing. Use it to prove the whole app on a device while the real SMS
-wiring is being sorted out.
+wiring is being sorted out. **Every click below is in the STAGING dashboard.**
 
-In the dashboard: **Authentication → Sign In / Providers → Phone**
+In the **staging** dashboard: **Authentication → Sign In / Providers → Phone**
 
 1. **Toggle Phone to enabled.**
 2. **Pick any SMS provider** and enter dummy values (e.g. Twilio with
@@ -42,9 +49,10 @@ Then on the phone: sign in with **9000000001** and code **123456**. The
 `+91` is added by the app itself (`normalisePhone()` in `login.tsx`), so type the
 10 digits only.
 
-> **Remove the test number before you launch.** Anybody who knows the number and
-> the code can sign in as that user. It is a development door, and it must be
-> shut.
+> **Staging keeps its test numbers; the live project never gets one.** On
+> staging the test numbers are fixtures — they are how every device run signs
+> in, and staging holds no real customers, so a known code costs nothing. The
+> live project's only exception is at the bottom of this file.
 
 ### While you're on that screen, change two settings
 
@@ -122,7 +130,8 @@ Paste the credentials into the same **Phone provider** screen.
   every code request. Switching it on before the app can send one locks out
   **every customer**, not just the script the gate was built to stop. Full
   detail, and the one-click undo, is `PRODUCTION.md` §16.
-- **The first sign-in.** Sign yourself up once, then set your own role:
+- **The first sign-in.** Sign yourself up once — with your **own real phone**,
+  never a test number — then set your own role:
 
   ```sql
   update public.profiles set role = 'admin'
@@ -131,14 +140,40 @@ Paste the credentials into the same **Phone provider** screen.
 
   After that the owner sets everyone else's roles from the Team tab in the app.
   Note this exact step is in `README.md` §4 — it has always been the plan.
+  On the **live** project this SQL is the one and only role promotion that ever
+  touches a number from this file's world, and it must be the shopkeeper's own
+  phone. A test number is never promoted to `admin` or `delivery` on any
+  project — on staging you may, because staging teaches nothing to a stranger;
+  on the live project it would hand a bypass-SMS door the keys to the shop.
+
+---
+
+## The live project's list — shorter, and the owner's call
+
+The live project (Kunigal Bazaar, `argahiagpywluxpqtnpp`) gets:
+
+1. The **real provider** (Step 2, DLT and all), and **never** the dummy values
+   from Step 1.
+2. **No test numbers** — with one exception, added by hand, and only when the
+   owner asks for it:
+   - **ONE** plain customer reviewer number (a real phone somebody actually
+     holds), entered in *Test Phone Numbers and OTPs* with the shortest expiry
+     the dashboard accepts, and removed the day the review is done.
+   - It stays a plain `customer` forever. No `update profiles set role` against
+     it, ever — the reviewer tests the shop's front door, not the owner's.
+
+If a test number is ever found on the live project outside that exception,
+remove it the same hour and treat every order it placed as suspect: a number
+that bypasses SMS is a number that bypasses every other gate too.
 
 ---
 
 ## What to send me when it's done
 
-1. A screenshot of the Phone provider screen showing it **enabled** and the
-   provider chosen (hide the credentials).
-2. Whether the test number is still in place or removed.
+1. A screenshot of the STAGING Phone provider screen showing it **enabled** and
+   the provider chosen (hide the credentials).
+2. Confirmation that the **live** project has no test number at all (the
+   reviewer number comes later, and only on your say-so).
 
 Then I'll probe `/auth/v1/otp` again and confirm it answers with something other
 than `phone_provider_disabled`, and we'll know the door is open.

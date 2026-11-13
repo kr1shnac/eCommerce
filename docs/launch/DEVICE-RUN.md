@@ -44,6 +44,35 @@ First run prompts to create an EAS project — say yes. It builds in the cloud a
 prints a URL; open that on the phone and install the APK. You now have your own
 app with the dev tools built in.
 
+### 1a. Which Supabase project each build talks to (owner directive, 2026-11-13)
+
+Build profiles and Supabase projects are mapped **through `eas env`, never
+through the repository**. `eas.json` stays value-free (`check:prod-env`
+enforces this) — the values live on Expo's servers, scoped to one environment
+per profile:
+
+| Build profile | `eas env` environment | Supabase project |
+| --- | --- | --- |
+| `development`, `preview` | `preview` | **staging** |
+| `production` | `production` | the live project |
+| `review` (extends `production`) | `production` | the live project |
+
+Set it up once, on your machine, from `apps/mobile/`:
+
+```bash
+npx eas env:push --environment preview     # paste the STAGING url + anon key
+npx eas env:push --environment production  # paste the LIVE url + anon key
+```
+
+The rule underneath: **staging keys go to staging builds, live keys to live
+builds, and no key of either kind is ever committed.** For a Metro run on the
+laptop (`npm run mobile`) the two values come from `apps/mobile/.env`; keep
+staging's pair in `apps/mobile/.env.staging` (git-ignored, never committed) and
+swap the two `EXPO_PUBLIC_SUPABASE_*` lines while the device run is pointed at
+staging — swap them back afterwards. Never rename a whole `.env`: the other
+lines (Sentry DSN, captcha site key) do not change between projects. After any
+swap, restart Metro with `-c`, because env values are inlined at bundle time.
+
 ## 2. Start Metro on the laptop
 
 ```bash
@@ -63,17 +92,21 @@ loads. Phone and laptop must be on the same network.
 > **Public** profile, which is what a phone hotspot is classified as. You do not
 > need admin rights to change the network category.
 
-## 4. Set the three test numbers, then sign in once as each
+## 4. Set the three test numbers — on the STAGING project — then sign in once as each
 
-Test numbers live in the Supabase dashboard — **Authentication → Sign In /
-Providers → Phone → Test Phone Numbers and OTPs**:
+Test numbers live in the **staging** Supabase dashboard — **Authentication →
+Sign In / Providers → Phone → Test Phone Numbers and OTPs**. They are staging
+fixtures (owner directive 2026-11-13): the live project gets **none** of them,
+ever; its only exception is the one plain customer reviewer number, added by
+hand, only when the owner asks (`SMS-SETUP.md`, bottom).
 
 ```
 919611990869=123456,919000000002=123456,919000000003=123456
 `
 
 Then **sign in once as each number** — that is what creates the `auth.users` row
-each role needs. Account tab → Sign out between each.
+each role needs. Account tab → Sign out between each. Role promotion from these
+numbers happens on staging only.
 
 > The phone field was fixed on 2026-11-11: it used to eat a leading `9`, so
 > typing `96…` displayed `6…`. If you still see that, the Metro cache is stale.
@@ -139,5 +172,6 @@ supabase db query --remote --file supabase/demo-catalogue-remove.sql --yes
 That deletes exactly the six demo products and nothing else — the IDs are
 deterministic, so a product you add by hand from the Shelf tab cannot be caught.
 
-**Remove the three test numbers before launch**, and **CAPTCHA is still not
+**Remove the three test numbers from the LIVE project before launch** — on
+staging they stay as long as staging exists — and **CAPTCHA is still not
 wired** — until it is, the OTP endpoint can be hammered.

@@ -6,6 +6,126 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-13 (ninth session) — the owner's eight directives, and three migrations waiting on a staging project
+
+The owner set eight directives this session. Six are built and proved; the
+seventh (a staging project) is the owner's click; the eighth (phone-order
+entry) is the next feature, after which new features pause.
+
+### The three migrations (all local-only, by directive 1)
+
+- `supabase/migrations/20261113000001_rider_directory_window.sql` — the rider
+  directory now shows a rider only while the errand is **live**, or delivered
+  inside the **last 24 hours** (`coalesce(delivered_at, placed_at)`,
+  strictly `>`). The **owner's view is unwindowed**: the money desk and the
+  board need a rider's phone on a closed order as much as on a live one. The
+  first draft had the window applying to everybody — the comment claimed an
+  owner bypass the SQL did not have, and test 43 caught it before it could
+  hide closed orders from the shop.
+- `supabase/migrations/20261113000002_address_pin_gate.sql` —
+  `store_settings.address_pin_required`. When the gate is ON **and** the shop
+  has a usable pin of its own, `place_order()` refuses an order whose address
+  has no usable door pin; the gate **waits** (a no-op) while the shop pin is
+  missing, so a shop without its own pin is never locked out of taking orders.
+  The owner flips it from the Today tab through `update_delivery_settings()`.
+- `supabase/migrations/20261113000003_shortage_notice_refund.sql` —
+  `admin_adjust_order_item()` now stamps `shortage_adjusted_at` on every real
+  adjustment (the notice is about the BAG, so it stamps cash orders too) and,
+  only when the customer had already paid online (`payment_status='paid'`
+  and method ≠ `cod`), records the drop as `shortage_refund_paise` — a running
+  sum, kept after settlement. `mark_shortage_refund_paid()` settles it on any
+  status; `mark_refund_paid()` now also stamps it, so the two halves of a
+  cancelled order settle in one motion. `shop_day_totals()`'s refund line adds
+  the UNSETTLED recorded amounts to the generated debt.
+
+### Function-recreation rules the session had to learn twice
+
+Adding an argument to a function with **defaults** makes an extra overload, and
+every existing **named-argument** call becomes ambiguous (`function … is not
+unique`) — test 38 caught `update_delivery_settings` doing exactly that, so
+`20261113000002` drops the old 9-arg signature before creating the 10-arg one,
+and re-`grant`s `authenticated, service_role` because a drop+create loses
+grants. Every recreated body was extracted and **diffed against the deployed
+one** (`place_order`, `update_delivery_settings`, `admin_adjust_order_item`,
+`mark_refund_paid`, `shop_day_totals`) — only the intended deltas.
+
+### Directive 4 — the build log cannot lose a heading
+
+`scripts/check-changelog.mjs`, wired into the lint chain as `check:changelog`:
+the committed `## ` heading sequence must be the **suffix** of the working
+tree's, and the count may never shrink (the `write`-instead-of-`edit` accident
+that destroyed this log twice). Negative-tested: truncation → exit 1 with both
+diagnoses. Baseline is `git show HEAD:CHANGELOG.md`, so no second file exists.
+
+### Directives 1–3 as process docs
+
+`SMS-SETUP.md` Step 1 rewritten **staging-only** (test numbers and dummy
+providers never touch the live project; its one exception is a plain customer
+reviewer number with expiry, added only on the owner's say-so, never promoted).
+`DEVICE-RUN.md` §1a maps build profiles to projects through `eas env`
+(`preview`/`development` → staging, `production`/`review` → live) with
+`.env.staging` git-ignored for local Metro runs; `eas.json` stays value-free.
+The rules are stated in `AGENTS.md` §4.1, `PRODUCTION.md` §3 and the
+fresh-project recipe in `HANDOFF.md`.
+
+### The app half
+
+`apps/mobile/src/components/order-shortage-notice.tsx` (new) — the customer's
+"some items ran out" card, gated on `shortage_adjusted_at` and order ownership,
+mounted on `order/[id].tsx` before the refund card. The money line renders the
+database's own record, not a recomputation. `delivery-settings-card.tsx` gained
+the gate toggle, under the shop-pin field on purpose, warning when the pin is
+missing. Types, hook argument and i18n keys in **both** locales
+(`orders.shortage*`, `admin.addressPinGate*`; KUNIGAL voice: ವಾಪಸ್ ಕೊಡುತ್ತೇವೆ,
+ಮುಗಿಯಿತು, ಒಟ್ಟು). `check:hosted` gained one marker per new migration — the
+gate's marker is the RPC's **new signature** (`p_address_pin_required`),
+which is what catches a project that still has the ambiguous overload.
+
+### Directive 5 — invoices, verified (report for the owner)
+
+The number is assigned **once, at INSERT**, by a before-trigger reading
+`coalesce(placed_at, now())` in IST; the financial year is the label of that
+instant (`2026-27` today). A cancelled order **keeps** its number and no later
+order takes it. A rolled-back insert **burns** its serial — an honest gap on
+the sequence rather than a rewrite. Test 42 proves all of it on the live clock
+(`financial_year_label(now())`, not a hard-coded year).
+
+### Bugs found this session (all fixed, none shipped)
+
+1. The rider-window owner bypass existed only in a comment — test 43.
+2. The 9/10-argument overload ambiguity — test 38, via `check:hosted`'s
+   design decision to probe the new signature.
+3. Two tautological assertions in my own new tests (`eq` comparing a value to
+   itself; boolean `eq` with no overload) — replaced with `test_result.ok`.
+4. Test fixtures inserting `order_items` as admin — no admin INSERT policy
+   exists on that table; suite 41's documented shape (orders as the
+   signed-in owner, `reset role` for the lines) is now followed.
+
+### Verified, and how
+
+- `npm run test:db`: **1115 assertions, 0 failures** (was 1054; +61 from tests
+  42–45) against a throwaway PostgreSQL, all 45 migrations in filename order.
+- `npm run typecheck`: zero errors, both apps.
+- `npm run lint`: the full chain including the new `check:changelog`, zero
+  errors and warnings.
+- The five recreated function bodies diffed against their deployed versions;
+  only intended deltas.
+- `check:changelog` negative-tested by truncation, then restored and re-passed.
+- PowerShell wrote a BOM into `package.json` while wiring the lint chain
+  (and mangled its em-dash); both were caught by diff and fixed before commit.
+
+### Open gaps (known, stated)
+
+- **Staging does not exist** — the owner creates it. Until then the three
+  migrations are local-only and `check:hosted` reports 3 MISSING. Nothing is
+  pushed, to staging or production, without the owner's explicit yes.
+- Real SMS (DLT) and the Turnstile site key remain owner-side.
+- The shortage notice, the gate and the window have **no device run yet** —
+  they are proved by tests and types only, per the pause-after-phone-order
+  plan. The next feature (phone-order entry) is built before that run.
+
+---
+
 ## 2026-11-12 (eighth session) — the owner's board gained its buttons, and every card opens the order
 
 The owner's face could SHOW an order but could not DO anything to one. The two

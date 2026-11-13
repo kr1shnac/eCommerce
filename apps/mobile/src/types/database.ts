@@ -328,6 +328,12 @@ export type StoreSettings = {
   express_fee_paise: number;
   /** Largest basket (sum of quantities) still promised in express time. */
   express_max_units: number;
+  /**
+   * The pilot gate (migration 20261113000002). When true and the shop has a
+   * usable pin of its own, `place_order()` refuses an order whose address has
+   * no usable door pin. Off by default; the owner flips it from the Today tab.
+   */
+  address_pin_required: boolean;
 };
 
 export type Order = {
@@ -351,6 +357,21 @@ export type Order = {
    * never writes it, and marking `payment_status = 'refunded'` clears it.
    */
   refund_due_paise: number;
+  /**
+   * When the shop last shortened a line of this order (migration
+   * 20261113000003). NULL means the bag was never changed; the order screen
+   * reads this to say why the receipt is smaller than the basket was.
+   */
+  shortage_adjusted_at: string | null;
+  /**
+   * The money the shop owes back for a SHORTER bag on a paid non-cash order:
+   * the running sum of every drop the customer had already paid for. Zero for
+   * cash — the smaller bag is paid for in cash at the door. Recorded at
+   * adjustment time and KEPT after settlement.
+   */
+  shortage_refund_paise: number;
+  /** When the recorded shortage refund actually went back to the customer. */
+  shortage_refund_paid_at: string | null;
   notes: string | null;
   /** Set by the app so a double tap or a retry cannot create a second order. */
   idempotency_key: string | null;
@@ -999,6 +1020,7 @@ export type Database = {
           p_lat?: number | null;
           p_lng?: number | null;
           p_clear_location?: boolean;
+          p_address_pin_required?: boolean | null;
         };
         Returns: DeliverySettingsResult;
       };
@@ -1180,6 +1202,17 @@ export type Database = {
        * `refund_due_paise`. A repeat call returns the row unchanged.
        */
       mark_refund_paid: {
+        Args: { p_order_id: string };
+        Returns: Order;
+      };
+      /**
+       * The owner records that the money owed for a SHORTER bag actually went
+       * back to the customer. Stamps `shortage_refund_paid_at`; the recorded
+       * amount stays. Works on any status — the liability is about the money,
+       * not about how the delivery ended. Admin-only (42501), nothing recorded
+       * raises P0001, a repeat call returns the row unchanged.
+       */
+      mark_shortage_refund_paid: {
         Args: { p_order_id: string };
         Returns: Order;
       };

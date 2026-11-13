@@ -199,6 +199,28 @@ two languages are written side by side, not translated one from the other.
 - New tables need an `alter table ... enable row level security;` line and
   explicit policies before they are useful.
 
+### 4.1 Deployment rules (owner directives, 2026-11-13 — also non-negotiable)
+
+- **Never run `supabase db push --remote` without the owner's explicit yes,
+  each and every time.** A migration reaching the hosted project is the
+  owner's decision, not the agent's convenience — `--yes` flags the tool, not
+  the permission.
+- **Staging exists before anything else is pushed.** A staging Supabase project
+  must be created and must receive every new migration FIRST. No migration
+  reaches production until staging has it and the owner has said so. Until
+  staging exists, new migrations stay local-only (`check:hosted` reporting
+  them MISSING on the live project is the *expected* state, not an incident).
+- **Test numbers and dummy providers live on staging only.** The live
+  project's single exception is ONE plain customer reviewer number, with an
+  expiry, added by hand and only when the owner says so — and no test number
+  may ever carry the `admin` or `delivery` role on production. Details:
+  `docs/launch/SMS-SETUP.md`.
+- **Build profiles map to projects through `eas env`:** `preview` (and
+  `development`) → staging keys, `production` (and `review`) → live keys.
+  `eas.json` carries no values, and staging's pair lives in a git-ignored
+  `apps/mobile/.env.staging` for local Metro runs. Details:
+  `docs/launch/DEVICE-RUN.md` §1a.
+
 ## 5. Roles
 
 `profiles.role` is one of `customer`, `admin`, `delivery`. Read it through the

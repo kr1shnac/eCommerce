@@ -81,15 +81,19 @@ fields — see §6.
 
 Everything below is in `master` and passes the gates in §3.
 
-### 2.1 Database (45 migrations, all applied to the hosted project)
+### 2.1 Database (45 migrations; 42 on the hosted project, 3 local-only)
 
 Migration `20261112000006_razorpay.sql` and
 `20261112000007_refund_due_methods.sql` were pushed on 2026-11-12 (third
-session); `npm run check:hosted` reports **45 applied, 0 missing**, 5 of them
-with no REST-visible object (RLS/publication/index-only files, proved by
-`npm run test:db`). The payment path itself is still **dark**: no Razorpay keys,
-so the Edge Functions answer `gateway_not_configured` and checkout greys the
-online methods.
+session). The three of 2026-11-13 (`20261113000001_rider_directory_window`,
+`20261113000002_address_pin_gate`, `20261113000003_shortage_notice_refund`)
+are **local-only** by owner directive: a staging project must exist and take
+them first, and the owner must say yes before anything reaches production —
+so `npm run check:hosted` now reports **42 applied, 3 missing** on the live
+project, which is the expected state, not an incident. Locally,
+`npm run test:db` proves all 45 (1115 assertions, 0 failures). The payment
+path itself is still **dark**: no Razorpay keys, so the Edge Functions answer
+`gateway_not_configured` and checkout greys the online methods.
 
 - **Development** data: one store, 8 categories, 34 products, 4 delivery zones,
   2 coupons, settings (from `seed.sql`). **Production** is bootstrapped by
@@ -473,7 +477,9 @@ One thing still needs the dashboard, not this repo:
    because its *For full customization* flow pairs a `SELECT` with each `UPDATE`
    and `DELETE`, which is expected and harmless.
 
-**A fresh project (only if this one is ever lost).** Create it, link it, then:
+**A fresh project (only if this one is ever lost).** Create it, link it, then —
+**only with the owner's explicit yes for the push, and staging first** (owner
+directives, 2026-11-13: AGENTS.md §4.1):
 
 ```bash
 supabase db push --remote --yes

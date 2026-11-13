@@ -8,6 +8,7 @@ build
 .env
 .env.local
 apps/mobile/.env
+apps/mobile/.env.staging
 apps/admin/.env
 supabase/.temp
 .council/runs

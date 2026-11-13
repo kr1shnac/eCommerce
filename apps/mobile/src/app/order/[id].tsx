@@ -15,6 +15,7 @@ import { OrderFeedbackCard } from '@/components/order-feedback';
 import { OrderMoneyActions } from '@/components/order-money-actions';
 import { OrderAdminActions } from '@/components/order-admin-actions';
 import { OrderShortagePanel } from '@/components/order-shortage-panel';
+import { ShortageNoticeCard } from '@/components/order-shortage-notice';
 import { RefundDueCard } from '@/components/refund-due';
 import { OrderSkeleton } from '@/components/screen-skeletons';
 import { StateMessage } from '@/components/state-message';
@@ -383,6 +384,22 @@ export default function OrderDetailScreen() {
               <ThemedText type="small">{data.cancellation_reason}</ThemedText>
             </Card>
           ) : null}
+
+          {/*
+            A shortage the shop settled: the bag the customer ordered is not
+            the bag that left, and without this sentence the receipt simply
+            looks wrong. It sits with the failure/cancel cards because it is
+            the same kind of honesty — what actually happened to the order —
+            and the money line rides on the database's own record, not on an
+            app-side recomputation.
+          */}
+          <ShortageNoticeCard
+            adjustedAt={data.shortage_adjusted_at}
+            totalPaise={data.total_paise}
+            refundPaise={data.shortage_refund_paise}
+            refundPaidAt={data.shortage_refund_paid_at}
+            isOwner={isOwner}
+          />
 
           {/*
             Money the shop is holding but owes. It sits directly under the

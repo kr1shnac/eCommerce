@@ -164,6 +164,11 @@
     "failureHint": "Nothing was charged for this order. Call the shop and we will send it again.",
     "cancelledByShopTitle": "The shop cancelled this order",
     "returnedHint": "The bag came back to the shop. Nothing was charged.",
+    "shortageTitle": "Some items ran out",
+    "shortageBody": "A few things on your order were not on the shelf, so we left them out and corrected your basket.",
+    "shortageTotalLine": "Your total is now {amount}.",
+    "shortageRefundDue": "We will return {amount} to you.",
+    "shortageRefundPaid": "We have already returned {amount}.",
     "filterAll": "All",
     "filterActive": "In progress",
     "filterDone": "Completed"
@@ -951,6 +956,9 @@
     "expressUnitsError": "Enter a limit between {min} and {max} items.",
     "shopPinSet": "Pin set at {lat}, {lng}",
     "shopPinFailed": "Could not get the location. Stand outside the shop and try again.",
+    "addressPinGate": "Every order needs a door pin",
+    "addressPinGateHint": "Before the pilot: an address without a pin on the map cannot order. Set your own pin first — this does nothing until the shop has one.",
+    "addressPinGateNoPinHint": "This does nothing yet: set the shop's own pin first. Once it is set, an address without a pin on the map cannot order.",
     "gstRateOption": "GST {rate}",
     "gstHsnLabel": "HSN code for {name}"
   },

@@ -145,6 +145,24 @@ const MARKERS = [
   // have no REST face (the table was never anon-readable either way); their
   // proof is test 41's policy counts and zero-row probes.
   { file: '20261112000009_admin_shortage_adjust.sql', probe: ['POST', '/rest/v1/rpc/admin_adjust_order_item', { p_order_id: '00000000-0000-0000-0000-000000000000', p_item_id: '00000000-0000-0000-0000-000000000000', p_quantity: 0 }] },
+  // The 24-hour rider window (test 43's job to prove locally). The view's REST
+  // shape did not change — this probe proves the view still resolves after the
+  // re-creation, and its grant has not widened.
+  { file: '20261113000001_rider_directory_window.sql', probe: ['GET', '/rest/v1/rider_directory?select=id&limit=1'] },
+  // The door-pin gate. The probe is the RPC's NEW SIGNATURE, not the column:
+  // `p_address_pin_required` resolves only the ten-argument function, so a
+  // project that still has the old nine-argument shape answers PGRST202 —
+  // which is exactly the overload ambiguity test 38 caught locally. An anon
+  // caller is refused (42501) before anything else, which still proves the
+  // function is deployed. `store_settings.address_pin_required` and the
+  // place_order() gate have no cheaper REST face; test 44 is their proof.
+  { file: '20261113000002_address_pin_gate.sql', probe: ['POST', '/rest/v1/rpc/update_delivery_settings', { p_address_pin_required: null }] },
+  // The shortage notice stamp and the recorded partial refund. The column
+  // probe is the cheapest honest "did this migration run": PostgREST answers
+  // 42703 for a missing column whether or not RLS would let the caller read
+  // the row. `mark_shortage_refund_paid()` (admin-only) and the day-totals
+  // change have no REST face here; tests 26, 32 and 45 are their proof.
+  { file: '20261113000003_shortage_notice_refund.sql', probe: ['GET', '/rest/v1/orders?select=shortage_refund_paise&limit=1'] },
 ];
 
 /** The three answers a probe can honestly give. */
