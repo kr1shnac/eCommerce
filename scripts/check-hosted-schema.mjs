@@ -163,6 +163,19 @@ const MARKERS = [
   // the row. `mark_shortage_refund_paid()` (admin-only) and the day-totals
   // change have no REST face here; tests 26, 32 and 45 are their proof.
   { file: '20261113000003_shortage_notice_refund.sql', probe: ['GET', '/rest/v1/orders?select=shortage_refund_paise&limit=1'] },
+  // The pilot gate ships ON (default true) plus one UPDATE of the live row. A
+  // column default has no REST face, so there is nothing honest to probe: it
+  // rides on 0002 above, which cannot be applied without it.
+  { file: '20261113000004_address_pin_default_on.sql' },
+  // shop_day_totals() keeps its name and arity, so a body swap looks PRESENT
+  // however it is probed. The refund balance is a number, not a shape: test 26
+  // is the proof, and it is why this one is unproven here rather than green.
+  { file: '20261113000005_refund_running_balance.sql' },
+  // Phone orders. `admin_place_phone_order` is a NEW function, so a POST with
+  // no arguments answers PGRST202 when the migration is missing and a permission
+  // or argument error (401/42501/400) when it exists - the object is the proof,
+  // not the answer. The counter's write path is covered by test 46.
+  { file: '20261113000006_phone_orders.sql', probe: ['POST', '/rest/v1/rpc/admin_place_phone_order', {}] },
 ];
 
 /** The three answers a probe can honestly give. */

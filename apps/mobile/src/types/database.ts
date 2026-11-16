@@ -329,19 +329,42 @@ export type StoreSettings = {
   /** Largest basket (sum of quantities) still promised in express time. */
   express_max_units: number;
   /**
-   * The pilot gate (migration 20261113000002). When true and the shop has a
-   * usable pin of its own, `place_order()` refuses an order whose address has
-   * no usable door pin. Off by default; the owner flips it from the Today tab.
+   * The pilot gate (migrations 20261113000002 and 20261113000004). When true
+   * and the shop has a usable pin of its own, `place_order()` refuses an order
+   * whose address has no usable door pin. ON by default — the owner can switch
+   * it off consciously from the Today tab, and while the shop's own pin is
+   * unset the gate waits rather than locking the shop out.
    */
   address_pin_required: boolean;
 };
 
+/**
+ * How an order arrived: through the customer app, or taken at the counter from
+ * a phone call (migration 20261113000006). A phone order has no user and no
+ * saved address row — the typed contact and door are its identity.
+ */
+export type OrderSource = 'app' | 'phone';
+
 export type Order = {
   id: string;
   order_number: string;
-  user_id: string;
+  /** NULL for a phone order: nobody signed in to place it. */
+  user_id: string | null;
   store_id: string;
+  /** NULL for a phone order: the door was typed, not picked from a saved row. */
   address_id: string | null;
+  /** `app` for every customer order, `phone` for the counter's. */
+  source: OrderSource;
+  /** Who rang, on a phone order. NULL on every app order. */
+  contact_name: string | null;
+  /** The number the rider calls, normalised to 10 digits. NULL on app orders. */
+  contact_phone: string | null;
+  /**
+   * Why the owner accepted a phone order outside the delivery area (or beyond
+   * the measured radius). NULL means no override was needed. Never set by the
+   * app's own door.
+   */
+  radius_override_reason: string | null;
   delivery_address: Record<string, unknown>;
   status: OrderStatus;
   payment_method: PaymentMethod;
@@ -514,7 +537,27 @@ export type PlaceOrderError =
   | 'express_not_available'
   | 'invalid_payment_method'
   // The shop has not connected a way to collect online money yet.
-  | 'online_payment_unavailable';
+  | 'online_payment_unavailable'
+  // The shop has switched the door-pin gate on and this address has no usable
+  // pin (migration 20261113000002/04). The customer must drop the pin first.
+  | 'address_pin_required';
+
+/**
+ * Refusals only the COUNTER can meet (migration 20261113000006). A phone order
+ * is typed in by the owner, so a missing name, a bad mobile, a door line and a
+ * six-digit pincode are possible there — and nowhere else. The customer app
+ * cannot receive any of these, which is why they are not in `PlaceOrderError`
+ * and why the checkout has no sentence for them.
+ */
+export type PhoneOrderError =
+  | 'contact_name_required'
+  | 'contact_phone_invalid'
+  | 'address_line1_required'
+  | 'address_pincode_invalid'
+  | 'override_reason_required';
+
+/** Everything either door can answer with. */
+export type OrderRefusal = PlaceOrderError | PhoneOrderError;
 
 /** A coupon the checkout screen can show before the order is placed. */
 export type CouponValidationResult =
@@ -563,7 +606,7 @@ export type ExpressRefusalReason =
   | 'too_far'
   | 'too_many_items';
 
-export type PlaceOrderResult =
+export type PlaceOrderResult<E extends string = PlaceOrderError> =
   | {
       ok: true;
       order_id: string;
@@ -581,12 +624,16 @@ export type PlaceOrderResult =
       eta_minutes?: number | null;
       /** The measured distance to the door, when both pins existed. */
       distance_m?: number | null;
+      /** Which door wrote it: the customer app, or the counter. */
+      source?: OrderSource;
+      /** True when the owner overrode the delivery area and the reason was stored. */
+      radius_override_applied?: boolean;
       /** True when this exact request had already been placed. */
       replayed: boolean;
     }
   | {
       ok: false;
-      error: PlaceOrderError;
+      error: E;
       items?: UnavailableItem[];
       /** Smallest basket the SHOP accepts. */
       min_order_value_paise?: number;
@@ -979,6 +1026,39 @@ export type Database = {
           p_express?: boolean;
         };
         Returns: PlaceOrderResult;
+      };
+      /**
+       * Admin-only (42501 for everybody else): the owner takes an order from a
+       * phone call. Runs the SAME `place_order_core()` as the app — the prices,
+       * stock, fees, coupon and totals are the database's, never a copy. The
+       * typed contact and door are normalised and snapshotted; the order has no
+       * `user_id` and no address row. An order outside the delivery area is
+       * refused until a reason of at least 3 characters is given.
+       * Migration 20261113000006.
+       */
+      admin_place_phone_order: {
+        Args: {
+          p_items: CartLine[];
+          p_store_id: string;
+          p_idempotency_key: string;
+          p_contact_name: string;
+          /** 10 digits starting 6-9; spaces, dashes and +91 are accepted. */
+          p_contact_phone: string;
+          p_address_line1: string;
+          p_pincode: string;
+          p_address_line2?: string | null;
+          p_landmark?: string | null;
+          p_city?: string;
+          /** The caller's dropped coordinate, when they gave one. */
+          p_lat?: number | null;
+          p_lng?: number | null;
+          p_note?: string | null;
+          p_payment_method?: PaymentMethod;
+          p_coupon_code?: string | null;
+          /** Required when the door is outside the served area or radius. */
+          p_override_reason?: string | null;
+        };
+        Returns: PlaceOrderResult<OrderRefusal>;
       };
       /**
        * The one GST arithmetic in the system. Renders the order as an invoice:

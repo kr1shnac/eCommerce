@@ -14,8 +14,12 @@
 --      order owes exactly its total;
 --   2. delivered, COD, unpaid and already-refunded orders owe nothing — the
 --      four ways a number could be wrong;
---   3. the sum of the column on a day equals what `shop_day_totals()` reports
---      for that day, so the two implementations of one rule agree;
+--   3. the refund line in `shop_day_totals()` is the shop's outstanding
+--      liability AS OF NOW, not a slice of the requested day: an order placed
+--      ten days ago and cancelled today is owed today (migration
+--      20261113000005). Two different days - including a day with no orders
+--      at all - report the same number, and that number is the sum of the
+--      per-order columns;
 --   4. the shop can zero it by marking the payment `refunded`, which is what
 --      makes it "still owed" rather than "was ever paid";
 --   5. nobody can insert or update the column directly (428C9), because a
@@ -44,14 +48,31 @@ select test_result.begin_suite('26 refund due');
 --   b6  cancelled, online, pending   ->     0  (no money was taken)
 --   b7  cancelled, online, refunded  ->     0  (already given back)
 --   b8  failed,    COD,    pending   ->     0  (cash never collected)
+--   b9  cancelled, online, paid      ->  4000  (placed TEN DAYS EARLIER)
 --
--- The sum of the owed rows is 25000, which is the number the day's books must
--- report too.
+-- The sum of the owed rows is 29000: 25000 placed on the quiet day and 4000
+-- on 2020-02-10. b9 is the row that proves the refund line is a running
+-- balance rather than a day's figure - the old implementation reported 25000
+-- on 2020-02-20 and 0 on 2020-02-10, and the shop owed 29000 the whole time.
 -- -----------------------------------------------------------------------------
 
 reset role;
 set role authenticated;
 select test_result.sign_in('33333333-3333-3333-3333-333333333333');
+
+-- What the shop already owed before this suite touched anything. Other suites
+-- run before this one in the same database, so the absolute running balance is
+-- not ours to hard-code; every assertion below is a DELTA from this line.
+drop table if exists test26_baseline;
+create temporary table test26_baseline as
+select (
+  coalesce(sum(o.refund_due_paise), 0)
+  + coalesce(sum(o.shortage_refund_paise) filter (
+      where o.shortage_refund_paid_at is null
+    ), 0)
+)::bigint as owed
+from public.orders o
+where o.store_id in (select id from public.stores where is_active);
 
 insert into public.orders (
   id, user_id, store_id, address_id, delivery_address,
@@ -122,7 +143,15 @@ values
    '50000000-0000-4000-8000-000000000004',
    '{"line1":"45, Nehru Nagar","pincode":"572130"}'::jsonb,
    'failed', 'cod', 'pending', 3000, 0, 0, 3000,
-   date '2020-02-20' + time '17:00', null, 'unreachable')
+   date '2020-02-20' + time '17:00', null, 'unreachable'),
+
+  ('70000000-0000-4000-8000-0000000000b9',
+   '11111111-1111-1111-1111-111111111111',
+   '00000000-0000-4000-8000-000000000001',
+   '50000000-0000-4000-8000-000000000001',
+   '{"line1":"12, Gandhi Road","pincode":"572130"}'::jsonb,
+   'cancelled', 'online', 'paid', 4000, 0, 0, 4000,
+   date '2020-02-10' + time '09:00', null, null)
 on conflict (id) do nothing;
 
 select test_result.eq(
@@ -201,26 +230,66 @@ select test_result.eq(
   '0'
 );
 
--- =============================================================================
--- The two implementations of one rule agree on the same day.
---
--- `shop_day_totals()` filters by `placed_at` and active stores; the column is
--- per row. Summing one and asking the other must produce the same number, which
--- is the whole reason the rule was not copied into the app a third time.
--- =============================================================================
-
 select test_result.eq(
-  'the day''s books report the same refund total as the column',
-  (select refund_due_paise::text from public.shop_day_totals(date '2020-02-20')),
-  (select coalesce(sum(refund_due_paise), 0)::text from public.orders
-    where placed_at >= (date '2020-02-20')::timestamp at time zone 'Asia/Kolkata'
-      and placed_at <  ((date '2020-02-20' + 1))::timestamp at time zone 'Asia/Kolkata')
+  'the cross-day order is a real order on another day (2020-02-10, IST)',
+  (select (placed_at at time zone 'Asia/Kolkata')::date::text from public.orders
+    where id = '70000000-0000-4000-8000-0000000000b9'),
+  '2020-02-10'
 );
 
 select test_result.eq(
-  'and that total is the three online-and-paid failures',
+  'and it owes its full 4000, ten days before the fixture day',
+  (select refund_due_paise::text from public.orders
+    where id = '70000000-0000-4000-8000-0000000000b9'),
+  '4000'
+);
+
+-- =============================================================================
+-- The refund line is a RUNNING BALANCE, not a day's figure.
+--
+-- Migration 20261113000005 changed exactly this one number. An order placed
+-- last week and cancelled this morning is money the shop owes THIS MORNING,
+-- so a day with no orders at all must still report the liability, and the
+-- quiet fixture day must report the same total as that empty day.
+-- =============================================================================
+
+select test_result.eq(
+  'a day with no orders still reports the shop''s outstanding liability',
+  (select refund_due_paise::text from public.shop_day_totals(date '2019-01-01')),
+  (select (
+     coalesce(sum(o.refund_due_paise), 0)
+     + coalesce(sum(o.shortage_refund_paise) filter (
+         where o.shortage_refund_paid_at is null
+       ), 0)
+   )::bigint::text
+   from public.orders o
+   where o.store_id in (select id from public.stores where is_active))
+);
+
+select test_result.eq(
+  'that day really has no takings — the refund line is not hiding a day filter',
+  (select (orders_placed::text || '/' || gross_paise::text)
+     from public.shop_day_totals(date '2019-01-01')),
+  '0/0'
+);
+
+select test_result.eq(
+  'the quiet fixture day reports the same running liability',
   (select refund_due_paise::text from public.shop_day_totals(date '2020-02-20')),
-  '25000'
+  (select (
+     coalesce(sum(o.refund_due_paise), 0)
+     + coalesce(sum(o.shortage_refund_paise) filter (
+         where o.shortage_refund_paid_at is null
+       ), 0)
+   )::bigint::text
+   from public.orders o
+   where o.store_id in (select id from public.stores where is_active))
+);
+
+select test_result.eq(
+  'the fixture added its full 29000 — the 25000 day plus the 4000 from ten days earlier',
+  (select refund_due_paise::text from public.shop_day_totals(date '2020-02-20')),
+  (select (b.owed + 29000)::text from test26_baseline b)
 );
 
 -- =============================================================================
@@ -277,9 +346,22 @@ select test_result.eq(
 );
 
 select test_result.eq(
-  'and the day''s books drop by exactly that order',
-  (select refund_due_paise::text from public.shop_day_totals(date '2020-02-20')),
-  '13000'
+  'and the running liability drops by exactly that order (29000 − 12000)',
+  (select refund_due_paise::text from public.shop_day_totals(date '2019-01-01')),
+  (select (b.owed + 17000)::text from test26_baseline b)
+);
+
+select test_result.eq(
+  'which is the sum of what the other owed orders still carry',
+  (select refund_due_paise::text from public.shop_day_totals(date '2019-01-01')),
+  (select (
+     coalesce(sum(o.refund_due_paise), 0)
+     + coalesce(sum(o.shortage_refund_paise) filter (
+         where o.shortage_refund_paid_at is null
+       ), 0)
+   )::bigint::text
+   from public.orders o
+   where o.store_id in (select id from public.stores where is_active))
 );
 
 -- =============================================================================
@@ -321,4 +403,7 @@ delete from public.orders
               '70000000-0000-4000-8000-0000000000b5',
               '70000000-0000-4000-8000-0000000000b6',
               '70000000-0000-4000-8000-0000000000b7',
-              '70000000-0000-4000-8000-0000000000b8');
+              '70000000-0000-4000-8000-0000000000b8',
+              '70000000-0000-4000-8000-0000000000b9');
+
+drop table if exists test26_baseline;

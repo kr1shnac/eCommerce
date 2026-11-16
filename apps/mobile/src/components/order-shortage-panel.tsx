@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, View } from 'react-native';
 
 import { ThemedText } from '@/components/themed-text';
 import { Card } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { useAdminAdjustOrderItem } from '@/hooks/use-orders';
 import { useTheme } from '@/hooks/use-theme';
 import { localizedItemName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
+import { dialablePhone, readSnapshotAddress } from '@/lib/order-view';
 import type { Order, OrderItem, OrderStatus } from '@/types/database';
 
 /**
@@ -41,6 +42,9 @@ export function OrderShortagePanel({ order, items }: { order: Order; items: Orde
   if (!isLive || items.length === 0) return null;
 
   const lastLine = items.length === 1;
+  // A phone order carries its own contact; an app order's number lives in the
+  // address snapshot. One number either way — the person the rider will call.
+  const phone = dialablePhone(order.contact_phone ?? readSnapshotAddress(order).phone);
 
   const run = async (itemId: string, quantity: number) => {
     if (adjust.isPending) return;
@@ -128,6 +132,32 @@ export function OrderShortagePanel({ order, items }: { order: Order; items: Orde
           {t('order.adminFailed')}
         </ThemedText>
       ) : null}
+
+      {/*
+        A shorter bag is a phone call the customer has to hear about: they paid
+        for six and will receive four. The button is here, next to the change,
+        because that is the moment the call needs making — not buried on another
+        screen. Only opens the dialler, pre-filled; nothing is dialled silently.
+      */}
+      {phone ? (
+        <Pressable
+          onPress={() => {
+            Linking.openURL(`tel:${phone}`).catch((error) => {
+              console.warn('[order] could not open dialler', error);
+            });
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t('order.callCustomer')}
+          style={({ pressed }) => [
+            styles.callButton,
+            { borderColor: theme.accentBorder, backgroundColor: theme.accentSoft },
+            { opacity: pressed ? 0.85 : 1 },
+          ]}>
+          <ThemedText type="smallBold" style={{ color: theme.accent }}>
+            {t('order.callCustomer')}
+          </ThemedText>
+        </Pressable>
+      ) : null}
     </Card>
   );
 }
@@ -154,6 +184,14 @@ const styles = StyleSheet.create({
   pill: {
     minHeight: 44,
     borderRadius: Radii.pill,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.three,
+  },
+  callButton: {
+    minHeight: 44,
+    borderRadius: Radii.md,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',

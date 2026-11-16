@@ -153,8 +153,8 @@ the item-by-item tracker.
 
 | Area | State |
 | --- | --- |
-| Database | **38 migrations**, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement. Hosted project **Kunigal Bazaar** has all 38 applied, 0 pending |
-| Database tests | **850 assertions, 0 failures**, against throwaway PostgreSQL (`npm run test:db`); now runs on Windows, macOS and Linux |
+| Database | **53 migrations** on disk, RLS + guard triggers on every table, integer paise, generated `line_total_paise`, CHECK on `total_paise`, conditional stock decrement. Hosted project **Kunigal Bazaar** has **43 proved applied / 3 MISSING / 7 unproven** as of 2026-11-13 — the last five migrations are **local-only by the owner's staging rule (§4.1 of AGENTS.md)**: `20261113000002`, `0003`, `0004`, `0005` and `0006` stay local until a staging project exists and the owner says yes. That is the expected state, not a regression |
+| Database tests | **1188 assertions, 0 failures**, against throwaway PostgreSQL (`npm run test:db`); now runs on Windows, macOS and Linux |
 | Typecheck / lint / i18n | Clean. **717 keys in parity** across `en.json` and `kn.json`; every chained check passes with zero warnings (sixteen of them, `check:metro` now included) |
 | Mobile app | Three faces by `profiles.role` (customer / rider / admin), realtime order updates, light **and** dark themes, design system in `src/components/ui/`, responsive skeletons, offline catalogue persistence, shop door and money desk on the owner's face |
 | Rider tracking | Text-first position sharing is built (consent, foreground throttle, distance/ETA, "Picked up"), **with a key-free OpenStreetMap map and a door pin**; still no background location |

@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -8,6 +9,7 @@ import { DeliverySettingsCard } from '@/components/delivery-settings-card';
 import { ShopDoorCard } from '@/components/shop-door-card';
 import { LoadingState, StateMessage } from '@/components/state-message';
 import { ThemedText } from '@/components/themed-text';
+import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing } from '@/constants/theme';
 import { useShopDayByRider, useShopDayTotals } from '@/hooks/use-shop-totals';
@@ -45,6 +47,7 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 export default function AdminTodayScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const totals = useShopDayTotals();
@@ -95,12 +98,24 @@ export default function AdminTodayScreen() {
               tintColor={theme.accent}
             />
           }>
-          {/* 0. The door. Above the money, because a shop that is closed by
+          {/* 0. The phone. Above the door and the money because it is the
+              one thing that starts a new order rather than reporting on one,
+              and because the call is happening NOW: the owner has a person on
+              the line and needs the screen in two taps. */}
+          <Button
+            label={t('admin.phoneEntry')}
+            icon="call-outline"
+            size="lg"
+            fullWidth
+            onPress={() => router.push('/admin/phone-order')}
+          />
+
+          {/* 0b. The door. Above the money, because a shop that is closed by
               mistake takes orders it cannot deliver — and every one of those is
               a refund. */}
           <ShopDoorCard />
 
-          {/* 0b. How far the shop reaches, and how fast. Directly under the
+          {/* 0c. How far the shop reaches, and how fast. Directly under the
               door: both answer "can we serve this person?", and both are the
               owner's own decision rather than a code change. */}
           <DeliverySettingsCard />

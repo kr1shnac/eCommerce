@@ -11,6 +11,7 @@ import type {
   ExpressRefusalReason,
   Order,
   OrderItem,
+  OrderRefusal,
   PaymentMethod,
   PlaceOrderError as PlaceOrderErrorCode,
   PlaceOrderResult,
@@ -51,6 +52,30 @@ export class PlaceOrderRejected extends Error {
     this.expressRadiusM = result.express_radius_m ?? null;
     this.units = result.units ?? null;
     this.maxUnits = result.max_units ?? null;
+  }
+}
+
+/**
+ * A refusal from the counter's door (`admin_place_phone_order`).
+ *
+ * Deliberately its own class rather than `PlaceOrderRejected`: the counter can
+ * refuse things the customer app cannot even express — a missing typed name, a
+ * bad mobile, a door line, a six-digit pincode, an override with no reason — and
+ * keeping those codes out of the app's own union is what stops the checkout
+ * being asked for sentences it can never show.
+ */
+export class PhoneOrderRejected extends Error {
+  readonly code: OrderRefusal;
+  readonly items: UnavailableItem[];
+  /** Smallest basket the SHOP accepts, when that is the reason. */
+  readonly minOrderPaise: number | null;
+
+  constructor(result: Extract<PlaceOrderResult<OrderRefusal>, { ok: false }>) {
+    super(result.error);
+    this.name = 'PhoneOrderRejected';
+    this.code = result.error;
+    this.items = result.items ?? [];
+    this.minOrderPaise = result.min_order_value_paise ?? null;
   }
 }
 
@@ -323,6 +348,76 @@ export function usePlaceOrder() {
       clearCart();
       await queryClient.invalidateQueries({ queryKey: orderKeys.list });
       await queryClient.invalidateQueries({ queryKey: ['cart-products'] });
+    },
+  });
+}
+
+/**
+ * The owner takes a phone order from the counter.
+ *
+ * Deliberately NOT `usePlaceOrder`: the counter has no cart store, no saved
+ * address and no signed-in customer. It sends the typed lines and the typed
+ * door, and the database runs the SAME `place_order_core()` the app uses — the
+ * price, stock, fee, coupon and total are still the database's answers, never
+ * this screen's arithmetic.
+ *
+ * The idempotency key must be generated ONCE per phone call and reused for
+ * every retry of that call (rule 9.4); the screen keeps it until the order is
+ * accepted or the form is deliberately cleared.
+ */
+export function usePlacePhoneOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (input: {
+      storeId: string;
+      items: { product_id: string; quantity: number }[];
+      contactName: string;
+      contactPhone: string;
+      addressLine1: string;
+      addressLine2?: string | null;
+      landmark?: string | null;
+      city?: string;
+      pincode: string;
+      /** The caller's dropped coordinate, when they gave one. */
+      lat?: number | null;
+      lng?: number | null;
+      note?: string | null;
+      couponCode?: string | null;
+      paymentMethod?: PaymentMethod;
+      /** Required when the door is outside the served area or radius. */
+      overrideReason?: string | null;
+      idempotencyKey: string;
+    }): Promise<Extract<PlaceOrderResult<OrderRefusal>, { ok: true }>> => {
+      const { data, error } = await supabase.rpc('admin_place_phone_order', {
+        p_items: input.items,
+        p_store_id: input.storeId,
+        p_idempotency_key: input.idempotencyKey,
+        p_contact_name: input.contactName,
+        p_contact_phone: input.contactPhone,
+        p_address_line1: input.addressLine1,
+        p_pincode: input.pincode,
+        p_address_line2: input.addressLine2 ?? null,
+        p_landmark: input.landmark ?? null,
+        p_city: input.city ?? 'Kunigal',
+        p_lat: input.lat ?? null,
+        p_lng: input.lng ?? null,
+        p_note: input.note ?? null,
+        p_payment_method: input.paymentMethod ?? 'cod',
+        p_coupon_code: input.couponCode ?? null,
+        p_override_reason: input.overrideReason ?? null,
+      });
+
+      if (error) throw error;
+      if (!data || typeof data !== 'object') throw new Error('bad-phone-order-response');
+      if (!data.ok) throw new PhoneOrderRejected(data);
+      return data;
+    },
+    onSuccess: async () => {
+      // The counter's order is not the owner's own basket: never touch a cart.
+      await queryClient.invalidateQueries({ queryKey: orderKeys.list });
+      await queryClient.invalidateQueries({ queryKey: ['cart-products'] });
+      await queryClient.invalidateQueries({ queryKey: ['shop', 'totals'] });
     },
   });
 }

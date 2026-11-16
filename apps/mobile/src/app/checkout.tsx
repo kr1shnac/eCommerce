@@ -27,7 +27,12 @@ import { isOnlinePaymentMethod } from '@/lib/payments';
 import { previewFee } from '@/lib/delivery';
 import { useDeliveryZones, useStore, useStoreSettings } from '@/hooks/use-shop';
 import { useTheme } from '@/hooks/use-theme';
-import { expressVerdict, radiusKmLabel, radiusVerdict } from '@/lib/geo';
+import {
+  expressVerdict,
+  isUsableFix,
+  radiusKmLabel,
+  radiusVerdict,
+} from '@/lib/geo';
 import { makeIdempotencyKey } from '@/lib/idempotency';
 import { localizedName } from '@/lib/localized';
 import { formatPaise } from '@/lib/money';
@@ -218,6 +223,21 @@ export default function CheckoutScreen() {
   // charging for a 30-minute delivery the shop cannot make.
   const useExpress = wantsExpress && expressAvailable;
 
+  // ---------------------------------------------------------------------------
+  // The door-pin gate (migrations 20261113000002 and 20261113000004).
+  //
+  // The database refuses an unpinned address while the gate is on AND the shop
+  // has a usable pin of its own — that second half is why the gate waits for
+  // the shop's pin rather than locking the shop out. The customer is told here,
+  // before the tap, with a way to drop the pin: discovering `address_pin_required`
+  // after pressing Place order would be a refusal with no visible cause.
+  // ---------------------------------------------------------------------------
+  const doorPinNeeded =
+    (settings.data?.address_pin_required ?? false) &&
+    isUsableFix(shopFix.lat, shopFix.lng) &&
+    selected !== null &&
+    !isUsableFix(selected.lat, selected.lng);
+
   // A method the shop cannot collect is not a choice. If the owner switches
   // online payments off while somebody is on this screen, the screen falls back
   // to cash instead of offering a button the database will refuse.
@@ -361,6 +381,12 @@ export default function CheckoutScreen() {
   // the one that decides. Inventing a distance there would be worse than silence.
   if (radius.kind === 'outside') {
     reasons.push(t('checkout.outsideRadius', { radius: radiusKmLabel(radius.radiusM) }));
+  }
+
+  // The gate is on and this door has no pin. Same rule `place_order()` applies;
+  // saying it here is what turns a refusal into an instruction.
+  if (doorPinNeeded) {
+    reasons.push(t('checkout.doorPinRequired'));
   }
 
   const canPlace =
@@ -571,6 +597,33 @@ export default function CheckoutScreen() {
             </Pressable>
           </View>
         )}
+
+        {/*
+          The gate, before the tap. The database refuses an unpinned door while
+          `address_pin_required` is on and the shop has its own pin; this card
+          says so and opens the address screen's map, so the fix is one tap
+          instead of a refusal with no visible cause (migration 20261113000004).
+        */}
+        {doorPinNeeded && selected ? (
+          <Card tone="warning" style={styles.doorPinCard}>
+            <View style={styles.doorPinHead}>
+              <Ionicons name="location-outline" size={20} color={theme.warningInk} />
+              <ThemedText type="smallBold" style={[styles.flex, { color: theme.warningInk }]}>
+                {t('checkout.doorPinTitle')}
+              </ThemedText>
+            </View>
+            <ThemedText type="small">{t('checkout.doorPinBody')}</ThemedText>
+            <Button
+              label={t('checkout.doorPinAction')}
+              icon="map-outline"
+              variant="outline"
+              fullWidth
+              onPress={() =>
+                router.push({ pathname: '/address', params: { id: selected.id } })
+              }
+            />
+          </Card>
+        ) : null}
 
         {/*
           Delivery speed. Shown ABOVE the total because it changes it, and
@@ -1030,6 +1083,8 @@ const styles = StyleSheet.create({
   },
   reasons: { gap: Spacing.one, marginBottom: Spacing.two },
   reasonRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
+  doorPinCard: { gap: Spacing.two, marginTop: Spacing.two },
+  doorPinHead: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   paymentNote: {
     marginTop: Spacing.one,
     textAlign: 'center',

@@ -17,12 +17,12 @@
 -- sequence, filled oldest-first at the backfill).
 --
 -- THE FINANCIAL YEAR IS INDIAN, IN IST: April through December reads
--- `YYYY-(YY+1)`; January through March reads `(YYYY-1)-YY`. The boundaries
--- are pinned in test 36 (2027-03-31 -> 2026-27, 2027-04-01 -> 2027-28, and
--- the fixed date 2026-11-12 -> 2026-27). THIS suite pins the other half of
--- the promise: that a REAL order, stamped with the real clock, lands in the
--- RIGHT year — the label function is only half the machinery; the trigger
--- feeding it `now()` is the other half.
+-- `YYYY-(YY+1)`; January through March reads `(YYYY-1)-YY`. Test 36 pins the
+-- label function itself. THIS suite pins the other half of the promise with
+-- REAL orders: the BEFORE-INSERT trigger feeding
+-- `coalesce(placed_at, now())` into that label. Section 3 stamps two orders one
+-- second apart — 2027-03-31 23:59:59 IST and 2027-04-01 00:00:00 IST — so the
+-- year flips on the second it should and not the one before or after.
 --
 -- WHAT HAPPENS TO A CANCELLED ORDER'S NUMBER
 -- ------------------------------------------
@@ -168,7 +168,87 @@ select test_result.ok(
 );
 
 -- -----------------------------------------------------------------------------
--- 3. Put the fixtures back.
+-- 3. THE EXACT BOUNDARY: 31 March 23:59:59 IST against 1 April 00:00:00 IST.
+--
+-- Test 36 pins the label function a few minutes either side of the Indian
+-- rollover. This suite pins the other half of the machinery with REAL orders
+-- stamped one second apart: the BEFORE-INSERT trigger feeding
+-- `coalesce(placed_at, now())` into the label. The whole audit risk in an
+-- invoice number is the year, so the year is pinned to the second, in both
+-- directions — the rollover just passed and the one coming next.
+-- -----------------------------------------------------------------------------
+
+insert into public.orders (
+  id, user_id, store_id, address_id, delivery_address,
+  status, payment_method, payment_status,
+  subtotal_paise, delivery_fee_paise, discount_paise, total_paise,
+  placed_at
+)
+values
+  ('92000000-0000-4000-8000-0000000000a3',
+   '11111111-1111-1111-1111-111111111111',
+   '00000000-0000-4000-8000-000000000001',
+   '50000000-0000-4000-8000-000000000001',
+   '{"line1":"12, Gandhi Road","pincode":"572130"}'::jsonb,
+   'placed', 'cod', 'pending', 10800, 2500, 0, 13300,
+   '2027-03-31 23:59:59+05:30'::timestamptz),
+
+  ('92000000-0000-4000-8000-0000000000a4',
+   '11111111-1111-1111-1111-111111111111',
+   '00000000-0000-4000-8000-000000000001',
+   '50000000-0000-4000-8000-000000000001',
+   '{"line1":"12, Gandhi Road","pincode":"572130"}'::jsonb,
+   'placed', 'cod', 'pending', 10800, 2500, 0, 13300,
+   '2027-04-01 00:00:00+05:30'::timestamptz);
+
+select test_result.ok(
+  'an order stamped 31 March 2027 23:59:59 IST is invoiced in 2026-27',
+  (select invoice_number from public.orders
+    where id = '92000000-0000-4000-8000-0000000000a3')
+    like 'INV/2026-27/%',
+  (select invoice_number from public.orders
+    where id = '92000000-0000-4000-8000-0000000000a3')
+);
+
+select test_result.ok(
+  'an order stamped 1 April 2027 00:00:00 IST is invoiced in 2027-28',
+  (select invoice_number from public.orders
+    where id = '92000000-0000-4000-8000-0000000000a4')
+    like 'INV/2027-28/%',
+  (select invoice_number from public.orders
+    where id = '92000000-0000-4000-8000-0000000000a4')
+);
+
+select test_result.ok(
+  'and the two orders are one second apart, in different years',
+  (select invoice_number from public.orders
+    where id = '92000000-0000-4000-8000-0000000000a3')
+  <> (select invoice_number from public.orders
+        where id = '92000000-0000-4000-8000-0000000000a4')
+);
+
+select test_result.ok(
+  'the serial still moves forward, one document number per order',
+  (select split_part(invoice_number, '/', 3)::bigint from public.orders
+    where id = '92000000-0000-4000-8000-0000000000a4')
+  > (select split_part(invoice_number, '/', 3)::bigint from public.orders
+        where id = '92000000-0000-4000-8000-0000000000a3')
+);
+
+select test_result.ok(
+  'the label function itself agrees at the exact second, both directions',
+  public.financial_year_label('2027-03-31 23:59:59+05:30'::timestamptz) = '2026-27'
+  and public.financial_year_label('2027-04-01 00:00:00+05:30'::timestamptz) = '2027-28'
+  and public.financial_year_label('2026-03-31 23:59:59+05:30'::timestamptz) = '2025-26'
+  and public.financial_year_label('2026-04-01 00:00:00+05:30'::timestamptz) = '2026-27',
+  public.financial_year_label('2027-03-31 23:59:59+05:30'::timestamptz)
+  || '/' || public.financial_year_label('2027-04-01 00:00:00+05:30'::timestamptz)
+  || '/' || public.financial_year_label('2026-03-31 23:59:59+05:30'::timestamptz)
+  || '/' || public.financial_year_label('2026-04-01 00:00:00+05:30'::timestamptz)
+);
+
+-- -----------------------------------------------------------------------------
+-- 4. Put the fixtures back.
 -- -----------------------------------------------------------------------------
 reset role;
 

@@ -14,3 +14,18 @@ import * as Crypto from 'expo-crypto';
 export function makeIdempotencyKey(): string {
   return `app-${Crypto.randomUUID()}`;
 }
+
+/**
+ * The idempotency key for one phone order at the counter.
+ *
+ * Same rule, different door: generated once when the owner starts typing a
+ * call's order and reused for every retry of that call. A fresh key per retry
+ * would turn a dropped connection into two orders — and on the counter that
+ * means two riders sent to one house.
+ *
+ * The prefix is only for the logs; the database treats both doors' keys alike
+ * within their own key space.
+ */
+export function makePhoneIdempotencyKey(): string {
+  return `phone-${Crypto.randomUUID()}`;
+}

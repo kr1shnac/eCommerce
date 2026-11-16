@@ -6,6 +6,209 @@ the gaps you know about. A future session reads this file first.
 
 ---
 
+## 2026-11-13 (tenth session) — the owner's five pre-order fixes, and phone-order entry
+
+Five fixes first, then the eighth directive built. **Nothing was pushed.** All
+five local-only migrations are still local-only, by the staging rule.
+
+### 1. The address-pin gate ships ON, not OFF (migration `20261113000004`)
+
+The off-by-default pilot was a doorway nobody walks through: a shop that has to
+find a switch before it is protected never protects anyone. So
+`store_settings.address_pin_required` now defaults **true** and the existing
+row is UPDATED once, in the same migration, so a live project does not keep a
+default only new rows would get. The gate still does nothing while the shop's
+own pin is missing — an owner who has not stood in the shop must not be locked
+out of taking orders — and the owner can still switch it off consciously, through
+`update_delivery_settings(p_address_pin_required => false)`.
+
+The refusal without a cause is a bug, so checkout now asks **before** the tap:
+`checkout.doorPinTitle/Body/Action` (both languages) sit in a warning card
+above the total, and the same condition adds one translated reason to the
+"cannot place this order" list. The card's button opens `/address?id=<id>` —
+the address screen's own map, the one place allowed to ask for a door pin —
+rather than a second map beside a checkout that is not the place to drop one.
+
+Test 44 asserts the shipped default from three angles: the column default, the
+live row after the one-time UPDATE, and (in cleanup) that the gate comes back
+ON. It also clears the shop pin, so the suite leaves no pin behind for another
+suite to measure against.
+
+### 2. The migration count was 53, not 45 — and the probe was lying by omission
+
+`ls supabase/migrations | wc -l` is **53**. Two written-in-doc numbers were
+wrong and are corrected (HANDOFF §2.1, AGENTS §7, PRODUCTION §11): the hosted
+project has **43 proved applied / 3 MISSING / 7 unproven**, and the five
+local-only files are `20261113000002` … `20261113000006`.
+
+Worse, and worth writing down: `check:hosted` prints
+`local migrations: ${MARKERS.length}` — the length of its own hand-maintained
+table, **not** the directory. Migrations 04, 05 and 06 had no row in that table,
+so they were never printed at all and never counted: the probe could report a
+45-migration headline over a 53-file directory and look like it had checked.
+Fixed by adding the three rows, so the table now covers every file:
+
+- `20261113000004` and `20261113000005` get **no probe, on purpose**. A column
+  default has no REST-visible shape change, and a `shop_day_totals()` body swap
+  keeps its name and arity — either would print PRESENT on a project that never
+  received it. A green probe that proves nothing is worse than an unproven one.
+- `20261113000006` gets a real one: `admin_place_phone_order` is a new function,
+  so a bare POST answers PGRST202 when it is missing and a permission or
+  argument error when it exists.
+
+### 3. "Refund due" is a balance, not a day's takings (migration `20261113000005`)
+
+`shop_day_totals()` mixed two kinds of number. Every figure on the owner's Today
+tab is a day's figure, and its refund line was derived from `payment_method =
+'online'` — which under-reported the shop's liability and hid orders placed on
+another day. `shop_day_totals()` now returns the **outstanding liability as of
+now**: `sum(refund_due_paise) + sum(shortage_refund_paise) where
+shortage_refund_paid_at is null` across all orders of active stores, with **no
+`placed_at` filter**. Everything else stays day-scoped. A shop that owes money
+does not owe it only on the day it sold the thing.
+
+Test 26 proves it with a cross-day order (₹40 owed, placed 2020-02-10), a
+captured baseline, an empty day (2019-01-01) that must still show the debt, the
+running balance across settlement, and a cleanup that drops the baseline
+temporary table.
+
+### 4. The invoice financial-year boundary, and why the sequence stays
+
+Test 42 places two real orders one second across the boundary —
+`2027-03-31 23:59:59+05:30` and `2027-04-01 00:00:00+05:30` — and asserts the
+exact-second label in both directions, so an off-by-one in the Indian financial
+year is a failing test rather than a bill with the wrong FY on it.
+
+**Decision: the sequence stays; a gap-free counter was considered and rejected.**
+A gapless serial needs a counter row held under a lock for the whole insert,
+which serialises every invoice and turns the shop's busiest minute into a queue,
+and it still gaps on rollback unless the counter is transactional too. A gap in
+an invoice serial is not evidence of a lost sale; a queue at the counter is a
+real cost today.
+
+### 5. Call the customer, at the moment the bag gets shorter
+
+`order-shortage-panel.tsx` now carries a **Call customer** button next to the
+adjustment itself: `dialablePhone(order.contact_phone ?? readSnapshotAddress(order).phone)`
+— one number either way, because a phone order's contact and an app order's
+snapshot are the same fact to the person dialling. It only opens the dialler,
+pre-filled. Nothing dials silently.
+
+A design note for the next session: there is **no `accentInk` token** in
+`constants/theme.ts` (only `secondaryInk`, `successInk`, `warningInk`,
+`dangerInk`). Text sitting on `accentSoft` uses `theme.accent` — that is what
+the rest of the app does, and adding a half-token here would have been the third
+palette in the file.
+
+### 6. Phone-order entry — the same core, a second door
+
+`supabase/migrations/20261113000006_phone_orders.sql`. Half the shop's customers
+ring rather than tap, and a written-down order is one the shop's books never
+see.
+
+- **`place_order_core()` is internal** — execute revoked from `public`, `anon`,
+  `authenticated` and `service_role`. The pricing, stock, fee, coupon, coupon
+  per-person cap, over-commitment guard, ETA and totals live in exactly one
+  place, and both doors call it. The definer wrappers are the API.
+- **The app's `place_order` wrapper keeps its eight-argument signature** and
+  only adds auth. The address-ownership check moved into the core, after the
+  replay lookup, so a replayed request is answered before a lookup that would
+  leak "which addresses exist".
+- **`admin_place_phone_order`** is admin-only (42501), takes the typed contact
+  and typed door, and can accept `p_lat`/`p_lng` — the measured-radius override
+  is only genuinely reachable if a caller can actually drop a door on a map.
+  It deliberately **skips the door-pin gate**: the owner is on the phone with a
+  typed door, not a customer holding a pinless saved address.
+- **The order shape**: `user_id` and `address_id` nullable, `source` in
+  `('app','phone')` defaulting to `'app'`, `contact_name`/`contact_phone`
+  required by CHECK only when `source='phone'`, `radius_override_reason` held
+  at ≥ 3 characters, and a **partial unique index on `idempotency_key` where
+  `source='phone'`** so the two key spaces cannot collide.
+- **An out-of-area order is refused until the owner records why**:
+  `override_reason_required` (min 3 chars, stored on the order). Next month the
+  reason is on the row, not in someone's memory.
+- **The handover code is readable at the counter.** A phone order has no
+  customer app to read four digits from, so `DeliveryCodeCard` gained an
+  `isShop` variant — the same `my_delivery_code()`, a different sentence. The
+  rider is still refused by the function itself (42501); that refusal is what
+  makes the code proof of a handover.
+- Test 46: **61 assertions** — staff-only, the app door unchanged, the phone
+  order's shape/money/stock/ETA/line totals, contact validation plus the DB's
+  own 23514, idempotency and the separate key spaces, pincode and measured
+  radius overrides with their stored reasons, coupon plus per-contact limit, the
+  handover code (owner yes, customer and rider refused), and RLS visibility —
+  nobody but the shop, the rider and staff can see a phone order.
+
+**Five test failures found while building 46**, all by running it: the prefix is
+`KGL-` (not `KNG-`); stock assertions need a before/after temporary table
+because `shop_day_totals()` counts the same decrement; the shared-key count must
+run as the owner because RLS hid the phone order from the customer; and the
+handover refusals need a captured `order_id` temporary table, because a subquery
+under customer RLS returns NULL and the function answers `order_not_found` rather
+than the real 42501.
+
+### 7. The counter screen
+
+`apps/mobile/src/app/admin/phone-order.tsx` — contact, typed door, an optional
+placeable pin on the same OpenStreetMap map, measured/unserved verdicts in the
+same words the checkout uses, the override reason field when it is needed, a
+searchable shelf with stock-capped steppers, a coupon, a note, and the bill the
+owner reads out. It calls `usePlacePhoneOrder`, which invalidates the order
+lists, the cart products and the day's totals, and **never touches a cart** —
+this is not the owner's own basket. `makePhoneIdempotencyKey()` is generated
+once per call and reused for every retry of that call: a fresh key per retry at
+the counter means two riders sent to one house.
+
+Cash only, deliberately. Online methods are refused by the database while no
+gateway exists, and a button that always refuses is a lie with a border.
+
+### 8. A type decision the i18n checker forced, and it was right
+
+`scripts/check-i18n.mjs` requires **every** member of `PlaceOrderError` to have
+a `checkout.error.*` sentence, because that is exactly what shipped raw key
+text to a customer once. Putting the five counter-only codes in that union
+therefore demanded five sentences the app can never show — "write the caller's
+name" on a customer's checkout — and its naive union parser also tripped over an
+apostrophe inside a comment. So:
+
+- `PhoneOrderError` (5 counter-only codes) is **outside** `PlaceOrderError`;
+  `OrderRefusal = PlaceOrderError | PhoneOrderError`.
+- `PlaceOrderResult<E extends string = PlaceOrderError>` is parameterised, so
+  `admin_place_phone_order` honestly returns the wider set and `place_order`
+  keeps the narrower one.
+- `PhoneOrderRejected` is a separate thrown class from `PlaceOrderRejected`.
+- `checkout.error.address_pin_required` exists in both languages; the other
+  five do not need to.
+
+### Verified, and how
+
+- `npm run test:db`: **1188 assertions, 0 failures** — 43–45 extended (pin
+  default ON, the running refund balance, the invoice FY boundary), 46 new
+  (61 assertions), all 53 migrations applied in filename order on a throwaway
+  PostgreSQL, plus the two-session concurrency race.
+- `npm run typecheck`: zero errors in both apps.
+- `npm run lint`: the whole chain, zero errors and zero warnings.
+- `npm run check:i18n`: 1002 keys in parity, 751 used literals, 16 dynamic
+  families.
+- `npm run check:hosted` re-probed after fixing its marker table: 43 applied /
+  3 MISSING (`20261113000002`, `0003`, `0006`) / 7 unproven.
+
+### Not verified — read this before touching the feature
+
+- **Nothing here has been run on a device.** No phone, no Expo Go session, no
+  deep link, no map long-press, no dialler. The pin gate, the counter screen and
+  the handover code are proved by types, tests and arithmetic only. Per the
+  pause-after-phone-order plan, a real device run is the next thing that happens
+  before another feature.
+- `check:hosted` cannot see a column default or a function body swap; for
+  `20261113000004` and `0005` the proof is the migration file and test 44/26,
+  not the probe.
+- The live shop's `lat`/`lng` is still NULL until the owner stands in the shop
+  and taps *Use my current location*, so the measured radius and the pin gate
+  are both waiting on that one owner-side tap.
+
+---
+
 ## 2026-11-13 (ninth session) — the owner's eight directives, and three migrations waiting on a staging project
 
 The owner set eight directives this session. Six are built and proved; the

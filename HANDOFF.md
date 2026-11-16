@@ -81,17 +81,24 @@ fields — see §6.
 
 Everything below is in `master` and passes the gates in §3.
 
-### 2.1 Database (45 migrations; 42 on the hosted project, 3 local-only)
+### 2.1 Database (53 migrations; 43 proved applied on the hosted project, 5 local-only)
 
-Migration `20261112000006_razorpay.sql` and
-`20261112000007_refund_due_methods.sql` were pushed on 2026-11-12 (third
-session). The three of 2026-11-13 (`20261113000001_rider_directory_window`,
-`20261113000002_address_pin_gate`, `20261113000003_shortage_notice_refund`)
+`20261113000001_rider_directory_window.sql` is applied on the hosted project.
+The five that follow it (`20261113000002_address_pin_gate`,
+`20261113000003_shortage_notice_refund`,
+`20261113000004_address_pin_default_on`,
+`20261113000005_refund_running_balance`,
+`20261113000006_phone_orders`)
 are **local-only** by owner directive: a staging project must exist and take
 them first, and the owner must say yes before anything reaches production —
-so `npm run check:hosted` now reports **42 applied, 3 missing** on the live
-project, which is the expected state, not an incident. Locally,
-`npm run test:db` proves all 45 (1115 assertions, 0 failures). The payment
+so `npm run check:hosted` reports **43 applied / 3 missing / 7 unproven**, and
+the three MISSING lines are `20261113000002`, `20261113000003` and
+`20261113000006` — the expected state, not an incident. `20261113000004` and
+`20261113000005` carry **no probe at all**, deliberately: 04 is a column default
+(no REST-visible shape change) and 05 is a `shop_day_totals()` body swap that
+looks PRESENT however it is probed, so a probe there would print green for a
+project that never received it. Locally, `npm run test:db` proves all 53
+(**1188 assertions, 0 failures**). The payment
 path itself is still **dark**: no Razorpay keys, so the Edge Functions answer
 `gateway_not_configured` and checkout greys the online methods.
 

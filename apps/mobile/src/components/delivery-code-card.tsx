@@ -17,6 +17,12 @@ import { useTheme } from '@/hooks/use-theme';
  * by the order screen for that state only, and the database answers
  * `not_available` the moment it is spent.
  *
+ * TWO AUDIENCES, ONE CODE. A phone order has no customer app to read the code
+ * from, so the owner reads the same four digits to the caller on the phone
+ * (migration 20261113000006). `my_delivery_code()` already allows the admin;
+ * this card only changes the sentence around the digits. The rider is refused
+ * by the function itself — that is what makes the code proof of a handover.
+ *
  * Why a code at all: without it the rider's only honest options at a locked
  * gate are "lie and press delivered" or leave the order hanging all evening.
  * The code makes the handover a fact both people agree on.
@@ -28,22 +34,29 @@ import { useTheme } from '@/hooks/use-theme';
 export function DeliveryCodeCard({
   orderId,
   isOwner,
+  isShop = false,
 }: {
   orderId: string;
-  /** Staff open this order screen too; only the customer who ordered sees this. */
+  /** The signed-in user placed this order: the customer's own code. */
   isOwner: boolean;
+  /** Staff are reading it out to a caller: the same code, a different sentence. */
+  isShop?: boolean;
 }) {
   const { t } = useTranslation();
   const theme = useTheme();
-  const code = useDeliveryCode(isOwner ? orderId : null);
+  const mayRead = isOwner || isShop;
+  const code = useDeliveryCode(mayRead ? orderId : null);
 
-  if (!isOwner) return null;
+  if (!mayRead) return null;
+
+  const title = isOwner ? t('order.codeTitle') : t('order.codeShopTitle');
+  const hint = isOwner ? t('order.codeHint') : t('order.codeShopHint');
 
   const head = (
     <View style={styles.head}>
       <Ionicons name="keypad-outline" size={20} color={theme.accent} />
       <ThemedText type="smallBold" style={[styles.flex, { color: theme.accent }]}>
-        {t('order.codeTitle')}
+        {title}
       </ThemedText>
     </View>
   );
@@ -103,7 +116,9 @@ export function DeliveryCodeCard({
         style={styles.digits}
         accessible
         accessibilityRole="text"
-        accessibilityLabel={t('order.codeA11y', { code: spoken })}>
+        accessibilityLabel={t(isOwner ? 'order.codeA11y' : 'order.codeShopA11y', {
+          code: spoken,
+        })}>
         {digits.map((digit, index) => (
           <View
             key={`${digit}-${index}`}
@@ -119,11 +134,13 @@ export function DeliveryCodeCard({
       </View>
 
       <ThemedText type="bodyStrong" style={{ color: theme.accent }}>
-        {t('order.codeHint')}
+        {hint}
       </ThemedText>
-      <ThemedText type="caption" themeColor="textSecondary">
-        {t('order.codePrivacy')}
-      </ThemedText>
+      {isOwner ? (
+        <ThemedText type="caption" themeColor="textSecondary">
+          {t('order.codePrivacy')}
+        </ThemedText>
+      ) : null}
     </Card>
   );
 }

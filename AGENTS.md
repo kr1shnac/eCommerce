@@ -506,17 +506,25 @@ As of this build, the app is a working end-to-end flow on one shop:
   as a fresh project (`argahiagpywluxpqtnpp`, Mumbai, PostgreSQL 17.11) rather
   than patched, because the old one was **out of order** — later migrations
   present while earlier ones were missing — so its schema could not be trusted
-  even after a patch. All **43** migrations are applied in filename order,
-  `supabase migration list --remote` reports **0 pending**, and the production
+  even after a patch. On 2026-11-09 it took the **43** migrations that existed
+  then, in filename order, with `supabase migration list --remote` reporting
+  **0 pending** at the time. Five more have been written since and are
+  **local-only** by the owner's staging rule (§4.1), so the hosted project is now
+  behind by design — re-probe with `check:hosted` rather than trusting any number
+  written in this file. The production
   bootstrap (`supabase/production-bootstrap.sql`) created one store, one settings
   row, the 572130 zone and the eight categories — **never** `seed.sql`,
   `demo.sql`, `demo-accounts.sql` or `demo-images.sql`. `npm run check:hosted` is
   the live answer to "what is on the project?" — it probes one REST-visible
   marker per migration and says "no REST-visible object" rather than pretending
-  for the RLS/publication/index-only files. Never trust a migration count written
-  in a doc; re-probe. `test:db` is the real proof of the schema (**1001
-  assertions** as of 2026-11-12, third session — 957 before the Razorpay and
-  refund-rule suites). A **CAPTCHA gate** on the OTP endpoint was built in the
+  for the RLS/publication/index-only files. Two kinds of migration get **no probe
+  at all**, on purpose — a column default, and a function body swap whose
+  signature does not change — because either would print PRESENT on a project
+  that never received it; `test:db` is the proof for those. `test:db` is the real
+  proof of the schema (**1188
+  assertions** as of 2026-11-13, fifth session — 957 before the Razorpay and
+  refund-rule suites, and 1188 after the phone-order, running-refund and
+  door-pin suites). A **CAPTCHA gate** on the OTP endpoint was built in the
   fourth session and is proved by `check:captcha`; the dashboard half of it is
   the owner's step and must come *after* the site key is in `.env`, or nobody
   can sign in. No launch step blocks *starting* any more:

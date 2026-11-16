@@ -1,10 +1,16 @@
 -- =============================================================================
 -- 44 · A delivery needs a door: the address_pin_required gate
 -- =============================================================================
--- Migration 20261113000002 adds the pilot gate. The claims:
+-- Migration 20261113000002 adds the pilot gate, OFF by default so it could be
+-- flown safely. Migration 20261113000004 then ships it ON: the default is
+-- `true` and the existing row is switched on once, because a pilot whose first
+-- hundred orders arrive without a pin teaches the riders nothing. The claims:
 --
---   1. GATE OFF (the default): an address without a pin still orders, even
---      with the shop's own pin set — today's behaviour, unchanged.
+--   0. THE SHIPPED DEFAULT IS ON: the column defaults to true and the live
+--      settings row says true (this is what this suite sees on arrival).
+--   1. GATE OFF: an address without a pin still orders, even with the shop's
+--      own pin set — today's behaviour, unchanged. This suite turns the gate
+--      off explicitly to prove the owner's conscious opt-out still works.
 --   2. GATE ON + shop pin set + unpinned address: REFUSED
 --      (`address_pin_required`) — the rider would get a pincode, a guess and
 --      a phone call.
@@ -28,6 +34,27 @@ select test_result.begin_suite('44 address pin gate');
 
 reset role;
 
+-- -----------------------------------------------------------------------------
+-- 0. The shipped default (migration 20261113000004). Read before anything is
+--    changed, because this suite turns the gate off and back on again.
+-- -----------------------------------------------------------------------------
+
+select test_result.ok(
+  'the column itself defaults to ON',
+  (select column_default::boolean
+     from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'store_settings'
+      and column_name = 'address_pin_required')
+);
+
+select test_result.ok(
+  'and the live settings row arrived switched on',
+  (select address_pin_required
+     from public.store_settings
+   where store_id = '00000000-0000-4000-8000-000000000001')
+);
+
 -- The shelf is SET (the line guard copies the price from the products row).
 update public.products
    set stock_qty = 80, is_active = true, price_paise = 1800
@@ -37,7 +64,8 @@ update public.products
  where id = '20000000-0000-4000-8000-000000000002';   -- Onion  Rs 26
 
 -- The shop's pin and the radius the distance rule will use. The gate is OFF
--- for now: the default the migration gives the column.
+-- for now: an explicit opt-out, to prove the shipped default can still be
+-- changed on purpose.
 update public.stores
    set lat = 13.0316, lng = 77.0395
  where id = '00000000-0000-4000-8000-000000000001';
@@ -195,7 +223,8 @@ end;
 $$;
 
 -- -----------------------------------------------------------------------------
--- 5. Put the fixtures back: gate off, shop pin unset, addresses unpinned.
+-- 5. Put the fixtures back: gate ON (the shipped default), shop pin unset,
+--    addresses unpinned.
 -- -----------------------------------------------------------------------------
 select test_result.sign_out();
 select test_result.sign_in('33333333-3333-3333-3333-333333333333');   -- Owner
@@ -211,7 +240,7 @@ delete from public.orders
   where idempotency_key like 'pin-gate-%';
 
 update public.store_settings
-   set address_pin_required = false
+   set address_pin_required = true
  where store_id = '00000000-0000-4000-8000-000000000001';
 
 update public.stores
@@ -231,8 +260,8 @@ update public.products
  where id = '20000000-0000-4000-8000-000000000002';
 
 select test_result.ok(
-  'fixture restored: the gate is off again',
-  (select not address_pin_required from public.store_settings
+  'fixture restored: the gate is back ON, the shipped default',
+  (select address_pin_required from public.store_settings
     where store_id = '00000000-0000-4000-8000-000000000001')
 );
 select test_result.ok(

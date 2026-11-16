@@ -94,6 +94,12 @@ export default function AdminLayout() {
           ),
         }}
       />
+      {/*
+        The counter's phone-order screen. A screen, not a tab: it is opened from
+        Today when the phone rings, and `href: null` keeps it out of the bar so
+        the six tabs stay the six things the owner checks, not seven.
+      */}
+      <Tabs.Screen name="phone-order" options={{ href: null }} />
     </Tabs>
   );
 }

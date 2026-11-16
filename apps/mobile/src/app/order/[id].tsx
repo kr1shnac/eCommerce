@@ -330,14 +330,19 @@ export default function OrderDetailScreen() {
           ) : null}
 
           {/*
-            The handover code. Only the order's own customer sees it, and only
-            while the bag is on its way: it is the four digits they read to the
-            rider, and the rider closes the delivery with them (migration
-            20261106000003). Staff who open this screen see the order, not the
-            customer's proof.
+            The handover code. The order's own customer sees the digits they
+            read to the rider, and the shop reads the same digits out to a
+            caller whose phone order has no customer app (migration
+            20261113000006). Only while the bag is on its way: it is spent at
+            the door (migration 20261106000003), and the rider is refused by the
+            database — that is what makes it proof of a handover.
           */}
-          {isOwner && data.status === 'out_for_delivery' ? (
-            <DeliveryCodeCard orderId={data.id} isOwner={isOwner} />
+          {data.status === 'out_for_delivery' && (isOwner || isAdmin) ? (
+            <DeliveryCodeCard
+              orderId={data.id}
+              isOwner={isOwner}
+              isShop={isAdmin && !isOwner}
+            />
           ) : null}
 
           {/*
